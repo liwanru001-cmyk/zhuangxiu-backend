@@ -1,0 +1,41 @@
+CREATE TABLE IF NOT EXISTS inspection_templates (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  code VARCHAR(64) NOT NULL,
+  title VARCHAR(120) NOT NULL,
+  stage_id TINYINT UNSIGNED DEFAULT NULL,
+  node_type VARCHAR(32) NOT NULL DEFAULT 'stage',
+  description TEXT DEFAULT NULL,
+  standard_basis VARCHAR(500) DEFAULT NULL,
+  applicable_project_types JSON DEFAULT NULL,
+  applicable_methods JSON DEFAULT NULL,
+  recommended_tools JSON DEFAULT NULL,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_inspection_template_code (code),
+  KEY idx_inspection_template_stage (stage_id, sort_order, is_active),
+  KEY idx_inspection_template_active (is_active, sort_order)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS inspection_template_items (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  template_id BIGINT UNSIGNED NOT NULL,
+  code VARCHAR(80) NOT NULL,
+  title VARCHAR(160) NOT NULL,
+  standard_text TEXT NOT NULL,
+  check_method TEXT DEFAULT NULL,
+  required_tools JSON DEFAULT NULL,
+  risk_level VARCHAR(16) NOT NULL DEFAULT 'normal',
+  failure_action TEXT DEFAULT NULL,
+  require_photo TINYINT(1) NOT NULL DEFAULT 0,
+  sort_order INT NOT NULL DEFAULT 0,
+  is_active TINYINT(1) NOT NULL DEFAULT 1,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_inspection_item_code (code),
+  KEY idx_inspection_item_template (template_id, sort_order, is_active),
+  KEY idx_inspection_item_risk (risk_level, is_active)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

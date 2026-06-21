@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS project_case_shares (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  project_id BIGINT UNSIGNED NOT NULL,
+  designer_id BIGINT UNSIGNED NOT NULL,
+  owner_id BIGINT UNSIGNED NOT NULL,
+  title VARCHAR(80) NOT NULL,
+  style VARCHAR(40) DEFAULT NULL,
+  summary VARCHAR(500) DEFAULT NULL,
+  highlights VARCHAR(500) DEFAULT NULL,
+  image_urls JSON NOT NULL,
+  visible_fields JSON NOT NULL,
+  status TINYINT UNSIGNED NOT NULL DEFAULT 0,
+  reviewer_id BIGINT UNSIGNED DEFAULT NULL,
+  review_message VARCHAR(300) DEFAULT NULL,
+  reviewed_at DATETIME DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_case_share_project (project_id, status, updated_at),
+  KEY idx_case_share_designer (designer_id, status, updated_at),
+  KEY idx_case_share_owner (owner_id, status, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

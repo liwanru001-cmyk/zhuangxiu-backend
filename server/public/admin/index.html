@@ -1,0 +1,2081 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>装修不凡 · 管理后台</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f5f6f8; color: #202124; }
+  button, input, select, textarea { font: inherit; }
+  button { cursor: pointer; }
+
+  #login-page { display: flex; align-items: center; justify-content: center; min-height: 100vh; padding: 24px; }
+  .login-box { width: 360px; background: #fff; padding: 38px; border-radius: 18px; box-shadow: 0 18px 50px rgba(31, 41, 55, .12); }
+  .login-box h2 { text-align: center; margin-bottom: 24px; font-size: 22px; }
+  .login-box input { width: 100%; padding: 12px 14px; margin-bottom: 12px; border: 1px solid #e4e7ec; border-radius: 10px; outline: none; }
+  .login-box input:focus { border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.12); }
+  .login-box button { width: 100%; padding: 12px; background: #4f6ef7; color: #fff; border: none; border-radius: 10px; font-weight: 700; }
+  .login-box .err { color: #d92d20; font-size: 13px; text-align: center; margin-top: 10px; min-height: 18px; }
+
+  #main-page { display: none; min-height: 100vh; }
+  .layout { display: flex; min-height: 100vh; }
+  .sidebar { width: 236px; background: #111827; color: #fff; padding: 20px 14px; display: flex; flex-direction: column; }
+  .brand { padding: 8px 10px 18px; border-bottom: 1px solid rgba(255,255,255,.1); margin-bottom: 14px; }
+  .brand h1 { font-size: 18px; margin-bottom: 5px; }
+  .brand p { font-size: 12px; color: rgba(255,255,255,.58); }
+  .nav { display: flex; flex-direction: column; gap: 6px; }
+  .nav button { display: flex; align-items: center; gap: 10px; width: 100%; border: none; background: transparent; color: rgba(255,255,255,.72); padding: 11px 12px; border-radius: 12px; text-align: left; }
+  .nav button:hover { background: rgba(255,255,255,.08); color: #fff; }
+  .nav button.active { background: #fff; color: #111827; font-weight: 800; }
+  .nav .icon { width: 20px; text-align: center; }
+  .sidebar-footer { margin-top: auto; padding: 14px 10px 2px; color: rgba(255,255,255,.5); font-size: 12px; }
+
+  .content { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+  .topbar { height: 64px; background: #fff; border-bottom: 1px solid #edf0f3; padding: 0 24px; display: flex; align-items: center; justify-content: space-between; }
+  .topbar h2 { font-size: 18px; }
+  .topbar-actions { display: flex; gap: 10px; }
+  .ghost-btn { border: 1px solid #e4e7ec; background: #fff; color: #344054; padding: 8px 14px; border-radius: 10px; }
+  .ghost-btn:hover { border-color: #4f6ef7; color: #4f6ef7; }
+  .primary-btn { border: none; background: #4f6ef7; color: #fff; padding: 9px 16px; border-radius: 10px; font-weight: 700; }
+  .danger-btn { border: 1px solid #fecdca; background: #fff5f5; color: #b42318; padding: 6px 10px; border-radius: 8px; }
+  .success-btn { border: 1px solid #abefc6; background: #ecfdf3; color: #067647; padding: 6px 10px; border-radius: 8px; }
+
+  .page { padding: 24px; }
+  .stats { display: grid; grid-template-columns: repeat(5, minmax(130px, 1fr)); gap: 14px; margin-bottom: 18px; }
+  .stat-card { background: #fff; border-radius: 16px; padding: 16px; border: 1px solid #edf0f3; }
+  .stat-card span { display: block; color: #667085; font-size: 12px; margin-bottom: 8px; }
+  .stat-card strong { font-size: 24px; }
+
+  .toolbar { display: flex; gap: 10px; margin-bottom: 14px; flex-wrap: wrap; align-items: center; }
+  .toolbar input, .toolbar select { padding: 10px 12px; border: 1px solid #e4e7ec; border-radius: 10px; background: #fff; outline: none; }
+  .toolbar input { width: 230px; }
+  .toolbar input:focus, .toolbar select:focus { border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+
+  .card { background: #fff; border: 1px solid #edf0f3; border-radius: 16px; overflow: hidden; }
+  .card-title { padding: 16px 18px; border-bottom: 1px solid #edf0f3; display: flex; align-items: center; justify-content: space-between; }
+  .card-title h3 { font-size: 16px; }
+  .card-title p { color: #667085; font-size: 12px; margin-top: 4px; }
+  .table-wrap { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 960px; }
+  th { background: #fafbfc; text-align: left; padding: 12px 16px; font-size: 12px; color: #667085; font-weight: 700; white-space: nowrap; }
+  td { padding: 13px 16px; border-top: 1px solid #f1f3f5; font-size: 14px; vertical-align: middle; }
+  tr:hover td { background: #f8faff; }
+  .muted { color: #667085; font-size: 12px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+
+  .badge { display: inline-flex; align-items: center; padding: 3px 9px; border-radius: 999px; font-size: 12px; font-weight: 700; margin: 2px 4px 2px 0; }
+  .badge-owner { background: #e3f2fd; color: #1565c0; }
+  .badge-designer { background: #e8f5e9; color: #2e7d32; }
+  .badge-merchant { background: #fff3e0; color: #e65100; }
+  .badge-project_manager { background: #f3e8ff; color: #6b21a8; }
+  .badge-project_supervisor { background: #dbeafe; color: #1d4ed8; }
+  .status-pending { background: #fff7e6; color: #b54708; }
+  .status-approved { background: #ecfdf3; color: #067647; }
+  .status-rejected { background: #fff1f3; color: #b42318; }
+  .status-hidden { background: #f2f4f7; color: #344054; }
+  .share-title { font-weight: 700; max-width: 260px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .share-content { max-width: 360px; color: #667085; font-size: 12px; line-height: 1.45; margin-top: 4px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .cover-thumb { width: 54px; height: 54px; border-radius: 10px; object-fit: cover; background: #f2f4f7; display: inline-flex; align-items: center; justify-content: center; color: #98a2b3; font-size: 12px; overflow: hidden; }
+  .cover-video { position: relative; }
+  .cover-video::after { content: "▶"; position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: #fff; text-shadow: 0 1px 4px rgba(0,0,0,.55); font-size: 18px; pointer-events: none; }
+  .detail-text { max-width: 360px; color: #667085; font-size: 12px; line-height: 1.45; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+  .stack { display: flex; flex-direction: column; gap: 14px; }
+  .item-panel { margin-top: 14px; }
+
+  .row-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+  .action-btn { border: 1px solid #e4e7ec; background: #fff; padding: 6px 10px; border-radius: 8px; font-size: 12px; }
+  .action-btn:hover { border-color: #4f6ef7; color: #4f6ef7; }
+  .pagination { display: flex; align-items: center; justify-content: flex-end; padding: 14px 16px; gap: 8px; font-size: 13px; color: #667085; border-top: 1px solid #edf0f3; }
+  .pagination button { border: 1px solid #e4e7ec; background: #fff; padding: 6px 12px; border-radius: 8px; }
+  .pagination button:disabled { opacity: .45; cursor: default; }
+
+  .placeholder { background: #fff; border: 1px dashed #d0d5dd; border-radius: 18px; padding: 40px; color: #667085; }
+  .placeholder h3 { color: #202124; margin-bottom: 10px; }
+  .progress-admin { display: grid; grid-template-columns: 230px minmax(520px, 1fr) 340px; gap: 14px; align-items: start; }
+  .stage-tree, .item-editor { background: #fff; border: 1px solid #edf0f3; border-radius: 16px; overflow: hidden; }
+  .stage-tree h3, .item-editor h3 { font-size: 15px; padding: 15px 16px; border-bottom: 1px solid #edf0f3; }
+  .stage-list { padding: 8px; display: flex; flex-direction: column; gap: 4px; }
+  .stage-node { width: 100%; border: 0; background: transparent; text-align: left; border-radius: 10px; padding: 10px; display: flex; align-items: center; justify-content: space-between; color: #344054; }
+  .stage-node:hover { background: #f8faff; }
+  .stage-node.active { background: #eef4ff; color: #3448d5; font-weight: 800; }
+  .stage-node small { color: #667085; font-weight: 600; }
+  .progress-summary { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .mini-stat { background: #fff; border: 1px solid #edf0f3; border-radius: 14px; padding: 12px; }
+  .mini-stat span { display: block; color: #667085; font-size: 12px; margin-bottom: 6px; }
+  .mini-stat strong { font-size: 20px; }
+  .inline-edit { width: 100%; border: 1px solid #e4e7ec; border-radius: 8px; padding: 8px 9px; outline: none; background: #fff; }
+  .inline-edit:focus { border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+  .editor-body { padding: 14px; display: flex; flex-direction: column; gap: 12px; }
+  .editor-body label { font-size: 12px; color: #667085; font-weight: 700; margin-bottom: 5px; display: block; }
+  .editor-body input, .editor-body select, .editor-body textarea { width: 100%; border: 1px solid #e4e7ec; border-radius: 10px; padding: 9px 10px; outline: none; background: #fff; }
+  .editor-body textarea { min-height: 76px; resize: vertical; }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .editor-note { background: #f8faff; border: 1px solid #dbe4ff; color: #344054; border-radius: 12px; padding: 10px; font-size: 12px; line-height: 1.45; }
+  .empty-editor { padding: 24px; color: #667085; line-height: 1.55; }
+  .tree-title { display: flex; flex-direction: column; gap: 3px; }
+  .tree-child { padding-left: 18px; position: relative; }
+  .tree-child::before { content: ""; position: absolute; left: 4px; top: 9px; width: 8px; height: 8px; border-left: 1px solid #98a2b3; border-bottom: 1px solid #98a2b3; }
+
+  .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(17,24,39,.42); z-index: 100; align-items: center; justify-content: center; padding: 20px; }
+  .modal-overlay.show { display: flex; }
+  .modal { background: #fff; border-radius: 18px; padding: 24px; width: 420px; box-shadow: 0 24px 70px rgba(0,0,0,.2); }
+  .modal h3 { margin-bottom: 16px; }
+  .modal label { display: block; margin-bottom: 5px; font-size: 13px; color: #667085; }
+  .modal input, .modal select { width: 100%; padding: 10px 12px; margin-bottom: 13px; border: 1px solid #e4e7ec; border-radius: 10px; }
+  .modal textarea { width: 100%; min-height: 96px; padding: 10px 12px; margin-bottom: 13px; border: 1px solid #e4e7ec; border-radius: 10px; resize: vertical; outline: none; }
+  .modal .btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+  .modal .btns button { padding: 9px 18px; border-radius: 10px; border: 1px solid #e4e7ec; background: #fff; }
+  .modal .btns button.primary { background: #4f6ef7; color: #fff; border-color: #4f6ef7; }
+  .toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: #111827; color: #fff; padding: 11px 22px; border-radius: 10px; font-size: 14px; z-index: 200; opacity: 0; transition: opacity .25s; pointer-events: none; }
+  .toast.show { opacity: 1; }
+
+  @media (max-width: 900px) {
+    .layout { flex-direction: column; }
+    .sidebar { width: 100%; }
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .progress-admin { grid-template-columns: 1fr; }
+    .progress-summary { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+</head>
+<body>
+
+<div id="login-page">
+  <div class="login-box">
+    <h2>装修不凡管理后台</h2>
+    <input id="u-name" placeholder="用户名" autocomplete="username">
+    <input id="u-pass" type="password" placeholder="密码" autocomplete="current-password">
+    <button onclick="doLogin()">登录</button>
+    <div id="login-err" class="err"></div>
+  </div>
+</div>
+
+<div id="main-page">
+  <div class="layout">
+    <aside class="sidebar">
+      <div class="brand">
+        <h1>装修不凡</h1>
+        <p>Web 管理后台</p>
+      </div>
+      <nav class="nav" id="nav"></nav>
+      <div class="sidebar-footer">admin console</div>
+    </aside>
+    <main class="content">
+      <div class="topbar">
+        <div>
+          <h2 id="page-title">概览</h2>
+          <div class="muted" id="page-subtitle">查看平台关键数据</div>
+        </div>
+        <div class="topbar-actions">
+          <button class="ghost-btn" onclick="refreshCurrent()">刷新</button>
+          <button class="ghost-btn" onclick="logout()">退出</button>
+        </div>
+      </div>
+      <section class="page" id="page-content"></section>
+    </main>
+  </div>
+</div>
+
+<div class="modal-overlay" id="edit-modal">
+  <div class="modal">
+    <h3>编辑用户</h3>
+    <label>昵称</label>
+    <input id="edit-nickname">
+    <label>当前身份</label>
+    <select id="edit-role">
+      <option value="owner">业主</option>
+      <option value="designer">设计师</option>
+      <option value="merchant">商家</option>
+      <option value="project_manager">项目经理</option>
+      <option value="project_supervisor">项目监理</option>
+    </select>
+    <label>账号审核状态</label>
+    <select id="edit-status">
+      <option value="pending">待审核</option>
+      <option value="approved">已通过</option>
+      <option value="rejected">已驳回</option>
+    </select>
+    <div class="btns">
+      <button onclick="closeModal()">取消</button>
+      <button class="primary" onclick="saveUser()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="tip-modal">
+  <div class="modal">
+    <h3 id="tip-modal-title">编辑日志信息</h3>
+    <label>分类</label>
+    <select id="tip-type">
+      <option value="general">装修贴士</option>
+      <option value="function_intro">项目功能说明</option>
+    </select>
+    <label>标题</label>
+    <input id="tip-title" maxlength="80" placeholder="App 显示的标题">
+    <label>内容</label>
+    <textarea id="tip-content" maxlength="2000" placeholder="App 显示的内容，点击后可查看全文"></textarea>
+    <label>排序</label>
+    <input id="tip-sort" type="number" placeholder="数字越小越靠前">
+    <label>状态</label>
+    <select id="tip-active">
+      <option value="1">启用</option>
+      <option value="0">停用</option>
+    </select>
+    <div class="btns">
+      <button onclick="closeTipModal()">取消</button>
+      <button class="primary" onclick="saveProjectTip()">保存</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const API = window.ADMIN_API_BASE || localStorage.getItem('admin_api_base') || '/api/admin';
+const menus = [
+  { key: 'overview', label: '概览', icon: '📊', subtitle: '查看平台关键数据' },
+  { key: 'users', label: '用户管理', icon: '👤', subtitle: '管理用户账号、新建账户审核与身份信息' },
+  { key: 'shares', label: '分享管理', icon: '🧩', subtitle: '审核用户发布的公开分享内容' },
+  { key: 'projectTips', label: '日志信息编辑', icon: '💡', subtitle: '管理装修日志里展示的信息轮播和项目功能说明' },
+  { key: 'supportFeedback', label: '问题反馈', icon: '❓', subtitle: '编辑常见问题，查看用户提交的问题反馈' },
+  { key: 'inspectionTemplates', label: '验收标准库', icon: '✅', subtitle: '维护验收模板、检查项和推荐规则底座' },
+  { key: 'content', label: '内容管理', icon: '📝', subtitle: '管理用户发布内容，后续接入' },
+  { key: 'projects', label: '项目进度管理', icon: '🏗️', subtitle: '维护固定阶段下的统一事项库和推荐规则' },
+  { key: 'profiles', label: '身份资料', icon: '🪪', subtitle: '管理设计师、项目经理、商家主页资料' },
+  { key: 'finance', label: '费用与打卡', icon: '💳', subtitle: '管理费用支出与工地打卡记录' },
+  { key: 'reports', label: '举报反馈', icon: '🚩', subtitle: '处理举报、反馈和异常内容' },
+  { key: 'settings', label: '系统设置', icon: '⚙️', subtitle: '管理城市、风格、身份标签等配置' },
+];
+
+let token = sessionStorage.getItem('admin_token') || '';
+let activeMenu = 'overview';
+let page = 1;
+let total = 0;
+let editingId = null;
+let inspectionTemplates = [];
+let inspectionItems = [];
+let selectedInspectionTemplateId = null;
+let projectTips = [];
+let editingTipId = null;
+let helpFaqs = [];
+let editingFaqId = null;
+let feedbackPage = 1;
+let feedbackTotal = 0;
+let features = { inspectionKb: false };
+let progressStages = [];
+let progressItems = [];
+let selectedProgressStageId = 1;
+let selectedProgressItemKey = '';
+
+document.getElementById('u-pass').addEventListener('keydown', e => {
+  if (e.key === 'Enter') doLogin();
+});
+
+renderNav();
+if (token) showMain();
+
+async function doLogin() {
+  const username = document.getElementById('u-name').value.trim();
+  const password = document.getElementById('u-pass').value;
+  document.getElementById('login-err').textContent = '';
+  try {
+    const r = await fetch(`${API}/login`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password}),
+    });
+    const j = await r.json();
+    if (j.code !== 200) {
+      document.getElementById('login-err').textContent = j.message || '登录失败';
+      return;
+    }
+    token = j.data.token;
+    sessionStorage.setItem('admin_token', token);
+    showMain();
+  } catch (e) {
+    document.getElementById('login-err').textContent = '网络错误';
+  }
+}
+
+async function showMain() {
+  document.getElementById('login-page').style.display = 'none';
+  document.getElementById('main-page').style.display = 'block';
+  await loadFeatures();
+  if (activeMenu === 'inspectionTemplates' && !features.inspectionKb) activeMenu = 'overview';
+  switchMenu(activeMenu);
+}
+
+function logout() {
+  sessionStorage.removeItem('admin_token');
+  token = '';
+  document.getElementById('login-page').style.display = 'flex';
+  document.getElementById('main-page').style.display = 'none';
+}
+
+function renderNav() {
+  const visibleMenus = menus.filter(item => item.key !== 'inspectionTemplates' || features.inspectionKb);
+  document.getElementById('nav').innerHTML = visibleMenus.map(item => `
+    <button class="${item.key === activeMenu ? 'active' : ''}" onclick="switchMenu('${item.key}')">
+      <span class="icon">${item.icon}</span><span>${item.label}</span>
+    </button>
+  `).join('');
+}
+
+async function loadFeatures() {
+  try {
+    const j = await adminFetch('/features');
+    if (j.code === 200) features = Object.assign({ inspectionKb: false }, j.data || {});
+  } catch (e) {
+    features = { inspectionKb: false };
+  }
+}
+
+function switchMenu(key) {
+  activeMenu = key;
+  renderNav();
+  const item = menus.find(menu => menu.key === key) || menus[0];
+  document.getElementById('page-title').textContent = item.label;
+  document.getElementById('page-subtitle').textContent = item.subtitle;
+  if (key === 'overview') renderOverview();
+  else if (key === 'users') renderUsers();
+  else if (key === 'shares') renderShares();
+  else if (key === 'projectTips') renderProjectTips();
+  else if (key === 'supportFeedback') renderSupportFeedback();
+  else if (key === 'inspectionTemplates') renderInspectionTemplates();
+  else if (key === 'projects') renderProgressLibrary();
+  else renderPlaceholder(item);
+}
+
+function refreshCurrent() {
+  if (activeMenu === 'overview') renderOverview();
+  else if (activeMenu === 'users') loadUsers(page);
+  else if (activeMenu === 'shares') loadShares(page);
+  else if (activeMenu === 'projectTips') loadProjectTips();
+  else if (activeMenu === 'supportFeedback') {
+    loadHelpFaqs();
+    loadUserFeedback(feedbackPage);
+  }
+  else if (activeMenu === 'inspectionTemplates') loadInspectionTemplates();
+  else if (activeMenu === 'projects') loadProgressLibrary();
+  else switchMenu(activeMenu);
+}
+
+async function adminFetch(path, options = {}) {
+  const headers = Object.assign({}, options.headers || {}, { Authorization: `Bearer ${token}` });
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 12000);
+  const url = `${API}${path}`;
+  let r;
+  try {
+    r = await fetch(url, Object.assign({}, options, { headers, signal: controller.signal }));
+  } catch (e) {
+    if (e.name === 'AbortError') throw new Error(`接口请求超时：${url}`);
+    throw new Error(`接口请求失败：${url}；${e.message || '请确认 API 地址和 HTTPS/跨域配置'}`);
+  } finally {
+    clearTimeout(timer);
+  }
+  const contentType = r.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await r.text();
+    const brief = text.replace(/\s+/g, ' ').slice(0, 80);
+    throw new Error(`接口返回非 JSON：${url}；请确认 admin 域名已反代 /api 到后端。${r.status} ${brief}`);
+  }
+  const j = await r.json();
+  if (j.code === 401) {
+    logout();
+    throw new Error('登录已过期');
+  }
+  return j;
+}
+
+async function renderOverview() {
+  document.getElementById('page-content').innerHTML = `
+    <div class="stats" id="stats">
+      ${statSkeleton('用户总数')}${statSkeleton('待审核账号')}${statSkeleton('今日新增')}${statSkeleton('发布内容')}${statSkeleton('装修项目')}
+    </div>
+    <div class="placeholder">
+      <h3>管理后台第一版</h3>
+      <p>左侧菜单已经搭好。当前只有“用户管理”接入真实接口，其他功能会按模块逐步接入。</p>
+    </div>
+  `;
+  try {
+    const j = await adminFetch('/stats');
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const s = j.data || {};
+    document.getElementById('stats').innerHTML = [
+      statCard('用户总数', s.total_users),
+      statCard('待审核账号', s.pending_users),
+      statCard('今日新增', s.today_users),
+      statCard('发布内容', s.total_notes),
+      statCard('装修项目', s.total_projects),
+    ].join('');
+  } catch (e) {
+    toast(e.message || '概览加载失败');
+  }
+}
+
+function renderUsers() {
+  document.getElementById('page-content').innerHTML = `
+    <div class="toolbar">
+      <input id="search" placeholder="搜索昵称/手机号" onkeydown="if(event.key==='Enter')loadUsers(1)">
+      <select id="filterRole" onchange="loadUsers(1)">
+        <option value="">全部身份</option>
+        <option value="owner">业主</option>
+        <option value="designer">设计师</option>
+        <option value="merchant">商家</option>
+        <option value="project_manager">项目经理</option>
+        <option value="project_supervisor">项目监理</option>
+      </select>
+      <select id="filterStatus" onchange="loadUsers(1)">
+        <option value="">全部审核状态</option>
+        <option value="pending">待审核</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <button class="primary-btn" onclick="loadUsers(1)">查询</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>用户管理</h3>
+          <p>新建账户、身份信息和账号审核都在这里处理。</p>
+        </div>
+        <button class="ghost-btn" onclick="quickPending()">只看待审核</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>手机号</th><th>昵称</th><th>身份</th><th>审核状态</th>
+              <th>城市</th><th>关注</th><th>获赞</th><th>注册时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="user-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="page-info"></span>
+        <button id="btn-prev" onclick="loadUsers(page-1)">‹ 上一页</button>
+        <button id="btn-next" onclick="loadUsers(page+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+  loadUsers(1);
+}
+
+async function loadUsers(p) {
+  page = Math.max(1, p || 1);
+  const kw = document.getElementById('search')?.value.trim() || '';
+  const role = document.getElementById('filterRole')?.value || '';
+  const adminStatus = document.getElementById('filterStatus')?.value || '';
+  const params = new URLSearchParams({ page, pageSize: 20 });
+  if (kw) params.set('keyword', kw);
+  if (role) params.set('role', role);
+  if (adminStatus) params.set('adminStatus', adminStatus);
+
+  const body = document.getElementById('user-body');
+  body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/users?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const users = j.data.users || [];
+    total = j.data.total || 0;
+    body.innerHTML = users.map(userRow).join('') ||
+      '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">暂无数据</td></tr>';
+    const totalPages = Math.ceil(total / 20) || 1;
+    document.getElementById('page-info').textContent = `共 ${total} 条 · ${page}/${totalPages}`;
+    document.getElementById('btn-prev').disabled = page <= 1;
+    document.getElementById('btn-next').disabled = page >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function userRow(u) {
+  const roles = normalizeRoles(u.roles, u.role);
+  const status = u.admin_status || 'approved';
+  return `
+    <tr>
+      <td class="mono">${u.id}</td>
+      <td>${esc(u.phone)}</td>
+      <td>${esc(u.nickname)}</td>
+      <td>${roles.map(r => `<span class="badge badge-${r}">${roleLabel(r)}</span>`).join('')}</td>
+      <td><span class="badge status-${status}">${statusLabel(status)}</span></td>
+      <td>${esc(u.city) || '-'}</td>
+      <td>${u.followers_count || 0}</td>
+      <td>${u.likes_received || 0}</td>
+      <td>${fmtTime(u.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          ${status !== 'approved' ? `<button class="success-btn" onclick="reviewUser(${u.id}, 'approve')">通过</button>` : ''}
+          ${status !== 'rejected' ? `<button class="danger-btn" onclick="reviewUser(${u.id}, 'reject')">驳回</button>` : ''}
+          <button class="action-btn" onclick="openEdit(${u.id}, '${jsEsc(u.nickname)}', '${jsEsc(u.role)}', '${jsEsc(status)}')">编辑</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function quickPending() {
+  document.getElementById('filterStatus').value = 'pending';
+  loadUsers(1);
+}
+
+async function reviewUser(id, action) {
+  const label = action === 'approve' ? '通过' : '驳回';
+  if (!confirm(`确认${label}这个账号？`)) return;
+  const j = await adminFetch(`/users/${id}/review`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action }),
+  });
+  if (j.code === 200) {
+    toast(`${label}成功`);
+    loadUsers(page);
+    if (activeMenu === 'overview') renderOverview();
+  } else {
+    toast(j.message || `${label}失败`);
+  }
+}
+
+function openEdit(id, nick, role, status) {
+  editingId = id;
+  document.getElementById('edit-nickname').value = nick || '';
+  document.getElementById('edit-role').value = role || 'owner';
+  document.getElementById('edit-status').value = status || 'approved';
+  document.getElementById('edit-modal').classList.add('show');
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('show');
+  editingId = null;
+}
+
+async function saveUser() {
+  const nickname = document.getElementById('edit-nickname').value.trim();
+  const role = document.getElementById('edit-role').value;
+  const admin_status = document.getElementById('edit-status').value;
+  const j = await adminFetch(`/users/${editingId}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ nickname, role, admin_status }),
+  });
+  if (j.code === 200) {
+    toast('保存成功');
+    closeModal();
+    loadUsers(page);
+  } else {
+    toast(j.message || '保存失败');
+  }
+}
+
+function renderShares() {
+  document.getElementById('page-content').innerHTML = `
+    <div class="toolbar">
+      <input id="shareSearch" placeholder="搜索标题/内容/作者/手机号" onkeydown="if(event.key==='Enter')loadShares(1)">
+      <select id="shareSource" onchange="loadShares(1)">
+        <option value="">全部来源</option>
+        <option value="site_photos">工地美照</option>
+        <option value="complaint">大家吐槽</option>
+        <option value="question">问题汇总</option>
+        <option value="good_item">好物推荐</option>
+        <option value="inspiration">创意灵感</option>
+        <option value="legacy">历史内容</option>
+      </select>
+      <select id="shareStatus" onchange="loadShares(1)">
+        <option value="">全部状态</option>
+        <option value="0">待审核</option>
+        <option value="1">已通过</option>
+        <option value="2">已驳回/隐藏</option>
+      </select>
+      <button class="primary-btn" onclick="loadShares(1)">查询</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>分享管理</h3>
+          <p>展示装修圈公开内容，可对内容进行通过、驳回和隐藏处理。</p>
+        </div>
+        <button class="ghost-btn" onclick="quickPendingShares()">只看待审核</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>封面</th><th>内容</th><th>来源</th><th>作者</th><th>状态</th>
+              <th>城市/风格</th><th>互动</th><th>发布时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="share-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="share-page-info"></span>
+        <button id="share-btn-prev" onclick="loadShares(page-1)">‹ 上一页</button>
+        <button id="share-btn-next" onclick="loadShares(page+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+  loadShares(1);
+}
+
+async function loadShares(p) {
+  page = Math.max(1, p || 1);
+  const kw = document.getElementById('shareSearch')?.value.trim() || '';
+  const sourceType = document.getElementById('shareSource')?.value || '';
+  const status = document.getElementById('shareStatus')?.value || '';
+  const params = new URLSearchParams({ page, pageSize: 20 });
+  if (kw) params.set('keyword', kw);
+  if (sourceType) params.set('sourceType', sourceType);
+  if (status !== '') params.set('status', status);
+
+  const body = document.getElementById('share-body');
+  body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/shares?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const shares = j.data.shares || [];
+    total = j.data.total || 0;
+    body.innerHTML = shares.map(shareRow).join('') ||
+      '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">暂无数据</td></tr>';
+    const totalPages = Math.ceil(total / 20) || 1;
+    document.getElementById('share-page-info').textContent = `共 ${total} 条 · ${page}/${totalPages}`;
+    document.getElementById('share-btn-prev').disabled = page <= 1;
+    document.getElementById('share-btn-next').disabled = page >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function shareRow(item) {
+  const status = Number(item.status ?? 0);
+  const cover = shareCover(item);
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td>${cover}</td>
+      <td>
+        <div class="share-title">${esc(item.title) || '-'}</div>
+        <div class="share-content">${esc(item.content) || '-'}</div>
+      </td>
+      <td><span class="badge">${sourceLabel(item.source_type)}</span></td>
+      <td>
+        <div>${esc(item.author_name) || '-'}</div>
+        <div class="muted">${esc(item.phone) || '-'}</div>
+      </td>
+      <td><span class="badge ${noteStatusClass(status)}">${noteStatusLabel(status)}</span></td>
+      <td>
+        <div>${esc(item.city) || '-'}</div>
+        <div class="muted">${styleLabel(item.decoration_style)}</div>
+      </td>
+      <td class="muted">
+        赞 ${item.likes_count || 0}<br>
+        评 ${item.comments_count || 0} · 藏 ${item.collections_count || 0}
+      </td>
+      <td>${fmtTime(item.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          ${status !== 1 ? `<button class="success-btn" onclick="reviewShare(${item.id}, 'approve')">通过</button>` : ''}
+          ${status !== 2 ? `<button class="danger-btn" onclick="reviewShare(${item.id}, 'reject')">驳回</button>` : ''}
+          ${status !== 0 ? `<button class="action-btn" onclick="reviewShare(${item.id}, 'pending')">转待审</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function shareCover(item) {
+  if (item.cover_image) {
+    return `<img class="cover-thumb" src="${esc(item.cover_image)}" alt="封面">`;
+  }
+  if (item.video_cover_url) {
+    return `<span class="cover-thumb cover-video"><img class="cover-thumb" src="${esc(item.video_cover_url)}" alt="视频封面"></span>`;
+  }
+  if (item.video_url) {
+    return `<span class="cover-thumb cover-video"><video class="cover-thumb" src="${esc(item.video_url)}" muted preload="metadata"></video></span>`;
+  }
+  return '<span class="cover-thumb">无图</span>';
+}
+
+function quickPendingShares() {
+  document.getElementById('shareStatus').value = '0';
+  loadShares(1);
+}
+
+async function reviewShare(id, action) {
+  const labelMap = { approve: '通过', reject: '驳回', hide: '隐藏', pending: '转为待审核' };
+  const label = labelMap[action] || '处理';
+  if (!confirm(`确认${label}这条分享内容？`)) return;
+  const j = await adminFetch(`/shares/${id}/review`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ action }),
+  });
+  if (j.code === 200) {
+    toast(`${label}成功`);
+    loadShares(page);
+  } else {
+    toast(j.message || `${label}失败`);
+  }
+}
+
+function renderProjectTips() {
+  document.getElementById('page-content').innerHTML = `
+    <div class="toolbar">
+      <select id="tipRoleFilter" onchange="handleTipRoleChange()">
+        <option value="owner">业主</option>
+        <option value="designer">设计师（占位）</option>
+        <option value="project_manager">项目经理（占位）</option>
+        <option value="project_supervisor">项目监理（占位）</option>
+        <option value="merchant">商家（占位）</option>
+      </select>
+      <select id="tipTypeFilter" onchange="loadProjectTips()">
+        <option value="">全部分类</option>
+        <option value="general">装修贴士</option>
+        <option value="function_intro">项目功能说明</option>
+      </select>
+      <select id="tipActiveFilter" onchange="loadProjectTips()">
+        <option value="">全部状态</option>
+        <option value="1">启用</option>
+        <option value="0">停用</option>
+      </select>
+      <button class="primary-btn" onclick="loadProjectTips()">查询</button>
+      <button class="ghost-btn" onclick="openTipModal()">新增日志信息</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>日志信息编辑</h3>
+          <p>这里维护的内容会显示在 App 装修日志的信息轮播和项目功能说明里。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>分类</th><th>标题/内容</th><th>排序</th><th>状态</th><th>更新时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="project-tip-body"></tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  loadProjectTips();
+}
+
+function handleTipRoleChange() {
+  const role = document.getElementById('tipRoleFilter')?.value || 'owner';
+  const typeFilter = document.getElementById('tipTypeFilter');
+  const activeFilter = document.getElementById('tipActiveFilter');
+  const addButton = document.querySelector('#page-content .ghost-btn');
+  const disabled = role !== 'owner';
+  if (typeFilter) typeFilter.disabled = disabled;
+  if (activeFilter) activeFilter.disabled = disabled;
+  if (addButton) addButton.disabled = disabled;
+  loadProjectTips();
+}
+
+async function loadProjectTips() {
+  const role = document.getElementById('tipRoleFilter')?.value || 'owner';
+  const type = document.getElementById('tipTypeFilter')?.value || '';
+  const active = document.getElementById('tipActiveFilter')?.value || '';
+  const body = document.getElementById('project-tip-body');
+  if (role !== 'owner') {
+    body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">该身份的日志信息路径暂未接入，先预留位置。</td></tr>';
+    return;
+  }
+  const params = new URLSearchParams();
+  if (type) params.set('type', type);
+  if (active !== '') params.set('active', active);
+  body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/project-tips?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    projectTips = j.data.tips || [];
+    body.innerHTML = projectTips.map(projectTipRow).join('') ||
+      '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">暂无日志信息</td></tr>';
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function projectTipRow(item) {
+  const active = Number(item.is_active) === 1;
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td><span class="badge">${tipTypeLabel(item.type)}</span></td>
+      <td>
+        <div class="share-title">${esc(item.title)}</div>
+        <div class="share-content">${esc(item.content)}</div>
+      </td>
+      <td>${item.sort_order || 0}</td>
+      <td><span class="badge ${active ? 'status-approved' : 'status-hidden'}">${active ? '启用' : '停用'}</span></td>
+      <td>${fmtTime(item.updated_at || item.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="openTipModal(${item.id})">编辑</button>
+          <button class="${active ? 'danger-btn' : 'success-btn'}" onclick="toggleProjectTip(${item.id}, ${active ? 0 : 1})">${active ? '停用' : '启用'}</button>
+          <button class="danger-btn" onclick="deleteProjectTip(${item.id})">删除</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function openTipModal(id) {
+  editingTipId = id || null;
+  const current = projectTips.find(item => Number(item.id) === Number(id)) || {};
+  document.getElementById('tip-modal-title').textContent = editingTipId ? '编辑日志信息' : '新增日志信息';
+  document.getElementById('tip-type').value = current.type || 'general';
+  document.getElementById('tip-title').value = current.title || '';
+  document.getElementById('tip-content').value = current.content || '';
+  document.getElementById('tip-sort').value = current.sort_order ?? 0;
+  document.getElementById('tip-active').value = String(current.is_active ?? 1);
+  document.getElementById('tip-modal').classList.add('show');
+}
+
+function closeTipModal() {
+  document.getElementById('tip-modal').classList.remove('show');
+  editingTipId = null;
+}
+
+async function saveProjectTip() {
+  const payload = {
+    type: document.getElementById('tip-type').value,
+    title: document.getElementById('tip-title').value.trim(),
+    content: document.getElementById('tip-content').value.trim(),
+    sort_order: Number(document.getElementById('tip-sort').value || 0),
+    is_active: Number(document.getElementById('tip-active').value),
+  };
+  if (!payload.title || !payload.content) return toast('标题和内容不能为空');
+  const path = editingTipId ? `/project-tips/${editingTipId}` : '/project-tips';
+  const method = editingTipId ? 'PUT' : 'POST';
+  const j = await adminFetch(path, {
+    method,
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (j.code === 200) {
+    toast(editingTipId ? '日志信息已保存' : '日志信息已新增');
+    closeTipModal();
+    loadProjectTips();
+  } else {
+    toast(j.message || '保存失败');
+  }
+}
+
+async function toggleProjectTip(id, active) {
+  const current = projectTips.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('贴士不存在');
+  const j = await adminFetch(`/project-tips/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(Object.assign({}, current, { is_active: active })),
+  });
+  if (j.code === 200) {
+    toast(active ? '日志信息已启用' : '日志信息已停用');
+    loadProjectTips();
+  } else {
+    toast(j.message || '操作失败');
+  }
+}
+
+async function deleteProjectTip(id) {
+  if (!confirm('确认删除这条日志信息？删除后 App 不再展示。')) return;
+  const j = await adminFetch(`/project-tips/${id}`, { method: 'DELETE' });
+  if (j.code === 200) {
+    toast('日志信息已删除');
+    loadProjectTips();
+  } else {
+    toast(j.message || '删除失败');
+  }
+}
+
+function renderSupportFeedback() {
+  feedbackPage = 1;
+  editingFaqId = null;
+  document.getElementById('page-content').innerHTML = `
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>预设常见问题编辑</h3>
+          <p>App 帮助与反馈页会读取这里启用的常见问题，最多允许配置 10 条。</p>
+        </div>
+        <button class="ghost-btn" id="faq-add-btn" onclick="startNewFaq()">新增常见问题</button>
+      </div>
+      <div class="toolbar" style="align-items:flex-start;">
+        <input id="faq-question" placeholder="问题标题，最多 120 字" maxlength="120">
+        <input id="faq-sort" type="number" placeholder="排序" value="0" style="max-width:110px;">
+        <select id="faq-active" style="max-width:110px;">
+          <option value="1">启用</option>
+          <option value="0">停用</option>
+        </select>
+      </div>
+      <div style="margin-bottom:12px;">
+        <textarea id="faq-answer" rows="5" maxlength="2000" placeholder="答案内容，最多 2000 字" style="width:100%;box-sizing:border-box;border:1px solid #e5e7eb;border-radius:12px;padding:12px;font:inherit;resize:vertical;"></textarea>
+      </div>
+      <div class="row-actions" style="margin-bottom:12px;">
+        <button class="primary-btn" onclick="saveHelpFaq()" id="faq-save-btn">保存常见问题</button>
+        <button class="ghost-btn" onclick="resetFaqForm()">清空表单</button>
+        <span id="faq-edit-hint" style="color:#6b7280;font-size:13px;">当前为新增状态</span>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>问题/答案</th><th>排序</th><th>状态</th><th>更新时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="help-faq-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="card" style="margin-top:16px;">
+      <div class="card-title">
+        <div>
+          <h3>问题反馈设置</h3>
+          <p>这里显示用户在 App 帮助与反馈页提交的问题、建议和异常反馈。</p>
+        </div>
+        <select id="feedbackStatusFilter" onchange="loadUserFeedback(1)">
+          <option value="">全部状态</option>
+          <option value="pending">待处理</option>
+          <option value="reviewed">已处理</option>
+          <option value="ignored">已忽略</option>
+        </select>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>用户</th><th>反馈内容</th><th>状态</th><th>提交时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="user-feedback-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="feedback-page-info"></span>
+        <button id="feedback-prev" onclick="loadUserFeedback(feedbackPage-1)">‹ 上一页</button>
+        <button id="feedback-next" onclick="loadUserFeedback(feedbackPage+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+  loadHelpFaqs();
+  loadUserFeedback(1);
+}
+
+async function loadHelpFaqs() {
+  const body = document.getElementById('help-faq-body');
+  body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch('/help-faqs');
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    helpFaqs = j.data.faqs || [];
+    const addButton = document.getElementById('faq-add-btn');
+    if (addButton) {
+      addButton.disabled = helpFaqs.length >= 10;
+      addButton.textContent = helpFaqs.length >= 10 ? '已达 10 条上限' : `新增常见问题（${helpFaqs.length}/10）`;
+    }
+    body.innerHTML = helpFaqs.map(helpFaqRow).join('') ||
+      '<tr><td colspan="6" style="text-align:center;color:#999;padding:32px;">暂无常见问题</td></tr>';
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function helpFaqRow(item) {
+  const active = Number(item.is_active) === 1;
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td>
+        <div class="share-title">${esc(item.question)}</div>
+        <div class="share-content">${esc(item.answer)}</div>
+      </td>
+      <td>${item.sort_order || 0}</td>
+      <td><span class="badge ${active ? 'status-approved' : 'status-hidden'}">${active ? '启用' : '停用'}</span></td>
+      <td>${fmtTime(item.updated_at || item.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="editHelpFaq(${item.id})">编辑</button>
+          <button class="${active ? 'danger-btn' : 'success-btn'}" onclick="toggleHelpFaq(${item.id}, ${active ? 0 : 1})">${active ? '停用' : '启用'}</button>
+          <button class="danger-btn" onclick="deleteHelpFaq(${item.id})">删除</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function startNewFaq() {
+  if (helpFaqs.length >= 10) return toast('常见问题最多只能添加 10 条');
+  resetFaqForm();
+  document.getElementById('faq-question').focus();
+}
+
+function editHelpFaq(id) {
+  const current = helpFaqs.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('常见问题不存在');
+  editingFaqId = current.id;
+  document.getElementById('faq-question').value = current.question || '';
+  document.getElementById('faq-answer').value = current.answer || '';
+  document.getElementById('faq-sort').value = current.sort_order ?? 0;
+  document.getElementById('faq-active').value = String(current.is_active ?? 1);
+  document.getElementById('faq-edit-hint').textContent = `正在编辑 ID ${current.id}`;
+  document.getElementById('faq-save-btn').textContent = '保存修改';
+  document.getElementById('faq-question').focus();
+}
+
+function resetFaqForm() {
+  editingFaqId = null;
+  const question = document.getElementById('faq-question');
+  const answer = document.getElementById('faq-answer');
+  const sort = document.getElementById('faq-sort');
+  const active = document.getElementById('faq-active');
+  if (question) question.value = '';
+  if (answer) answer.value = '';
+  if (sort) sort.value = '0';
+  if (active) active.value = '1';
+  const hint = document.getElementById('faq-edit-hint');
+  if (hint) hint.textContent = '当前为新增状态';
+  const save = document.getElementById('faq-save-btn');
+  if (save) save.textContent = '保存常见问题';
+}
+
+async function saveHelpFaq() {
+  if (!editingFaqId && helpFaqs.length >= 10) return toast('常见问题最多只能添加 10 条');
+  const saveButton = document.getElementById('faq-save-btn');
+  const payload = {
+    question: document.getElementById('faq-question').value.trim(),
+    answer: document.getElementById('faq-answer').value.trim(),
+    sort_order: Number(document.getElementById('faq-sort').value || 0),
+    is_active: Number(document.getElementById('faq-active').value),
+  };
+  if (!payload.question || !payload.answer) return toast('问题和答案不能为空');
+  const path = editingFaqId ? `/help-faqs/${editingFaqId}` : '/help-faqs';
+  const method = editingFaqId ? 'PUT' : 'POST';
+  const wasEditing = Boolean(editingFaqId);
+  if (saveButton) {
+    saveButton.disabled = true;
+    saveButton.textContent = '保存中...';
+  }
+  try {
+    const j = await adminFetch(path, {
+      method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (j.code === 200) {
+      toast(wasEditing ? '常见问题已保存' : '常见问题已新增');
+      resetFaqForm();
+      loadHelpFaqs();
+    } else {
+      toast(j.message || '保存失败');
+    }
+  } catch (e) {
+    toast(e.message || '保存失败');
+  } finally {
+    if (saveButton) {
+      saveButton.disabled = false;
+      saveButton.textContent = editingFaqId ? '保存修改' : '保存常见问题';
+    }
+  }
+}
+
+async function toggleHelpFaq(id, active) {
+  const current = helpFaqs.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('常见问题不存在');
+  try {
+    const j = await adminFetch(`/help-faqs/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(Object.assign({}, current, { is_active: active })),
+    });
+    if (j.code === 200) {
+      toast(active ? '常见问题已启用' : '常见问题已停用');
+      loadHelpFaqs();
+    } else {
+      toast(j.message || '操作失败');
+    }
+  } catch (e) {
+    toast(e.message || '操作失败');
+  }
+}
+
+async function deleteHelpFaq(id) {
+  if (!confirm('确认删除这条常见问题？删除后 App 不再展示。')) return;
+  try {
+    const j = await adminFetch(`/help-faqs/${id}`, { method: 'DELETE' });
+    if (j.code === 200) {
+      toast('常见问题已删除');
+      if (Number(editingFaqId) === Number(id)) resetFaqForm();
+      loadHelpFaqs();
+    } else {
+      toast(j.message || '删除失败');
+    }
+  } catch (e) {
+    toast(e.message || '删除失败');
+  }
+}
+
+async function loadUserFeedback(p) {
+  feedbackPage = Math.max(1, p || 1);
+  const status = document.getElementById('feedbackStatusFilter')?.value || '';
+  const params = new URLSearchParams({ page: feedbackPage, pageSize: 20 });
+  if (status) params.set('status', status);
+  const body = document.getElementById('user-feedback-body');
+  body.innerHTML = '<tr><td colspan="6" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/user-feedback?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const list = j.data.feedback || [];
+    feedbackTotal = j.data.total || 0;
+    body.innerHTML = list.map(userFeedbackRow).join('') ||
+      '<tr><td colspan="6" style="text-align:center;color:#999;padding:32px;">暂无反馈</td></tr>';
+    const totalPages = Math.ceil(feedbackTotal / 20) || 1;
+    document.getElementById('feedback-page-info').textContent = `共 ${feedbackTotal} 条 · ${feedbackPage}/${totalPages}`;
+    document.getElementById('feedback-prev').disabled = feedbackPage <= 1;
+    document.getElementById('feedback-next').disabled = feedbackPage >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function userFeedbackRow(item) {
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td>
+        <div class="share-title">${esc(item.nickname || '未知用户')}</div>
+        <div class="share-content">${esc(item.phone || item.contact || '-')}</div>
+      </td>
+      <td><div class="share-content">${esc(item.content)}</div></td>
+      <td><span class="badge status-${item.status || 'pending'}">${feedbackStatusLabel(item.status)}</span></td>
+      <td>${fmtTime(item.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="success-btn" onclick="updateUserFeedback(${item.id}, 'reviewed')">标记已处理</button>
+          <button class="danger-btn" onclick="updateUserFeedback(${item.id}, 'ignored')">忽略</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function feedbackStatusLabel(status) {
+  return { pending: '待处理', reviewed: '已处理', ignored: '已忽略' }[status] || '待处理';
+}
+
+async function updateUserFeedback(id, status) {
+  try {
+    const j = await adminFetch(`/user-feedback/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ status }),
+    });
+    if (j.code === 200) {
+      toast('反馈状态已更新');
+      loadUserFeedback(feedbackPage);
+    } else {
+      toast(j.message || '操作失败');
+    }
+  } catch (e) {
+    toast(e.message || '操作失败');
+  }
+}
+
+function renderInspectionTemplates() {
+  selectedInspectionTemplateId = null;
+  document.getElementById('page-content').innerHTML = `
+    <div class="toolbar">
+      <select id="inspectionStage" onchange="loadInspectionTemplates()">
+        <option value="">全部阶段</option>
+        <option value="3">水电隐蔽</option>
+        <option value="4">泥瓦防水</option>
+        <option value="5">木工/吊顶/柜体</option>
+        <option value="6">油漆墙面</option>
+        <option value="8">竣工总验</option>
+      </select>
+      <select id="inspectionActive" onchange="loadInspectionTemplates()">
+        <option value="">全部状态</option>
+        <option value="1">启用</option>
+        <option value="0">停用</option>
+      </select>
+      <button class="primary-btn" onclick="loadInspectionTemplates()">查询</button>
+      <button class="ghost-btn" onclick="createInspectionTemplate()">新增模板</button>
+    </div>
+    <div class="stack">
+      <div class="card">
+        <div class="card-title">
+          <div>
+            <h3>验收模板</h3>
+            <p>用于按项目阶段自动推荐验收内容，后续也会给大模型做标准依据。</p>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>ID</th><th>模板</th><th>阶段</th><th>依据/工具</th><th>检查项</th><th>状态</th><th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="inspection-template-body"></tbody>
+          </table>
+        </div>
+      </div>
+      <div id="inspection-item-panel"></div>
+    </div>
+  `;
+  loadInspectionTemplates();
+}
+
+async function loadInspectionTemplates() {
+  const stageId = document.getElementById('inspectionStage')?.value || '';
+  const active = document.getElementById('inspectionActive')?.value || '';
+  const params = new URLSearchParams();
+  if (stageId) params.set('stageId', stageId);
+  if (active !== '') params.set('active', active);
+  const body = document.getElementById('inspection-template-body');
+  if (body) body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/inspection-templates?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    inspectionTemplates = j.data.templates || [];
+    body.innerHTML = inspectionTemplates.map(inspectionTemplateRow).join('') ||
+      '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">暂无模板</td></tr>';
+    if (!selectedInspectionTemplateId) {
+      document.getElementById('inspection-item-panel').innerHTML = '';
+    }
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function inspectionTemplateRow(item) {
+  const active = Number(item.is_active) === 1;
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td>
+        <div class="share-title">${esc(item.title)}</div>
+        <div class="muted">${esc(item.code)} · ${esc(item.node_type || 'stage')}</div>
+        <div class="detail-text">${esc(item.description) || '-'}</div>
+      </td>
+      <td><span class="badge">${inspectionStageLabel(item.stage_id)}</span></td>
+      <td>
+        <div class="detail-text">${esc(item.standard_basis) || '-'}</div>
+        <div class="muted">${listLabel(item.recommended_tools)}</div>
+      </td>
+      <td>
+        <div>${item.item_count || 0} 项</div>
+        <div class="muted">必须 ${item.must_count || 0} · 重点 ${item.important_count || 0}</div>
+      </td>
+      <td><span class="badge ${active ? 'status-approved' : 'status-hidden'}">${active ? '启用' : '停用'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="loadInspectionTemplateItems(${item.id})">检查项</button>
+          <button class="action-btn" onclick="editInspectionTemplate(${item.id})">编辑</button>
+          <button class="${active ? 'danger-btn' : 'success-btn'}" onclick="toggleInspectionTemplate(${item.id}, ${active ? 0 : 1})">${active ? '停用' : '启用'}</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+async function loadInspectionTemplateItems(templateId) {
+  selectedInspectionTemplateId = templateId;
+  const panel = document.getElementById('inspection-item-panel');
+  const template = inspectionTemplates.find(item => Number(item.id) === Number(templateId));
+  panel.innerHTML = `
+    <div class="card item-panel">
+      <div class="card-title">
+        <div>
+          <h3>${esc(template?.title || '检查项')}</h3>
+          <p>每条检查项会成为用户验收时的核对内容。</p>
+        </div>
+        <button class="ghost-btn" onclick="createInspectionItem(${templateId})">新增检查项</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>检查项</th><th>标准/方法</th><th>工具</th><th>风险</th><th>状态</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="inspection-item-body">
+            <tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  `;
+  try {
+    const j = await adminFetch(`/inspection-templates/${templateId}/items`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    inspectionItems = j.data.items || [];
+    document.getElementById('inspection-item-body').innerHTML = inspectionItems.map(inspectionItemRow).join('') ||
+      '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">暂无检查项</td></tr>';
+  } catch (e) {
+    document.getElementById('inspection-item-body').innerHTML =
+      `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function inspectionItemRow(item) {
+  const active = Number(item.is_active) === 1;
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td>
+        <div class="share-title">${esc(item.title)}</div>
+        <div class="muted">${esc(item.code)} · 排序 ${item.sort_order || 0}</div>
+      </td>
+      <td>
+        <div class="detail-text">${esc(item.standard_text) || '-'}</div>
+        <div class="muted">${esc(item.check_method) || '-'}</div>
+        <div class="muted">${esc(item.failure_action) || '-'}</div>
+      </td>
+      <td>${listLabel(item.required_tools)}</td>
+      <td>
+        <span class="badge ${riskClass(item.risk_level)}">${riskLabel(item.risk_level)}</span>
+        ${Number(item.require_photo) === 1 ? '<span class="badge status-pending">需拍照</span>' : ''}
+      </td>
+      <td><span class="badge ${active ? 'status-approved' : 'status-hidden'}">${active ? '启用' : '停用'}</span></td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="editInspectionItem(${item.id})">编辑</button>
+          <button class="${active ? 'danger-btn' : 'success-btn'}" onclick="toggleInspectionItem(${item.id}, ${active ? 0 : 1})">${active ? '停用' : '启用'}</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+async function createInspectionTemplate() {
+  const payload = readInspectionTemplateInput({});
+  if (!payload) return;
+  const j = await adminFetch('/inspection-templates', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (j.code === 200) {
+    toast('模板已新增');
+    loadInspectionTemplates();
+  } else {
+    toast(j.message || '新增失败');
+  }
+}
+
+async function editInspectionTemplate(id) {
+  const current = inspectionTemplates.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('模板不存在');
+  const payload = readInspectionTemplateInput(current);
+  if (!payload) return;
+  const j = await adminFetch(`/inspection-templates/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (j.code === 200) {
+    toast('模板已保存');
+    loadInspectionTemplates();
+  } else {
+    toast(j.message || '保存失败');
+  }
+}
+
+async function toggleInspectionTemplate(id, active) {
+  const current = inspectionTemplates.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('模板不存在');
+  const j = await adminFetch(`/inspection-templates/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(Object.assign({}, current, { is_active: active })),
+  });
+  if (j.code === 200) {
+    toast(active ? '模板已启用' : '模板已停用');
+    loadInspectionTemplates();
+  } else {
+    toast(j.message || '操作失败');
+  }
+}
+
+async function createInspectionItem(templateId) {
+  const payload = readInspectionItemInput({});
+  if (!payload) return;
+  const j = await adminFetch(`/inspection-templates/${templateId}/items`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (j.code === 200) {
+    toast('检查项已新增');
+    loadInspectionTemplateItems(templateId);
+    loadInspectionTemplates();
+  } else {
+    toast(j.message || '新增失败');
+  }
+}
+
+async function editInspectionItem(id) {
+  const current = inspectionItems.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('检查项不存在');
+  const payload = readInspectionItemInput(current);
+  if (!payload) return;
+  const j = await adminFetch(`/inspection-template-items/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(payload),
+  });
+  if (j.code === 200) {
+    toast('检查项已保存');
+    loadInspectionTemplateItems(selectedInspectionTemplateId);
+    loadInspectionTemplates();
+  } else {
+    toast(j.message || '保存失败');
+  }
+}
+
+async function toggleInspectionItem(id, active) {
+  const current = inspectionItems.find(item => Number(item.id) === Number(id));
+  if (!current) return toast('检查项不存在');
+  const j = await adminFetch(`/inspection-template-items/${id}`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify(Object.assign({}, current, { is_active: active })),
+  });
+  if (j.code === 200) {
+    toast(active ? '检查项已启用' : '检查项已停用');
+    loadInspectionTemplateItems(selectedInspectionTemplateId);
+    loadInspectionTemplates();
+  } else {
+    toast(j.message || '操作失败');
+  }
+}
+
+function renderProgressLibrary() {
+  document.getElementById('page-content').innerHTML = `
+    <div class="progress-summary" id="progress-summary">
+      ${miniStat('事项总数', '-')}${miniStat('默认加入', '-')}${miniStat('核心事项', '-')}${miniStat('需验收', '-')}
+    </div>
+    <div class="progress-admin">
+      <aside class="stage-tree">
+        <h3>固定阶段</h3>
+        <div class="stage-list" id="progress-stage-list"></div>
+      </aside>
+      <section class="card">
+        <div class="card-title">
+          <div>
+            <h3 id="progress-stage-title">统一事项库</h3>
+            <p>维护固定阶段下的事项库、默认加入规则和验收提醒规则。</p>
+          </div>
+          <button class="ghost-btn" onclick="createProgressItem()">新增事项</button>
+        </div>
+        <div class="toolbar" style="padding:14px 16px 0;margin-bottom:10px;">
+          <input id="progressKeyword" placeholder="搜索事项名称/说明" onkeydown="if(event.key==='Enter')renderProgressTable()">
+          <select id="progressSource" onchange="renderProgressTable()">
+            <option value="">全部来源</option>
+            <option value="default">默认任务</option>
+            <option value="recommendation">验收必看事项</option>
+          </select>
+          <select id="progressLevel" onchange="renderProgressTable()">
+            <option value="">全部等级</option>
+            <option value="core">核心</option>
+            <option value="recommended">推荐</option>
+            <option value="optional">可选</option>
+            <option value="blank">未设置</option>
+          </select>
+          <select id="progressInspection" onchange="renderProgressTable()">
+            <option value="">全部验收</option>
+            <option value="1">需要验收</option>
+            <option value="0">不需要验收</option>
+            <option value="blank">未设置</option>
+          </select>
+          <button class="primary-btn" onclick="renderProgressTable()">查询</button>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>事项</th><th>来源</th><th>等级</th><th>默认加入</th><th>需验收</th><th>负责人</th><th>建议时机</th><th>状态</th>
+              </tr>
+            </thead>
+            <tbody id="progress-item-body"></tbody>
+          </table>
+        </div>
+      </section>
+      <aside class="item-editor" id="progress-editor">
+        <h3>事项编辑</h3>
+        <div class="empty-editor">从中间表格选择一个事项，或点击新增事项。</div>
+      </aside>
+    </div>
+  `;
+  loadProgressLibrary();
+}
+
+async function loadProgressLibrary() {
+  const stageList = document.getElementById('progress-stage-list');
+  const body = document.getElementById('progress-item-body');
+  if (stageList) stageList.innerHTML = '<div class="muted" style="padding:10px;">加载中...</div>';
+  if (body) body.innerHTML = '<tr><td colspan="8" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch('/progress-item-library');
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    progressStages = j.data.stages || [];
+    progressItems = j.data.items || [];
+    if (!progressStages.some(stage => Number(stage.id) === Number(selectedProgressStageId))) {
+      selectedProgressStageId = progressStages[0]?.id || 1;
+    }
+    renderProgressSummary();
+    renderProgressStages();
+    renderProgressTable();
+  } catch (e) {
+    toast(e.message || '事项库加载失败');
+    if (stageList) stageList.innerHTML = '<div class="muted" style="padding:10px;color:#b42318;">加载失败</div>';
+    if (body) body.innerHTML = `<tr><td colspan="8" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function renderProgressSummary() {
+  const total = progressItems.length;
+  const defaultCount = progressItems.filter(item => item.default_join).length;
+  const coreCount = progressItems.filter(item => item.required_level === 'core' || item.is_key_node).length;
+  const inspectionCount = progressItems.filter(item => item.requires_inspection === true).length;
+  const el = document.getElementById('progress-summary');
+  if (!el) return;
+  el.innerHTML = [
+    miniStat('事项总数', total),
+    miniStat('默认加入', defaultCount),
+    miniStat('核心事项', coreCount),
+    miniStat('需验收', inspectionCount),
+  ].join('');
+}
+
+function renderProgressStages() {
+  const el = document.getElementById('progress-stage-list');
+  if (!el) return;
+  el.innerHTML = progressStages.map(stage => {
+    const count = progressItems.filter(item => Number(item.stage_id) === Number(stage.id)).length;
+    return `
+      <button class="stage-node ${Number(stage.id) === Number(selectedProgressStageId) ? 'active' : ''}" onclick="selectProgressStage(${stage.id})">
+        <span>${esc(stage.name)}</span>
+        <small>${count}</small>
+      </button>
+    `;
+  }).join('');
+}
+
+function selectProgressStage(stageId) {
+  selectedProgressStageId = Number(stageId);
+  selectedProgressItemKey = '';
+  renderProgressStages();
+  renderProgressTable();
+  renderProgressEditor(null);
+}
+
+function filteredProgressItems() {
+  const keyword = document.getElementById('progressKeyword')?.value.trim().toLowerCase() || '';
+  const source = document.getElementById('progressSource')?.value || '';
+  const level = document.getElementById('progressLevel')?.value || '';
+  const inspection = document.getElementById('progressInspection')?.value || '';
+  return progressItems.filter(item => {
+    if (Number(item.stage_id) !== Number(selectedProgressStageId)) return false;
+    if (source && item.source !== source) return false;
+    if (level === 'blank' && item.required_level) return false;
+    if (level && level !== 'blank' && item.required_level !== level) return false;
+    if (inspection === '1' && item.requires_inspection !== true) return false;
+    if (inspection === '0' && item.requires_inspection !== false) return false;
+    if (inspection === 'blank' && item.requires_inspection !== null) return false;
+    if (keyword) {
+      const haystack = `${item.title || ''} ${item.description || ''} ${item.suggested_timing || ''}`.toLowerCase();
+      if (!haystack.includes(keyword)) return false;
+    }
+    return true;
+  });
+  return progressTreeItems(items);
+}
+
+function progressTreeItems(items) {
+  const byKey = new Map(items.map(item => [item.template_key, item]));
+  return [...items].sort((a, b) => {
+    const aParent = a.parent_template_key ? byKey.get(a.parent_template_key) : null;
+    const bParent = b.parent_template_key ? byKey.get(b.parent_template_key) : null;
+    const aRootSort = Number((aParent || a).sort_order || 0);
+    const bRootSort = Number((bParent || b).sort_order || 0);
+    if (aRootSort !== bRootSort) return aRootSort - bRootSort;
+    if (!a.parent_template_key && b.parent_template_key === a.template_key) return -1;
+    if (!b.parent_template_key && a.parent_template_key === b.template_key) return 1;
+    return Number(a.sort_order || 0) - Number(b.sort_order || 0);
+  });
+}
+
+function renderProgressTable() {
+  const stage = progressStages.find(item => Number(item.id) === Number(selectedProgressStageId));
+  const title = document.getElementById('progress-stage-title');
+  if (title) title.textContent = `${stage?.name || '阶段'} · 事项库`;
+  const body = document.getElementById('progress-item-body');
+  if (!body) return;
+  const items = filteredProgressItems();
+  body.innerHTML = items.map(progressItemRow).join('') ||
+    '<tr><td colspan="8" style="text-align:center;color:#999;padding:32px;">当前筛选下暂无事项</td></tr>';
+}
+
+function progressItemRow(item) {
+  const selected = item.template_key === selectedProgressItemKey;
+  const isChild = Boolean(item.parent_template_key);
+  return `
+    <tr onclick="selectProgressItem('${jsEsc(item.template_key)}')" style="${selected ? 'outline:2px solid #4f6ef7;outline-offset:-2px;' : ''}">
+      <td>
+        <div class="tree-title ${isChild ? 'tree-child' : ''}">
+          <strong>${esc(item.title)}</strong>
+          <span class="muted mono">${esc(item.template_key)}${isChild ? ` · 父级：${esc(item.parent_title || item.parent_template_key)}` : ''}</span>
+        </div>
+      </td>
+      <td>${progressSourceLabel(item.source)}</td>
+      <td>${levelBadge(item.required_level)}</td>
+      <td>${item.default_join ? '是' : '否'}</td>
+      <td>${item.requires_inspection === null ? '-' : item.requires_inspection ? '是' : '否'}</td>
+      <td>${roleLabel(item.default_responsible_role) || '-'}</td>
+      <td>${esc(item.suggested_timing) || '-'}</td>
+      <td><span class="badge ${item.is_active ? 'status-approved' : 'status-hidden'}">${item.is_active ? '启用' : '停用'}</span></td>
+    </tr>
+  `;
+}
+
+function selectProgressItem(key) {
+  selectedProgressItemKey = key;
+  const item = progressItems.find(row => row.template_key === key);
+  renderProgressTable();
+  renderProgressEditor(item);
+}
+
+function createProgressItem() {
+  selectedProgressItemKey = '';
+  const nextSort = Math.max(
+    0,
+    ...progressItems
+      .filter(item => Number(item.stage_id) === Number(selectedProgressStageId))
+      .map(item => Number(item.sort_order || 0))
+  ) + 10;
+  renderProgressTable();
+  renderProgressEditor({
+    template_key: '',
+    stage_id: selectedProgressStageId,
+    parent_template_key: '',
+    title: '',
+    required_level: 'recommended',
+    source: 'recommendation',
+    default_join: false,
+    is_key_node: false,
+    requires_inspection: false,
+    inspection_template_key: '',
+    default_responsible_role: '',
+    suggested_timing: '',
+    description: '',
+    applicable_project_types: '',
+    not_applicable_note: '',
+    merge_status: '',
+    sort_order: nextSort,
+    is_active: 1,
+  }, true);
+}
+
+function renderProgressEditor(item, isNew = false) {
+  const el = document.getElementById('progress-editor');
+  if (!el) return;
+  if (!item) {
+    el.innerHTML = '<h3>事项编辑</h3><div class="empty-editor">从中间表格选择一个事项，或点击新增事项。</div>';
+    return;
+  }
+  el.innerHTML = `
+    <h3>${isNew ? '新增事项' : '事项编辑'}</h3>
+    <div class="editor-body">
+      <div class="editor-note">默认加入会自动进入新项目进度；核心事项会在验收助理中重点提醒。</div>
+      <div>
+        <label>事项编码</label>
+        <input id="progress-template-key" class="inline-edit" value="${attr(item.template_key || '')}" placeholder="可留空，新增时自动生成">
+      </div>
+      <div>
+        <label>事项名称</label>
+        <input id="progress-title" class="inline-edit" value="${attr(item.title)}">
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>所属阶段</label>
+          <select id="progress-stage-id">${progressStages.map(stage => `<option value="${stage.id}" ${Number(stage.id) === Number(item.stage_id) ? 'selected' : ''}>${esc(stage.name)}</option>`).join('')}</select>
+        </div>
+        <div>
+          <label>父级事项</label>
+          <select id="progress-parent-key">
+            <option value="">无父级</option>
+            ${progressParentOptions(item)}
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>推荐等级</label>
+          <select id="progress-required-level">
+            <option value="" ${!item.required_level ? 'selected' : ''}>未设置</option>
+            <option value="core" ${item.required_level === 'core' ? 'selected' : ''}>核心</option>
+            <option value="recommended" ${item.required_level === 'recommended' ? 'selected' : ''}>推荐</option>
+            <option value="optional" ${item.required_level === 'optional' ? 'selected' : ''}>可选</option>
+          </select>
+        </div>
+        <div>
+          <label>事项来源</label>
+          <select id="progress-source-field">
+            <option value="default" ${item.source === 'default' ? 'selected' : ''}>默认任务</option>
+            <option value="recommendation" ${item.source !== 'default' ? 'selected' : ''}>验收必看</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>默认加入</label>
+          <select id="progress-default-join">
+            <option value="1" ${item.default_join ? 'selected' : ''}>是</option>
+            <option value="0" ${!item.default_join ? 'selected' : ''}>否</option>
+          </select>
+        </div>
+        <div>
+          <label>关键节点</label>
+          <select id="progress-key-node">
+            <option value="1" ${item.is_key_node ? 'selected' : ''}>是</option>
+            <option value="0" ${!item.is_key_node ? 'selected' : ''}>否</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>是否需要验收</label>
+          <select id="progress-requires-inspection">
+            <option value="0" ${!item.requires_inspection ? 'selected' : ''}>否</option>
+            <option value="1" ${item.requires_inspection === true ? 'selected' : ''}>是</option>
+          </select>
+        </div>
+        <div>
+          <label>默认负责人</label>
+          <select id="progress-responsible-role">
+            ${['', 'owner', 'designer', 'project_manager', 'project_supervisor', 'merchant'].map(role => `<option value="${role}" ${item.default_responsible_role === role ? 'selected' : ''}>${role ? roleLabel(role) : '未设置'}</option>`).join('')}
+          </select>
+        </div>
+      </div>
+      <div>
+        <label>验收模板编码</label>
+        <input id="progress-inspection-template-key" value="${attr(item.inspection_template_key || '')}" placeholder="可为空">
+      </div>
+      <div>
+        <label>建议时机</label>
+        <input id="progress-suggested-timing" value="${attr(item.suggested_timing || '')}" placeholder="例如：封槽前、贴砖前">
+      </div>
+      <div>
+        <label>事项说明</label>
+        <textarea id="progress-description">${esc(item.description || '')}</textarea>
+      </div>
+      <div>
+        <label>适用项目类型</label>
+        <input id="progress-applicable-project-types" value="${attr(item.applicable_project_types || '')}" placeholder="例如：毛坯房,旧房,精装房">
+      </div>
+      <div>
+        <label>不适用说明</label>
+        <textarea id="progress-not-applicable-note">${esc(item.not_applicable_note || '')}</textarea>
+      </div>
+      <div class="form-grid">
+        <div>
+          <label>排序</label>
+          <input id="progress-sort-order" type="number" value="${Number(item.sort_order || 0)}">
+        </div>
+        <div>
+          <label>启用状态</label>
+          <select id="progress-active">
+            <option value="1" ${item.is_active ? 'selected' : ''}>启用</option>
+            <option value="0" ${!item.is_active ? 'selected' : ''}>停用</option>
+          </select>
+        </div>
+      </div>
+      <button class="primary-btn" onclick="saveProgressItem(${isNew ? 'true' : 'false'}, '${jsEsc(item.template_key || '')}')">保存配置</button>
+    </div>
+  `;
+}
+
+function progressParentOptions(item) {
+  return progressItems
+    .filter(row =>
+      Number(row.stage_id) === Number(item.stage_id) &&
+      row.template_key &&
+      row.template_key !== item.template_key &&
+      !row.parent_template_key
+    )
+    .map(row => `<option value="${attr(row.template_key)}" ${item.parent_template_key === row.template_key ? 'selected' : ''}>${esc(row.title)}</option>`)
+    .join('');
+}
+
+async function saveProgressItem(isNew, originalKey) {
+  const payload = {
+    template_key: document.getElementById('progress-template-key').value.trim(),
+    title: document.getElementById('progress-title').value.trim(),
+    stage_id: Number(document.getElementById('progress-stage-id').value),
+    parent_template_key: document.getElementById('progress-parent-key').value,
+    required_level: document.getElementById('progress-required-level').value,
+    source: document.getElementById('progress-source-field').value,
+    default_join: Number(document.getElementById('progress-default-join').value),
+    is_key_node: Number(document.getElementById('progress-key-node').value),
+    requires_inspection: Number(document.getElementById('progress-requires-inspection').value),
+    inspection_template_key: document.getElementById('progress-inspection-template-key').value.trim(),
+    default_responsible_role: document.getElementById('progress-responsible-role').value,
+    suggested_timing: document.getElementById('progress-suggested-timing').value.trim(),
+    description: document.getElementById('progress-description').value.trim(),
+    applicable_project_types: document.getElementById('progress-applicable-project-types').value.trim(),
+    not_applicable_note: document.getElementById('progress-not-applicable-note').value.trim(),
+    sort_order: Number(document.getElementById('progress-sort-order').value || 0),
+    is_active: Number(document.getElementById('progress-active').value),
+  };
+  if (!payload.title) return toast('事项名称不能为空');
+  const path = isNew ? '/progress-item-library' : `/progress-item-library/${encodeURIComponent(originalKey)}`;
+  const method = isNew ? 'POST' : 'PUT';
+  try {
+    const j = await adminFetch(path, {
+      method,
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(payload),
+    });
+    if (j.code === 200) {
+      toast(isNew ? '事项已新增' : '事项已保存');
+      selectedProgressStageId = payload.stage_id;
+      selectedProgressItemKey = j.data?.template_key || payload.template_key || originalKey;
+      await loadProgressLibrary();
+      const item = progressItems.find(row => row.template_key === selectedProgressItemKey);
+      renderProgressEditor(item);
+    } else {
+      toast(j.message || '保存失败');
+    }
+  } catch (e) {
+    toast(e.message || '保存失败');
+  }
+}
+
+function miniStat(label, value) {
+  return `<div class="mini-stat"><span>${label}</span><strong>${value}</strong></div>`;
+}
+
+function progressSourceLabel(source) {
+  return source === 'default'
+    ? '<span class="badge status-approved">默认任务</span>'
+    : '<span class="badge status-pending">验收必看</span>';
+}
+
+function levelBadge(level) {
+  if (level === 'core') return '<span class="badge status-rejected">核心</span>';
+  if (level === 'recommended') return '<span class="badge status-approved">推荐</span>';
+  if (level === 'optional') return '<span class="badge status-hidden">可选</span>';
+  return '<span class="badge status-hidden">未设置</span>';
+}
+
+function readInspectionTemplateInput(current) {
+  const title = prompt('模板名称', current.title || '');
+  if (title === null) return null;
+  const code = prompt('模板编码（英文/数字/下划线）', current.code || '');
+  if (code === null) return null;
+  const stageId = prompt('阶段ID：3水电 4泥瓦 5木工 6油漆 8竣工，可空', current.stage_id || '');
+  if (stageId === null) return null;
+  const description = prompt('模板说明', current.description || '');
+  if (description === null) return null;
+  const standardBasis = prompt('执行依据', current.standard_basis || '');
+  if (standardBasis === null) return null;
+  const tools = prompt('推荐工具，逗号或换行分隔', listLabel(current.recommended_tools, ''));
+  if (tools === null) return null;
+  const sortOrder = prompt('排序数字', current.sort_order || 0);
+  if (sortOrder === null) return null;
+  return {
+    title,
+    code,
+    stage_id: stageId,
+    node_type: current.node_type || 'stage',
+    description,
+    standard_basis: standardBasis,
+    recommended_tools: tools,
+    applicable_project_types: current.applicable_project_types || [],
+    applicable_methods: current.applicable_methods || [],
+    sort_order: Number(sortOrder || 0),
+    is_active: current.is_active === undefined ? 1 : current.is_active,
+  };
+}
+
+function readInspectionItemInput(current) {
+  const title = prompt('检查项名称', current.title || '');
+  if (title === null) return null;
+  const code = prompt('检查项编码（英文/数字/下划线）', current.code || '');
+  if (code === null) return null;
+  const standardText = prompt('验收标准', current.standard_text || '');
+  if (standardText === null) return null;
+  const checkMethod = prompt('检查方法', current.check_method || '');
+  if (checkMethod === null) return null;
+  const tools = prompt('需要工具，逗号或换行分隔', listLabel(current.required_tools, ''));
+  if (tools === null) return null;
+  const riskLevel = prompt('风险等级：must / important / normal', current.risk_level || 'normal');
+  if (riskLevel === null) return null;
+  const failureAction = prompt('不合格处理建议', current.failure_action || '');
+  if (failureAction === null) return null;
+  const requirePhoto = confirm('是否要求拍照留存？');
+  const sortOrder = prompt('排序数字', current.sort_order || 0);
+  if (sortOrder === null) return null;
+  return {
+    title,
+    code,
+    standard_text: standardText,
+    check_method: checkMethod,
+    required_tools: tools,
+    risk_level: riskLevel || 'normal',
+    failure_action: failureAction,
+    require_photo: requirePhoto ? 1 : 0,
+    sort_order: Number(sortOrder || 0),
+    is_active: current.is_active === undefined ? 1 : current.is_active,
+  };
+}
+
+function renderPlaceholder(item) {
+  document.getElementById('page-content').innerHTML = `
+    <div class="placeholder">
+      <h3>${esc(item.label)} · 功能占位</h3>
+      <p>${esc(item.subtitle)}</p>
+      <p style="margin-top:10px;">第一版先把入口和页面结构做好，后续再逐个接入真实接口。</p>
+    </div>
+  `;
+}
+
+function statSkeleton(label) {
+  return `<div class="stat-card"><span>${label}</span><strong>-</strong></div>`;
+}
+
+function statCard(label, value) {
+  return `<div class="stat-card"><span>${label}</span><strong>${Number(value || 0).toLocaleString('zh-CN')}</strong></div>`;
+}
+
+function normalizeRoles(raw, fallback) {
+  if (Array.isArray(raw)) return raw.length ? raw : [fallback || 'owner'];
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch (e) {}
+  }
+  return [fallback || 'owner'];
+}
+
+function roleLabel(role) {
+  return {
+    owner: '业主',
+    designer: '设计师',
+    merchant: '商家',
+    project_manager: '项目经理',
+    project_supervisor: '项目监理',
+  }[role] || role;
+}
+
+function statusLabel(status) {
+  return { pending: '待审核', approved: '已通过', rejected: '已驳回' }[status] || status;
+}
+
+function sourceLabel(sourceType) {
+  return {
+    site_photos: '工地美照',
+    complaint: '大家吐槽',
+    question: '问题汇总',
+    good_item: '好物推荐',
+    inspiration: '创意灵感',
+    legacy: '历史内容',
+  }[sourceType] || sourceType || '-';
+}
+
+function noteStatusLabel(status) {
+  return { 0: '待审核', 1: '已通过', 2: '已驳回/隐藏' }[Number(status)] || status;
+}
+
+function noteStatusClass(status) {
+  return { 0: 'status-pending', 1: 'status-approved', 2: 'status-hidden' }[Number(status)] || 'status-hidden';
+}
+
+function tipTypeLabel(type) {
+  return { general: '装修贴士', function_intro: '项目功能说明', stage: '阶段建议' }[type] || type || '-';
+}
+
+function styleLabel(style) {
+  return {
+    modern: '现代简约',
+    cream: '奶油风',
+    wood: '原木风',
+    nordic: '北欧风',
+    french: '法式',
+    new_chinese: '新中式',
+    light_luxury: '轻奢',
+    american: '美式',
+  }[style] || style || '-';
+}
+
+function inspectionStageLabel(stageId) {
+  return {
+    1: '准备阶段',
+    2: '设计规划',
+    3: '水电隐蔽',
+    4: '泥瓦防水',
+    5: '木工/吊顶/柜体',
+    6: '油漆墙面',
+    7: '安装收尾',
+    8: '竣工总验',
+  }[Number(stageId)] || '通用';
+}
+
+function riskLabel(risk) {
+  return { must: '必须项', important: '重点项', normal: '普通项' }[risk] || risk || '-';
+}
+
+function riskClass(risk) {
+  return { must: 'status-rejected', important: 'status-pending', normal: 'status-approved' }[risk] || 'status-hidden';
+}
+
+function listLabel(value, fallback = '-') {
+  if (Array.isArray(value)) return value.length ? value.join('、') : fallback;
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.length ? parsed.join('、') : fallback;
+    } catch (e) {
+      return value || fallback;
+    }
+  }
+  return fallback;
+}
+
+function fmtTime(value) {
+  return value ? new Date(value).toLocaleDateString('zh-CN') : '-';
+}
+
+function esc(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+function attr(value) {
+  return esc(value).replace(/'/g, '&#39;');
+}
+
+function jsEsc(value) {
+  return String(value || '').replace(/\\/g, '\\\\').replace(/'/g, "\\'").replace(/\n/g, '\\n');
+}
+
+function toast(message) {
+  const el = document.getElementById('toast');
+  el.textContent = message;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), 2200);
+}
+</script>
+</body>
+</html>

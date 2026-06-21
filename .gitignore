@@ -1,0 +1,31 @@
+.DS_Store
+
+# Local secrets
+.env
+.env.*
+!.env.example
+server/.env
+server/.env.*
+!server/.env.example
+
+# Dependencies
+node_modules/
+server/node_modules/
+
+# Runtime output
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+server/uploads/
+
+# Build artifacts
+build/
+dist/
+coverage/
+zhuangxiu_app/build/
+
+# Editor and OS state
+.vscode/
+.idea/

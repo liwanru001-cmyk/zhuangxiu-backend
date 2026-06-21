@@ -1,0 +1,75 @@
+name: Deploy Backend
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-backend.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          APP_DIR: ${{ secrets.APP_DIR }}
+          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
+          APP_BRANCH: main
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT || 22 }}
+          envs: APP_DIR,REPO_URL,APP_BRANCH
+          script: |
+            set -euo pipefail
+
+            if ! command -v git >/dev/null 2>&1; then
+              echo "git is required on the server"
+              exit 1
+            fi
+
+            if ! command -v node >/dev/null 2>&1; then
+              echo "Node.js is required on the server"
+              exit 1
+            fi
+
+            if ! command -v pm2 >/dev/null 2>&1; then
+              npm install -g pm2
+            fi
+
+            mkdir -p "$APP_DIR"
+
+            if [ ! -d "$APP_DIR/.git" ]; then
+              git clone --branch "$APP_BRANCH" "$REPO_URL" "$APP_DIR"
+            fi
+
+            cd "$APP_DIR"
+            git fetch origin "$APP_BRANCH"
+            git reset --hard "origin/$APP_BRANCH"
+
+            cd server
+            npm ci --omit=dev
+            mkdir -p uploads logs
+
+            if [ ! -f .env ]; then
+              echo "Missing server/.env on deployment host. Create it from server/.env.example before deploying."
+              exit 1
+            fi
+
+            set -a
+            . ./.env
+            set +a
+
+            pm2 startOrReload ecosystem.config.cjs --env production --update-env
+            pm2 save
+            curl -fsS "http://127.0.0.1:${PORT:-3001}/health"
