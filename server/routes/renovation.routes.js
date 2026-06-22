@@ -112,9 +112,24 @@ const checkInMediaUpload = multer({
   }),
   limits: { fileSize: 60 * 1024 * 1024, files: 10 },
   fileFilter: (req, file, callback) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const isKnownMediaExtension = [
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.gif',
+      '.webp',
+      '.heic',
+      '.heif',
+      '.mp4',
+      '.mov',
+      '.m4v',
+    ].includes(extension);
     callback(
       null,
-      file.mimetype.startsWith('image/') || file.mimetype.startsWith('video/')
+      file.mimetype.startsWith('image/') ||
+        file.mimetype.startsWith('video/') ||
+        isKnownMediaExtension
     );
   },
 });
