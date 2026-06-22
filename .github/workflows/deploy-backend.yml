@@ -28,7 +28,7 @@ jobs:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT || 22 }}
+          port: ${{ secrets.SSH_PORT }}
           envs: APP_DIR,REPO_URL,APP_BRANCH
           script: |
             set -euo pipefail
@@ -47,9 +47,31 @@ jobs:
               npm install -g pm2
             fi
 
-            mkdir -p "$APP_DIR"
+            if [ -d "$APP_DIR" ] && [ ! -d "$APP_DIR/.git" ]; then
+              backup_dir="${APP_DIR}-legacy-$(date +%Y%m%d_%H%M%S)"
+              staging_dir="${APP_DIR}.deploy-tmp"
 
-            if [ ! -d "$APP_DIR/.git" ]; then
+              rm -rf "$staging_dir"
+              git clone --branch "$APP_BRANCH" "$REPO_URL" "$staging_dir"
+
+              mkdir -p "$staging_dir/server"
+              if [ -f "$APP_DIR/server/.env" ]; then
+                cp -p "$APP_DIR/server/.env" "$staging_dir/server/.env"
+              fi
+              if [ -d "$APP_DIR/server/uploads" ]; then
+                rm -rf "$staging_dir/server/uploads"
+                cp -a "$APP_DIR/server/uploads" "$staging_dir/server/uploads"
+              fi
+              if [ -d "$APP_DIR/server/logs" ]; then
+                rm -rf "$staging_dir/server/logs"
+                cp -a "$APP_DIR/server/logs" "$staging_dir/server/logs"
+              fi
+
+              mv "$APP_DIR" "$backup_dir"
+              mv "$staging_dir" "$APP_DIR"
+              echo "Migrated legacy deployment to git checkout. Backup: $backup_dir"
+            elif [ ! -d "$APP_DIR/.git" ]; then
+              mkdir -p "$(dirname "$APP_DIR")"
               git clone --branch "$APP_BRANCH" "$REPO_URL" "$APP_DIR"
             fi
 

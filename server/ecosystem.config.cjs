@@ -1,7 +1,7 @@
 module.exports = {
   apps: [
     {
-      name: 'zhuangxiu-backend',
+      name: 'yinnkhome-backend',
       script: 'app.js',
       cwd: __dirname,
       instances: 1,
