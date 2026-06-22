@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS project_design_documents (
   id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   project_id BIGINT UNSIGNED NOT NULL,
   category VARCHAR(32) NOT NULL DEFAULT 'other',
+  space_key VARCHAR(32) NOT NULL DEFAULT 'whole_house',
   title VARCHAR(120) NOT NULL,
   file_url VARCHAR(500) NOT NULL,
   file_type VARCHAR(32) NOT NULL DEFAULT 'image',
@@ -14,6 +15,7 @@ CREATE TABLE IF NOT EXISTS project_design_documents (
   updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   PRIMARY KEY (id),
   KEY idx_design_project_category (project_id, category, created_at),
+  KEY idx_design_project_space (project_id, space_key, created_at),
   KEY idx_design_project_status (project_id, status, updated_at),
   KEY idx_design_uploader (uploaded_by, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -3054,7 +3054,7 @@ async function getProjectDesignDocuments(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   const [rows] = await db.query(
-    `SELECT doc.id, doc.project_id, doc.category, doc.title, doc.file_url,
+    `SELECT doc.id, doc.project_id, doc.category, doc.space_key, doc.title, doc.file_url,
             doc.file_type, doc.version_note, doc.status, doc.uploaded_by,
             doc.reviewed_by, doc.reviewed_at, doc.created_at, doc.updated_at,
             uploader.nickname AS uploader_name, uploader.avatar AS uploader_avatar,
@@ -3092,6 +3092,7 @@ async function createProjectDesignDocument(req, res) {
     return error(res, '项目不存在或无上传权限', 404);
   }
   const category = String(req.body.category || 'other');
+  const spaceKey = String(req.body.space_key || 'whole_house').trim().slice(0, 32);
   const title = String(req.body.title || '').trim().slice(0, 120);
   const fileUrl = String(req.body.file_url || '').trim();
   const fileType = String(req.body.file_type || 'image').trim().slice(0, 32);
@@ -3103,11 +3104,12 @@ async function createProjectDesignDocument(req, res) {
   if (!fileUrl) return error(res, '请上传设计资料图片');
   const [result] = await db.query(
     `INSERT INTO project_design_documents
-     (project_id, category, title, file_url, file_type, version_note, status, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+     (project_id, category, space_key, title, file_url, file_type, version_note, status, uploaded_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
     [
       projectId,
       category,
+      spaceKey || 'whole_house',
       title,
       fileUrl,
       fileType || 'image',
