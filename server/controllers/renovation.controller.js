@@ -3123,8 +3123,9 @@ async function getProjectDesignDocuments(req, res) {
   }
   const [rows] = await db.query(
     `SELECT doc.id, doc.project_id, doc.category, doc.space_key, doc.title, doc.file_url,
-            doc.file_type, doc.version_note, doc.status, doc.uploaded_by,
-            doc.reviewed_by, doc.reviewed_at, doc.created_at, doc.updated_at,
+            doc.file_type, doc.mime_type, doc.file_size, doc.original_name,
+            doc.version_note, doc.status, doc.uploaded_by, doc.reviewed_by,
+            doc.reviewed_at, doc.created_at, doc.updated_at,
             uploader.nickname AS uploader_name, uploader.avatar AS uploader_avatar,
             reviewer.nickname AS reviewer_name
      FROM project_design_documents doc
@@ -3138,6 +3139,17 @@ async function getProjectDesignDocuments(req, res) {
   return success(res, rows);
 }
 
+function getDesignDocumentFileType(file) {
+  const extension = path.extname(file.originalname || '').toLowerCase();
+  if (file.mimetype.startsWith('image/')) return 'image';
+  if (extension === '.pdf' || file.mimetype === 'application/pdf') return 'pdf';
+  if (['.doc', '.docx'].includes(extension)) return 'word';
+  if (['.xls', '.xlsx'].includes(extension)) return 'excel';
+  if (['.dwg', '.dxf'].includes(extension)) return 'cad';
+  if (['.zip', '.rar', '.7z'].includes(extension)) return 'archive';
+  return 'file';
+}
+
 async function uploadProjectDesignDocument(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -3146,10 +3158,13 @@ async function uploadProjectDesignDocument(req, res) {
     return error(res, '项目不存在或无上传权限', 404);
   }
   if (!req.file) return error(res, '请选择要上传的设计资料');
-  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/design-documents/${req.file.filename}`;
+  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/design-documents/${req.file.filename}`;
   return success(res, {
-    url: imageUrl,
-    file_type: req.file.mimetype.startsWith('image/') ? 'image' : 'file',
+    url: fileUrl,
+    file_type: getDesignDocumentFileType(req.file),
+    mime_type: req.file.mimetype,
+    file_size: req.file.size,
+    original_name: req.file.originalname,
   });
 }
 
@@ -3164,16 +3179,20 @@ async function createProjectDesignDocument(req, res) {
   const title = String(req.body.title || '').trim().slice(0, 120);
   const fileUrl = String(req.body.file_url || '').trim();
   const fileType = String(req.body.file_type || 'image').trim().slice(0, 32);
+  const mimeType = String(req.body.mime_type || '').trim().slice(0, 120);
+  const fileSize = Math.max(0, Number(req.body.file_size || 0));
+  const originalName = String(req.body.original_name || '').trim().slice(0, 255);
   const versionNote = String(req.body.version_note || '').trim().slice(0, 500);
   if (!designDocumentCategories.has(category)) {
     return error(res, '设计资料分类不正确');
   }
   if (!title) return error(res, '请填写资料标题');
-  if (!fileUrl) return error(res, '请上传设计资料图片');
+  if (!fileUrl) return error(res, '请上传设计资料文件');
   const [result] = await db.query(
     `INSERT INTO project_design_documents
-     (project_id, category, space_key, title, file_url, file_type, version_note, status, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+     (project_id, category, space_key, title, file_url, file_type,
+      mime_type, file_size, original_name, version_note, status, uploaded_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
     [
       projectId,
       category,
@@ -3181,6 +3200,9 @@ async function createProjectDesignDocument(req, res) {
       title,
       fileUrl,
       fileType || 'image',
+      mimeType || null,
+      Number.isFinite(fileSize) ? fileSize : 0,
+      originalName || null,
       versionNote || null,
       req.user.id,
     ]

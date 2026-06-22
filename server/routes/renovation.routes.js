@@ -155,6 +155,43 @@ const expenseMediaUpload = multer({
 const designDocumentDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'design-documents')
 );
+const designDocumentExtensions = new Set([
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.webp',
+  '.pdf',
+  '.doc',
+  '.docx',
+  '.xls',
+  '.xlsx',
+  '.dwg',
+  '.dxf',
+  '.zip',
+  '.rar',
+  '.7z',
+]);
+const designDocumentMimeTypes = new Set([
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  'application/vnd.ms-excel',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+  'application/dwg',
+  'application/x-dwg',
+  'image/vnd.dwg',
+  'application/dxf',
+  'application/x-dxf',
+  'application/zip',
+  'application/x-zip-compressed',
+  'application/vnd.rar',
+  'application/x-rar-compressed',
+  'application/x-7z-compressed',
+  'application/octet-stream',
+]);
 const designDocumentUpload = multer({
   storage: multer.diskStorage({
     destination: designDocumentDir,
@@ -166,9 +203,14 @@ const designDocumentUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024 },
+  limits: { fileSize: 50 * 1024 * 1024 },
   fileFilter: (req, file, callback) => {
-    callback(null, file.mimetype.startsWith('image/'));
+    const extension = path.extname(file.originalname).toLowerCase();
+    const supported =
+      designDocumentExtensions.has(extension) &&
+      (designDocumentMimeTypes.has(file.mimetype) ||
+        file.mimetype.startsWith('image/'));
+    callback(null, supported);
   },
 });
 const handoverMediaDir = ensureUploadDir(

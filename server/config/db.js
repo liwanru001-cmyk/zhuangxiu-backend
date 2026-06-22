@@ -603,6 +603,9 @@ async function ensureProjectDesignDocumentTables() {
       title VARCHAR(120) NOT NULL,
       file_url VARCHAR(500) NOT NULL,
       file_type VARCHAR(32) NOT NULL DEFAULT 'image',
+      mime_type VARCHAR(120) DEFAULT NULL,
+      file_size BIGINT UNSIGNED NOT NULL DEFAULT 0,
+      original_name VARCHAR(255) DEFAULT NULL,
       version_note VARCHAR(500) DEFAULT NULL,
       status VARCHAR(32) NOT NULL DEFAULT 'pending',
       uploaded_by BIGINT UNSIGNED NOT NULL,
@@ -630,6 +633,27 @@ async function ensureProjectDesignDocumentTables() {
       ADD COLUMN space_key VARCHAR(32) NOT NULL DEFAULT 'whole_house' AFTER category,
       ADD KEY idx_design_project_space (project_id, space_key, created_at)
     `);
+  }
+  const optionalColumns = [
+    ['mime_type', "VARCHAR(120) DEFAULT NULL AFTER file_type"],
+    ['file_size', "BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER mime_type"],
+    ['original_name', "VARCHAR(255) DEFAULT NULL AFTER file_size"],
+  ];
+  for (const [columnName, definition] of optionalColumns) {
+    const [existing] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'project_design_documents'
+         AND COLUMN_NAME = ?`,
+      [columnName]
+    );
+    if (!existing.length) {
+      await pool.query(`
+        ALTER TABLE project_design_documents
+        ADD COLUMN ${columnName} ${definition}
+      `);
+    }
   }
 }
 
