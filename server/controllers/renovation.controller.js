@@ -3187,7 +3187,23 @@ async function createProjectDesignDocument(req, res) {
     return error(res, '设计资料分类不正确');
   }
   if (!title) return error(res, '请填写资料标题');
-  if (!fileUrl) return error(res, '请上传设计资料文件');
+  if (!fileUrl) {
+    return error(res, fileType === 'webview_link' ? '请填写链接地址' : '请上传设计资料文件');
+  }
+  if (fileType === 'webview_link') {
+    let parsedUrl;
+    try {
+      parsedUrl = new URL(fileUrl);
+    } catch (_) {
+      return error(res, '链接地址不正确');
+    }
+    if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+      return error(res, '链接地址只支持 http 或 https');
+    }
+    if (category !== 'rendering') {
+      return error(res, '链接资料仅支持添加到效果图');
+    }
+  }
   const [result] = await db.query(
     `INSERT INTO project_design_documents
      (project_id, category, space_key, title, file_url, file_type,
