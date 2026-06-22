@@ -2585,10 +2585,10 @@ async function shareProjectCheckInToCircle(req, res) {
   await ensureProjectCheckInCircleSharesTable();
 
   const [rows] = await db.query(
-    `SELECT checkin.*, project.current_stage, project.owner_id, owner.city AS owner_city
+    `SELECT checkin.*, project.current_stage, project.user_id AS owner_id, owner.city AS owner_city
      FROM project_checkins checkin
      JOIN renovation_projects project ON project.id = checkin.project_id
-     LEFT JOIN users owner ON owner.id = project.owner_id
+     LEFT JOIN users owner ON owner.id = project.user_id
      WHERE checkin.id = ? AND checkin.project_id = ?
      LIMIT 1`,
     [checkInId, projectId]
