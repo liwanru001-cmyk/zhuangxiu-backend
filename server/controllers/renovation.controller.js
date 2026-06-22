@@ -125,6 +125,11 @@ async function getProjectMemberRole(projectId, userId) {
 }
 
 async function ensureDefaultProjectSpaces(projectId, userId) {
+  const [spaces] = await db.query(
+    'SELECT id FROM project_spaces WHERE project_id = ? LIMIT 1',
+    [projectId]
+  );
+  if (spaces[0]) return;
   const values = defaultProjectSpaces.map((name, index) => [
     projectId,
     name,
@@ -1084,10 +1089,21 @@ async function createProjectSpace(req, res) {
     });
     return success(res, null, '修改申请已提交，等待业主确认');
   }
-  return success(res, await applyCreateProjectSpace(projectId, req.user.id, name));
+  try {
+    return success(res, await applyCreateProjectSpace(projectId, req.user.id, name));
+  } catch (spaceError) {
+    return error(res, spaceError.message || '空间创建失败');
+  }
 }
 
 async function applyCreateProjectSpace(projectId, userId, name, connection = db) {
+  const [spaces] = await connection.query(
+    'SELECT COUNT(*) AS total FROM project_spaces WHERE project_id = ?',
+    [projectId]
+  );
+  if ((spaces[0]?.total || 0) >= 30) {
+    throw new Error('空间数量最多支持 30 个');
+  }
   const [result] = await connection.query(
     `INSERT INTO project_spaces
        (project_id, name, sort_order, is_default, created_by)
@@ -1103,6 +1119,42 @@ async function applyCreateProjectSpace(projectId, userId, name, connection = db)
     [result.insertId]
   );
   return { ...rows[0], is_default: Boolean(rows[0].is_default), images: [] };
+}
+
+async function updateProjectSpace(req, res) {
+  const projectId = Number(req.params.id);
+  const spaceId = Number(req.params.spaceId);
+  const name = String(req.body.name || '').trim().slice(0, 50);
+  if (!name) return error(res, '空间名称不能为空');
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const [spaces] = await db.query(
+    'SELECT id FROM project_spaces WHERE id = ? AND project_id = ?',
+    [spaceId, projectId]
+  );
+  if (!spaces[0]) return error(res, '空间不存在', 404);
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    await createProjectSpaceChangeRequest(projectId, req.user.id, 'rename_space', {
+      space_id: spaceId,
+      name,
+    });
+    return success(res, null, '修改申请已提交，等待业主确认');
+  }
+  await applyRenameProjectSpace(projectId, spaceId, name);
+  return success(res, null, '空间名称已更新');
+}
+
+async function applyRenameProjectSpace(projectId, spaceId, name, connection = db) {
+  const [result] = await connection.query(
+    `UPDATE project_spaces
+     SET name = ?, updated_at = NOW()
+     WHERE id = ? AND project_id = ?`,
+    [name, spaceId, projectId]
+  );
+  if (result.affectedRows === 0) {
+    throw new Error('空间不存在');
+  }
 }
 
 async function deleteProjectSpace(req, res) {
@@ -1121,14 +1173,13 @@ async function deleteProjectSpace(req, res) {
 }
 
 async function applyDeleteProjectSpace(req, res, projectId, spaceId, connection = db) {
-  const [spaces] = await db.query(
-    `SELECT id, is_default FROM project_spaces
+  const [spaces] = await connection.query(
+    `SELECT id FROM project_spaces
      WHERE id = ? AND project_id = ?`,
     [spaceId, projectId]
   );
   if (!spaces[0]) return error(res, '空间不存在', 404);
-  if (spaces[0].is_default) return error(res, '默认空间不能删除');
-  const [images] = await db.query(
+  const [images] = await connection.query(
     'SELECT id FROM project_space_images WHERE space_id = ? LIMIT 1',
     [spaceId]
   );
@@ -1345,18 +1396,24 @@ async function applyProjectSpaceChange(projectId, request, connection) {
     case 'delete_space': {
       const spaceId = Number(payload.space_id);
       const [spaces] = await connection.query(
-        `SELECT id, is_default FROM project_spaces
+        `SELECT id FROM project_spaces
          WHERE id = ? AND project_id = ?`,
         [spaceId, projectId]
       );
       if (!spaces[0]) throw new Error('空间不存在');
-      if (spaces[0].is_default) throw new Error('默认空间不能删除');
       const [images] = await connection.query(
         'SELECT id FROM project_space_images WHERE space_id = ? LIMIT 1',
         [spaceId]
       );
       if (images[0]) throw new Error('请先删除该空间内的图片');
       await connection.query('DELETE FROM project_spaces WHERE id = ?', [spaceId]);
+      return;
+    }
+    case 'rename_space': {
+      const spaceId = Number(payload.space_id);
+      const name = String(payload.name || '').trim().slice(0, 50);
+      if (!spaceId || !name) throw new Error('空间名称不能为空');
+      await applyRenameProjectSpace(projectId, spaceId, name, connection);
       return;
     }
     case 'upload_images': {
@@ -5394,6 +5451,7 @@ module.exports = {
   getProjectMembers,
   getProjectSpaces,
   createProjectSpace,
+  updateProjectSpace,
   deleteProjectSpace,
   uploadProjectSpaceImages,
   setDefaultProjectSpaceImage,

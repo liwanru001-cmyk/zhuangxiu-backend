@@ -505,6 +505,11 @@ router.post(
   ...protectedRoute,
   asyncHandler(controller.createProjectSpace)
 );
+router.put(
+  '/projects/:id/spaces/:spaceId',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectSpace)
+);
 router.delete(
   '/projects/:id/spaces/:spaceId',
   ...protectedRoute,
