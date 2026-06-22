@@ -1157,6 +1157,21 @@ async function applyRenameProjectSpace(projectId, spaceId, name, connection = db
   }
 }
 
+async function assertProjectSpaceIsEmpty(projectId, spaceId, connection = db) {
+  const [images] = await connection.query(
+    'SELECT id FROM project_space_images WHERE space_id = ? LIMIT 1',
+    [spaceId]
+  );
+  const [documents] = await connection.query(
+    `SELECT id FROM project_design_documents
+     WHERE project_id = ? AND space_key = ? LIMIT 1`,
+    [projectId, String(spaceId)]
+  );
+  if (images[0] || documents[0]) {
+    throw new Error('请先删除空间内资料再删除空间');
+  }
+}
+
 async function deleteProjectSpace(req, res) {
   const projectId = Number(req.params.id);
   const spaceId = Number(req.params.spaceId);
@@ -1179,11 +1194,11 @@ async function applyDeleteProjectSpace(req, res, projectId, spaceId, connection 
     [spaceId, projectId]
   );
   if (!spaces[0]) return error(res, '空间不存在', 404);
-  const [images] = await connection.query(
-    'SELECT id FROM project_space_images WHERE space_id = ? LIMIT 1',
-    [spaceId]
-  );
-  if (images[0]) return error(res, '请先删除该空间内的图片');
+  try {
+    await assertProjectSpaceIsEmpty(projectId, spaceId, connection);
+  } catch (spaceError) {
+    return error(res, spaceError.message || '空间内还有资料');
+  }
   await connection.query('DELETE FROM project_spaces WHERE id = ?', [spaceId]);
   return success(res, null, '空间已删除');
 }
@@ -1401,11 +1416,7 @@ async function applyProjectSpaceChange(projectId, request, connection) {
         [spaceId, projectId]
       );
       if (!spaces[0]) throw new Error('空间不存在');
-      const [images] = await connection.query(
-        'SELECT id FROM project_space_images WHERE space_id = ? LIMIT 1',
-        [spaceId]
-      );
-      if (images[0]) throw new Error('请先删除该空间内的图片');
+      await assertProjectSpaceIsEmpty(projectId, spaceId, connection);
       await connection.query('DELETE FROM project_spaces WHERE id = ?', [spaceId]);
       return;
     }
