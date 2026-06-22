@@ -2237,7 +2237,7 @@ async function getTips(req, res) {
   const [rows] = await db.query(
     `SELECT type, title, content
      FROM project_tips
-     WHERE template.is_active = 1
+     WHERE is_active = 1
        ${typeSql}
      ORDER BY sort_order ASC, id ASC
      LIMIT ${limit}`,
@@ -4683,7 +4683,7 @@ async function getProjectWorkItemTemplates(req, res) {
      LEFT JOIN renovation_tasks task
             ON task.project_id = ?
            AND task.stage_id = template.stage_id
-           AND task.task_name = template.title
+           AND task.task_name COLLATE utf8mb4_unicode_ci = template.title
            AND template.default_join = 1
      LEFT JOIN project_work_item_template_status state
             ON state.project_id = ? AND state.template_key = template.template_key
