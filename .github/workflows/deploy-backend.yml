@@ -94,4 +94,13 @@ jobs:
 
             pm2 startOrReload ecosystem.config.cjs --env production --update-env
             pm2 save
-            curl -fsS "http://127.0.0.1:${PORT:-3001}/health"
+            for attempt in $(seq 1 30); do
+              if curl -fsS "http://127.0.0.1:${PORT:-3001}/health"; then
+                exit 0
+              fi
+              echo "Waiting for backend health check... ($attempt/30)"
+              sleep 2
+            done
+
+            echo "Backend health check failed after waiting."
+            exit 1
