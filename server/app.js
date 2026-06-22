@@ -600,6 +600,7 @@ app.put('/api/admin/users/:id/review', adminAuth, async (req, res) => {
 const PUBLIC_SHARE_SOURCE_TYPES = [
   'site_photos',
   'complaint',
+  'site_check_in',
   'question',
   'good_item',
   'inspiration',

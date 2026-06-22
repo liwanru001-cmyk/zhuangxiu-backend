@@ -32,6 +32,22 @@ const memberPermissions = {
   project_supervisor: { manage_tasks: true, view_project: true },
   merchant: { view_project: true },
 };
+const notePublishRoles = new Set(['owner', 'designer', 'merchant', 'project_manager']);
+
+async function ensureProjectCheckInCircleSharesTable(executor = db) {
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS project_checkin_circle_shares (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      checkin_id BIGINT UNSIGNED NOT NULL,
+      note_id BIGINT UNSIGNED DEFAULT NULL,
+      shared_by BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_checkin_circle (checkin_id),
+      KEY idx_shared_by (shared_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
 
 const defaultProjectSpaces = ['客厅', '主卧', '次卧', '厨房', '卫生间', '阳台'];
 const defaultProjectName = '装修项目';
@@ -2340,6 +2356,7 @@ async function getProjectCheckIns(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
+  await ensureProjectCheckInCircleSharesTable();
 
   const where =
     role === 'owner'
@@ -2565,6 +2582,7 @@ async function shareProjectCheckInToCircle(req, res) {
   const checkInId = Number(req.params.checkInId);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
+  await ensureProjectCheckInCircleSharesTable();
 
   const [rows] = await db.query(
     `SELECT checkin.*, project.current_stage, project.owner_id, owner.city AS owner_city
@@ -2604,6 +2622,7 @@ async function shareProjectCheckInToCircle(req, res) {
     await connection.beginTransaction();
     const titleSource = String(checkIn.description || '').trim() || '工地打卡';
     const title = titleSource.length > 30 ? titleSource.slice(0, 30) : titleSource;
+    const publishRole = notePublishRoles.has(checkIn.role) ? checkIn.role : null;
     const [result] = await connection.query(
       `INSERT INTO notes
        (user_id, title, content, source_type, stage_id, publish_role, city, category, status)
@@ -2613,7 +2632,7 @@ async function shareProjectCheckInToCircle(req, res) {
         title,
         String(checkIn.description || '').trim() || '分享了一条工地打卡记录',
         checkIn.current_stage || null,
-        checkIn.role,
+        publishRole,
         checkIn.owner_city || '',
       ]
     );
@@ -2630,7 +2649,7 @@ async function shareProjectCheckInToCircle(req, res) {
       [checkInId, result.insertId, req.user.id]
     );
     await connection.commit();
-    return success(res, { note_id: result.insertId }, '已分享到装修圈，等待审核');
+    return success(res, { note_id: result.insertId }, '已分享到装修圈');
   } catch (shareError) {
     await connection.rollback();
     throw shareError;
@@ -2644,6 +2663,7 @@ async function deleteProjectCheckIn(req, res) {
   const checkInId = Number(req.params.checkInId);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
+  await ensureProjectCheckInCircleSharesTable();
 
   const [rows] = await db.query(
     'SELECT id, user_id FROM project_checkins WHERE id = ? AND project_id = ? LIMIT 1',
