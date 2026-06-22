@@ -387,6 +387,21 @@ router.post(
   setUploadedFilePermissions,
   asyncHandler(controller.createProjectCheckIn)
 );
+router.put(
+  '/projects/:id/check-ins/:checkInId/share-members',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectCheckInShares)
+);
+router.post(
+  '/projects/:id/check-ins/:checkInId/share-to-circle',
+  ...protectedRoute,
+  asyncHandler(controller.shareProjectCheckInToCircle)
+);
+router.delete(
+  '/projects/:id/check-ins/:checkInId',
+  ...protectedRoute,
+  asyncHandler(controller.deleteProjectCheckIn)
+);
 router.get(
   '/projects/:id/expenses',
   ...protectedRoute,

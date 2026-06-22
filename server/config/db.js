@@ -126,6 +126,18 @@ async function ensureAppTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_checkin_circle_shares (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      checkin_id BIGINT UNSIGNED NOT NULL,
+      note_id BIGINT UNSIGNED DEFAULT NULL,
+      shared_by BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_checkin_circle (checkin_id),
+      KEY idx_shared_by (shared_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS project_expenses (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       project_id BIGINT UNSIGNED NOT NULL,

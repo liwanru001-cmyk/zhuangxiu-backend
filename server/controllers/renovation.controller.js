@@ -2375,8 +2375,12 @@ async function getProjectCheckIns(req, res) {
      ORDER BY id`,
     ids
   );
+  const host = `${req.protocol}://${req.get('host')}`;
   const mediaMap = new Map();
   for (const item of media) {
+    if (item.media_url && String(item.media_url).startsWith('/uploads/')) {
+      item.media_url = `${host}${item.media_url}`;
+    }
     if (!mediaMap.has(item.checkin_id)) mediaMap.set(item.checkin_id, []);
     mediaMap.get(item.checkin_id).push(item);
   }
@@ -2394,12 +2398,20 @@ async function getProjectCheckIns(req, res) {
     if (!shareMap.has(item.checkin_id)) shareMap.set(item.checkin_id, []);
     shareMap.get(item.checkin_id).push(item);
   }
+  const [circleShares] = await db.query(
+    `SELECT checkin_id
+     FROM project_checkin_circle_shares
+     WHERE checkin_id IN (${ids.map(() => '?').join(', ')})`,
+    ids
+  );
+  const circleShareSet = new Set(circleShares.map((item) => Number(item.checkin_id)));
   return success(
     res,
     rows.map((item) => ({
       ...item,
       media: mediaMap.get(item.id) || [],
       shared_members: shareMap.get(item.id) || [],
+      shared_to_circle: circleShareSet.has(Number(item.id)),
     }))
   );
 }
@@ -2486,6 +2498,213 @@ async function createProjectCheckIn(req, res) {
   } finally {
     connection.release();
   }
+}
+
+async function updateProjectCheckInShares(req, res) {
+  const projectId = Number(req.params.id);
+  const checkInId = Number(req.params.checkInId);
+  const sharedMemberIds = parseAssigneeIds(req.body.shared_member_ids);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) return error(res, '项目不存在或无权限', 404);
+
+  const [rows] = await db.query(
+    'SELECT id, user_id FROM project_checkins WHERE id = ? AND project_id = ? LIMIT 1',
+    [checkInId, projectId]
+  );
+  const checkIn = rows[0];
+  if (!checkIn) return error(res, '打卡记录不存在', 404);
+  if (role !== 'owner' && Number(checkIn.user_id) !== Number(req.user.id)) {
+    return error(res, '只能分享自己的打卡记录', 403);
+  }
+  if (sharedMemberIds.includes(Number(checkIn.user_id))) {
+    return error(res, '不能分享给打卡人本人');
+  }
+  if (sharedMemberIds.length) {
+    const [members] = await db.query(
+      `SELECT user_id FROM project_members
+       WHERE project_id = ? AND status = 1
+         AND user_id IN (${sharedMemberIds.map(() => '?').join(', ')})`,
+      [projectId, ...sharedMemberIds]
+    );
+    if (members.length !== sharedMemberIds.length) {
+      return error(res, '分享成员包含非项目成员');
+    }
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (sharedMemberIds.length) {
+      await connection.query(
+        `INSERT IGNORE INTO project_checkin_shares
+         (checkin_id, shared_with_user_id)
+         VALUES ${sharedMemberIds.map(() => '(?, ?)').join(', ')}`,
+        sharedMemberIds.flatMap((userId) => [checkInId, userId])
+      );
+    }
+    await connection.query(
+      `UPDATE project_checkins
+       SET shared_with_members = EXISTS (
+         SELECT 1 FROM project_checkin_shares WHERE checkin_id = ?
+       )
+       WHERE id = ?`,
+      [checkInId, checkInId]
+    );
+    await connection.commit();
+    return success(res, null, '分享设置已更新');
+  } catch (shareError) {
+    await connection.rollback();
+    throw shareError;
+  } finally {
+    connection.release();
+  }
+}
+
+async function shareProjectCheckInToCircle(req, res) {
+  const projectId = Number(req.params.id);
+  const checkInId = Number(req.params.checkInId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) return error(res, '项目不存在或无权限', 404);
+
+  const [rows] = await db.query(
+    `SELECT checkin.*, project.current_stage, project.owner_id, owner.city AS owner_city
+     FROM project_checkins checkin
+     JOIN renovation_projects project ON project.id = checkin.project_id
+     LEFT JOIN users owner ON owner.id = project.owner_id
+     WHERE checkin.id = ? AND checkin.project_id = ?
+     LIMIT 1`,
+    [checkInId, projectId]
+  );
+  const checkIn = rows[0];
+  if (!checkIn) return error(res, '打卡记录不存在', 404);
+  if (role !== 'owner' && Number(checkIn.user_id) !== Number(req.user.id)) {
+    return error(res, '只能分享自己的打卡记录', 403);
+  }
+  const [existingShares] = await db.query(
+    'SELECT note_id FROM project_checkin_circle_shares WHERE checkin_id = ? LIMIT 1',
+    [checkInId]
+  );
+  if (existingShares[0]) {
+    return success(res, { note_id: existingShares[0].note_id }, '这条打卡已分享到装修圈');
+  }
+  const [media] = await db.query(
+    `SELECT media_type, media_url
+     FROM project_checkin_media
+     WHERE checkin_id = ? AND media_type = 'image'
+     ORDER BY id
+     LIMIT 9`,
+    [checkInId]
+  );
+  if (!String(checkIn.description || '').trim() && !media.length) {
+    return error(res, '打卡内容为空，无法分享到装修圈');
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const titleSource = String(checkIn.description || '').trim() || '工地打卡';
+    const title = titleSource.length > 30 ? titleSource.slice(0, 30) : titleSource;
+    const [result] = await connection.query(
+      `INSERT INTO notes
+       (user_id, title, content, source_type, stage_id, publish_role, city, category, status)
+       VALUES (?, ?, ?, 'site_check_in', ?, ?, ?, 'site_check_in', 1)`,
+      [
+        checkIn.user_id,
+        title,
+        String(checkIn.description || '').trim() || '分享了一条工地打卡记录',
+        checkIn.current_stage || null,
+        checkIn.role,
+        checkIn.owner_city || '',
+      ]
+    );
+    if (media.length) {
+      await connection.query(
+        `INSERT INTO note_images (note_id, url, sort_order)
+         VALUES ${media.map(() => '(?, ?, ?)').join(', ')}`,
+        media.flatMap((item, index) => [result.insertId, item.media_url, index])
+      );
+    }
+    await connection.query(
+      `INSERT INTO project_checkin_circle_shares (checkin_id, note_id, shared_by)
+       VALUES (?, ?, ?)`,
+      [checkInId, result.insertId, req.user.id]
+    );
+    await connection.commit();
+    return success(res, { note_id: result.insertId }, '已分享到装修圈，等待审核');
+  } catch (shareError) {
+    await connection.rollback();
+    throw shareError;
+  } finally {
+    connection.release();
+  }
+}
+
+async function deleteProjectCheckIn(req, res) {
+  const projectId = Number(req.params.id);
+  const checkInId = Number(req.params.checkInId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) return error(res, '项目不存在或无权限', 404);
+
+  const [rows] = await db.query(
+    'SELECT id, user_id FROM project_checkins WHERE id = ? AND project_id = ? LIMIT 1',
+    [checkInId, projectId]
+  );
+  const checkIn = rows[0];
+  if (!checkIn) return error(res, '打卡记录不存在', 404);
+  if (role !== 'owner' && Number(checkIn.user_id) !== Number(req.user.id)) {
+    return error(res, '只能删除自己的打卡记录', 403);
+  }
+
+  const [media] = await db.query(
+    'SELECT media_url FROM project_checkin_media WHERE checkin_id = ?',
+    [checkInId]
+  );
+  const [circleShares] = await db.query(
+    'SELECT note_id FROM project_checkin_circle_shares WHERE checkin_id = ? AND note_id IS NOT NULL',
+    [checkInId]
+  );
+  const noteIds = circleShares
+    .map((item) => Number(item.note_id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (noteIds.length) {
+      await connection.query(
+        `DELETE FROM notes WHERE id IN (${noteIds.map(() => '?').join(', ')})`,
+        noteIds
+      );
+    }
+    await connection.query('DELETE FROM project_checkin_circle_shares WHERE checkin_id = ?', [checkInId]);
+    await connection.query('DELETE FROM project_checkin_shares WHERE checkin_id = ?', [checkInId]);
+    await connection.query('DELETE FROM project_checkin_media WHERE checkin_id = ?', [checkInId]);
+    await connection.query('DELETE FROM project_checkins WHERE id = ?', [checkInId]);
+    await connection.commit();
+  } catch (deleteError) {
+    await connection.rollback();
+    throw deleteError;
+  } finally {
+    connection.release();
+  }
+
+  await Promise.allSettled(
+    media
+      .map((item) => uploadPathFromUrl(item.media_url, 'check-ins'))
+      .filter(Boolean)
+      .map((filePath) => fs.unlink(filePath))
+  );
+  return success(res, null, '打卡记录已删除');
+}
+
+function uploadPathFromUrl(value, folder) {
+  const raw = String(value || '');
+  const marker = `/uploads/${folder}/`;
+  const index = raw.indexOf(marker);
+  if (index < 0) return null;
+  const relative = raw.slice(index + '/uploads/'.length);
+  if (!relative || relative.includes('..')) return null;
+  return path.join(__dirname, '..', 'uploads', relative);
 }
 
 const expenseCategories = new Set([
@@ -3378,6 +3597,9 @@ async function getProjectActionItems(projectId, userId) {
 }
 
 function parseAssigneeIds(value) {
+  if (Array.isArray(value)) {
+    return [...new Set(value.map(Number).filter((id) => Number.isInteger(id) && id > 0))];
+  }
   try {
     const parsed = JSON.parse(String(value || '[]'));
     if (!Array.isArray(parsed)) return [];
@@ -5180,6 +5402,9 @@ module.exports = {
   getProjectTasks,
   getProjectCheckIns,
   createProjectCheckIn,
+  updateProjectCheckInShares,
+  shareProjectCheckInToCircle,
+  deleteProjectCheckIn,
   getProjectExpenses,
   createProjectExpense,
   updateProjectExpense,
