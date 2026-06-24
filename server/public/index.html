@@ -78,8 +78,7 @@
       display: grid;
       align-items: center;
       background:
-        linear-gradient(135deg, rgba(47, 115, 232, .11), rgba(255, 122, 89, .08) 46%, rgba(22, 163, 123, .10)),
-        url("assets/app-icon.png") right 9vw center / min(42vw, 500px) no-repeat;
+        linear-gradient(135deg, rgba(47, 115, 232, .11), rgba(255, 122, 89, .08) 46%, rgba(22, 163, 123, .10));
     }
     .hero-inner {
       max-width: 1120px;
@@ -245,53 +244,6 @@
       font-weight: 600;
     }
 
-    .notice {
-      display: grid;
-      grid-template-columns: 1.15fr .85fr;
-      gap: 18px;
-      align-items: stretch;
-    }
-    .notice-main,
-    .notice-side {
-      background: var(--white);
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      padding: 24px;
-      box-shadow: 0 10px 30px rgba(23, 32, 51, .05);
-    }
-    .notice-main h2,
-    .notice-side h2 {
-      margin: 0 0 12px;
-      font-size: 24px;
-    }
-    .notice-main p,
-    .notice-side p {
-      margin: 0;
-      color: var(--muted);
-      line-height: 1.75;
-      font-weight: 600;
-    }
-    .info-list {
-      display: grid;
-      gap: 10px;
-      margin-top: 18px;
-    }
-    .info-row {
-      display: flex;
-      justify-content: space-between;
-      gap: 14px;
-      padding: 12px 0;
-      border-top: 1px solid var(--line);
-      color: var(--muted);
-      font-size: 14px;
-      font-weight: 700;
-    }
-    .info-row strong {
-      color: var(--ink);
-      font-weight: 900;
-      text-align: right;
-    }
-
     footer {
       padding: 30px 22px 38px;
       background: #111827;
@@ -319,21 +271,16 @@
       .nav-links { display: none; }
       .hero {
         min-height: auto;
-        background:
-          linear-gradient(135deg, rgba(47, 115, 232, .13), rgba(255, 122, 89, .08) 48%, rgba(22, 163, 123, .10)),
-          url("assets/app-icon.png") right 18px top 36px / 132px no-repeat;
+        background: linear-gradient(135deg, rgba(47, 115, 232, .13), rgba(255, 122, 89, .08) 48%, rgba(22, 163, 123, .10));
       }
-      .hero-inner { padding: 160px 22px 64px; }
+      .hero-inner { padding: 72px 22px 64px; }
       .hero-copy { font-size: 16px; }
       section { padding: 56px 18px; }
       .features,
-      .steps,
-      .notice {
+      .steps {
         grid-template-columns: 1fr;
       }
       .feature { min-height: auto; }
-      .info-row { flex-direction: column; gap: 4px; }
-      .info-row strong { text-align: left; }
     }
   </style>
 </head>
@@ -347,7 +294,6 @@
       <div class="nav-links">
         <a href="#features">功能</a>
         <a href="#workflow">服务</a>
-        <a href="#contact">联系与备案</a>
       </div>
     </div>
   </nav>
@@ -362,7 +308,6 @@
         </p>
         <div class="hero-actions">
           <a class="btn btn-primary" href="#features">了解功能</a>
-          <a class="btn btn-secondary" href="#contact">查看服务信息</a>
         </div>
       </div>
     </header>
@@ -420,29 +365,6 @@
             <h3>让信息可追踪</h3>
             <p>把材料、费用、验收、交底和协作记录沉淀下来，减少后续扯皮和遗忘。</p>
           </article>
-        </div>
-      </div>
-    </section>
-
-    <section id="contact">
-      <div class="section-inner notice">
-        <div class="notice-main">
-          <h2>服务说明</h2>
-          <p>
-            装修不凡提供装修项目管理、资料记录、进度管理、材料记录、验收提醒与项目助手等生活服务工具功能。平台不直接提供装修施工、房产交易或资金托管服务。
-          </p>
-          <div class="info-list">
-            <div class="info-row"><span>服务域名</span><strong>yinnkhome.com</strong></div>
-            <div class="info-row"><span>主办单位</span><strong>印氪科技</strong></div>
-            <div class="info-row"><span>App 名称</span><strong>装修不凡</strong></div>
-            <div class="info-row"><span>Android 包名</span><strong>com.yinnkhome.zhuangxiubufan</strong></div>
-          </div>
-        </div>
-        <div class="notice-side">
-          <h2>联系与备案</h2>
-          <p>
-            如需联系运营方、反馈产品问题或处理账号相关事项，请通过 App 内帮助与反馈入口提交。ICP备案与公安联网备案信息完成后将在本页底部展示。
-          </p>
         </div>
       </div>
     </section>
