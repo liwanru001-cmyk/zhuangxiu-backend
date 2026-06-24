@@ -99,50 +99,7 @@ jobs:
               nginx_placeholder_conf="$(grep -Rsl 'frontend not deployed' /etc/nginx /usr/local/nginx/conf 2>/dev/null | head -n 1 || true)"
               if [ -n "$nginx_placeholder_conf" ] && [ -f "$nginx_placeholder_conf" ]; then
                 cp -p "$nginx_placeholder_conf" "${nginx_placeholder_conf}.bak.$(date +%Y%m%d_%H%M%S)"
-                python3 - "$nginx_placeholder_conf" <<'PY'
-from pathlib import Path
-import sys
-
-path = Path(sys.argv[1])
-text = path.read_text()
-needle = "frontend not deployed"
-hit = text.find(needle)
-if hit == -1:
-    raise SystemExit(0)
-
-loc = text.rfind("location /", 0, hit)
-if loc == -1:
-    raise SystemExit("Could not find location / before frontend placeholder")
-
-brace = text.find("{", loc)
-if brace == -1:
-    raise SystemExit("Could not find opening brace for placeholder location")
-
-depth = 0
-end = None
-for i in range(brace, len(text)):
-    if text[i] == "{":
-        depth += 1
-    elif text[i] == "}":
-        depth -= 1
-        if depth == 0:
-            end = i + 1
-            break
-
-if end is None:
-    raise SystemExit("Could not find closing brace for placeholder location")
-
-replacement = """location / {
-        proxy_pass http://127.0.0.1:3001;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto $scheme;
-    }"""
-
-path.write_text(text[:loc] + replacement + text[end:])
-PY
+                node scripts/patch-nginx-root.js "$nginx_placeholder_conf"
                 nginx -t
                 if command -v systemctl >/dev/null 2>&1; then
                   systemctl reload nginx || nginx -s reload
