@@ -98,13 +98,39 @@ jobs:
             if command -v nginx >/dev/null 2>&1; then
               nginx_placeholder_conf="$(grep -Rsl 'frontend not deployed' /etc/nginx /usr/local/nginx/conf 2>/dev/null | head -n 1 || true)"
               if [ -n "$nginx_placeholder_conf" ] && [ -f "$nginx_placeholder_conf" ]; then
-                cp -p "$nginx_placeholder_conf" "${nginx_placeholder_conf}.bak.$(date +%Y%m%d_%H%M%S)"
-                node scripts/patch-nginx-root.js "$nginx_placeholder_conf"
-                nginx -t
-                if command -v systemctl >/dev/null 2>&1; then
-                  systemctl reload nginx || nginx -s reload
+                nginx_runner=""
+                if [ "$(id -u)" -eq 0 ]; then
+                  nginx_runner=""
+                elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                  nginx_runner="sudo"
                 else
-                  nginx -s reload
+                  echo "Skipping nginx root patch: deployment user cannot write nginx config and has no passwordless sudo."
+                fi
+
+                if [ "$(id -u)" -eq 0 ] || [ -n "$nginx_runner" ]; then
+                  nginx_tmp="$(mktemp)"
+                  if cp "$nginx_placeholder_conf" "$nginx_tmp"; then
+                    node scripts/patch-nginx-root.js "$nginx_tmp"
+                    if ! cmp -s "$nginx_placeholder_conf" "$nginx_tmp"; then
+                      nginx_backup="${nginx_placeholder_conf}.bak.$(date +%Y%m%d_%H%M%S)"
+                      $nginx_runner cp -p "$nginx_placeholder_conf" "$nginx_backup"
+                      $nginx_runner cp "$nginx_tmp" "$nginx_placeholder_conf"
+                      if $nginx_runner nginx -t; then
+                        if command -v systemctl >/dev/null 2>&1; then
+                          $nginx_runner systemctl reload nginx || $nginx_runner nginx -s reload
+                        else
+                          $nginx_runner nginx -s reload
+                        fi
+                      else
+                        echo "nginx config test failed; restoring $nginx_backup"
+                        $nginx_runner cp -p "$nginx_backup" "$nginx_placeholder_conf"
+                        $nginx_runner nginx -t || true
+                      fi
+                    fi
+                    rm -f "$nginx_tmp"
+                  else
+                    echo "Skipping nginx root patch: cannot read $nginx_placeholder_conf."
+                  fi
                 fi
               fi
             fi
