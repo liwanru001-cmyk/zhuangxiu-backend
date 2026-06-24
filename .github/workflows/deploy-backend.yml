@@ -116,10 +116,18 @@ jobs:
                       $nginx_runner cp -p "$nginx_placeholder_conf" "$nginx_backup"
                       $nginx_runner cp "$nginx_tmp" "$nginx_placeholder_conf"
                       if $nginx_runner nginx -t; then
-                        if command -v systemctl >/dev/null 2>&1; then
-                          $nginx_runner systemctl reload nginx || $nginx_runner nginx -s reload
-                        else
-                          $nginx_runner nginx -s reload
+                        nginx_reloaded="false"
+                        if command -v systemctl >/dev/null 2>&1 && $nginx_runner systemctl reload nginx; then
+                          nginx_reloaded="true"
+                        fi
+                        if [ "$nginx_reloaded" != "true" ] && $nginx_runner nginx -s reload; then
+                          nginx_reloaded="true"
+                        fi
+                        if [ "$nginx_reloaded" != "true" ] && command -v pkill >/dev/null 2>&1 && $nginx_runner pkill -HUP nginx; then
+                          nginx_reloaded="true"
+                        fi
+                        if [ "$nginx_reloaded" != "true" ]; then
+                          echo "nginx config was patched, but nginx could not be reloaded automatically."
                         fi
                       else
                         echo "nginx config test failed; restoring $nginx_backup"
