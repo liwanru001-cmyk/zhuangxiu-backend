@@ -991,6 +991,9 @@ app.put('/api/admin/inspection-template-items/:id', adminAuth, requireInspection
 // admin 静态文件
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 
+// 官网静态文件
+app.use(express.static(path.join(__dirname, 'public')));
+
 // 健康检查
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });

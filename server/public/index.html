@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="装修不凡是一款面向家庭装修用户的项目管理工具，提供装修档案、进度记录、材料管理、验收提醒和项目助手服务。">
+  <link rel="icon" href="/favicon.png">
+  <title>装修不凡 - 让装修推进更清楚</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --line: #e8edf3;
+      --blue: #2f73e8;
+      --blue-dark: #1857c6;
+      --coral: #ff7a59;
+      --mint: #16a37b;
+      --paper: #fffdf8;
+      --soft: #f5f2ea;
+      --white: #ffffff;
+      --shadow: 0 20px 60px rgba(30, 64, 120, .14);
+    }
+
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 253, 248, .86);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(232, 237, 243, .85);
+    }
+    .nav-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      height: 68px;
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+    .brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(47, 115, 232, .22);
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .nav-links a:hover { color: var(--blue); }
+
+    .hero {
+      min-height: calc(100vh - 68px);
+      display: grid;
+      align-items: center;
+      background:
+        linear-gradient(135deg, rgba(47, 115, 232, .11), rgba(255, 122, 89, .08) 46%, rgba(22, 163, 123, .10)),
+        url("assets/app-icon.png") right 9vw center / min(42vw, 500px) no-repeat;
+    }
+    .hero-inner {
+      max-width: 1120px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 72px 22px 88px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid rgba(47, 115, 232, .18);
+      border-radius: 999px;
+      color: var(--blue-dark);
+      background: rgba(255, 255, 255, .72);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--mint);
+    }
+    h1 {
+      max-width: 640px;
+      margin: 24px 0 16px;
+      font-size: clamp(42px, 7vw, 76px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+    .hero-copy {
+      max-width: 560px;
+      margin: 0;
+      color: #42526a;
+      font-size: 18px;
+      line-height: 1.75;
+      font-weight: 600;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-weight: 850;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      color: #fff;
+      background: var(--blue);
+      box-shadow: 0 12px 28px rgba(47, 115, 232, .28);
+    }
+    .btn-secondary {
+      color: var(--ink);
+      background: rgba(255,255,255,.76);
+      border-color: rgba(23,32,51,.10);
+    }
+
+    section {
+      padding: 72px 22px;
+    }
+    .section-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+    .section-title {
+      margin: 0 0 14px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+    .section-desc {
+      max-width: 720px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.75;
+      font-weight: 600;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 30px;
+    }
+    .feature {
+      min-height: 180px;
+      padding: 20px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(23, 32, 51, .06);
+    }
+    .feature-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      margin-bottom: 18px;
+      color: #fff;
+      font-weight: 900;
+      background: var(--blue);
+    }
+    .feature:nth-child(2) .feature-icon { background: var(--coral); }
+    .feature:nth-child(3) .feature-icon { background: var(--mint); }
+    .feature:nth-child(4) .feature-icon { background: #7c5cff; }
+    .feature h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      font-weight: 600;
+    }
+
+    .workflow {
+      background: #f8fafc;
+      border-block: 1px solid var(--line);
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 30px;
+    }
+    .step {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+    }
+    .step-num {
+      color: var(--coral);
+      font-weight: 950;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .step h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      font-weight: 600;
+    }
+
+    .notice {
+      display: grid;
+      grid-template-columns: 1.15fr .85fr;
+      gap: 18px;
+      align-items: stretch;
+    }
+    .notice-main,
+    .notice-side {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 10px 30px rgba(23, 32, 51, .05);
+    }
+    .notice-main h2,
+    .notice-side h2 {
+      margin: 0 0 12px;
+      font-size: 24px;
+    }
+    .notice-main p,
+    .notice-side p {
+      margin: 0;
+      color: var(--muted);
+      line-height: 1.75;
+      font-weight: 600;
+    }
+    .info-list {
+      display: grid;
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .info-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 12px 0;
+      border-top: 1px solid var(--line);
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 700;
+    }
+    .info-row strong {
+      color: var(--ink);
+      font-weight: 900;
+      text-align: right;
+    }
+
+    footer {
+      padding: 30px 22px 38px;
+      background: #111827;
+      color: rgba(255,255,255,.72);
+    }
+    .footer-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .footer-inner strong {
+      display: block;
+      color: #fff;
+      margin-bottom: 5px;
+      font-size: 15px;
+    }
+
+    @media (max-width: 860px) {
+      .nav-inner { height: 62px; }
+      .nav-links { display: none; }
+      .hero {
+        min-height: auto;
+        background:
+          linear-gradient(135deg, rgba(47, 115, 232, .13), rgba(255, 122, 89, .08) 48%, rgba(22, 163, 123, .10)),
+          url("assets/app-icon.png") right 18px top 36px / 132px no-repeat;
+      }
+      .hero-inner { padding: 160px 22px 64px; }
+      .hero-copy { font-size: 16px; }
+      section { padding: 56px 18px; }
+      .features,
+      .steps,
+      .notice {
+        grid-template-columns: 1fr;
+      }
+      .feature { min-height: auto; }
+      .info-row { flex-direction: column; gap: 4px; }
+      .info-row strong { text-align: left; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/">
+        <img src="assets/app-icon.png" alt="装修不凡 App 图标">
+        <span>装修不凡</span>
+      </a>
+      <div class="nav-links">
+        <a href="#features">功能</a>
+        <a href="#workflow">服务</a>
+        <a href="#contact">联系与备案</a>
+      </div>
+    </div>
+  </nav>
+
+  <main>
+    <header class="hero">
+      <div class="hero-inner">
+        <span class="eyebrow">装修项目管理工具</span>
+        <h1>装修不凡</h1>
+        <p class="hero-copy">
+          面向家庭装修用户的项目管理 App。把装修档案、进度、材料、验收和本周推进目标放在一起，帮助用户更清楚地知道项目正在发生什么、下一步该推进到哪里。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#features">了解功能</a>
+          <a class="btn btn-secondary" href="#contact">查看服务信息</a>
+        </div>
+      </div>
+    </header>
+
+    <section id="features">
+      <div class="section-inner">
+        <h2 class="section-title">把复杂装修，整理成清楚的项目</h2>
+        <p class="section-desc">
+          装修不凡不是交易平台，也不是装修社区。它首先是一款工具：记录项目事实、沉淀关键资料，并用项目助手帮助用户按阶段推进。
+        </p>
+        <div class="features">
+          <article class="feature">
+            <div class="feature-icon">档</div>
+            <h3>装修档案</h3>
+            <p>集中记录项目名称、面积、预算、户型、居住需求、设计资料和协作信息。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">进</div>
+            <h3>项目进度</h3>
+            <p>按设计、拆改、水电、木作、油漆、安装、交付等阶段整理推进状态。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">材</div>
+            <h3>材料记录</h3>
+            <p>记录主材辅材、品牌型号、数量价格、到场状态，减少信息散落。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">验</div>
+            <h3>验收提醒</h3>
+            <p>围绕施工交底、节点检查和交付问题，帮助用户形成可追踪的清单。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow" class="workflow">
+      <div class="section-inner">
+        <h2 class="section-title">以周为单位推进装修</h2>
+        <p class="section-desc">
+          装修不是每天打卡的高频任务，而是阶段性推进。项目助手会围绕当前阶段生成本周目标，并从任务池中给出轻量提示。
+        </p>
+        <div class="steps">
+          <article class="step">
+            <div class="step-num">01 / 建立项目</div>
+            <h3>先把项目情况说清楚</h3>
+            <p>从基础信息、预算、装修方式和家庭需求开始，形成一个可维护的装修档案。</p>
+          </article>
+          <article class="step">
+            <div class="step-num">02 / 生成目标</div>
+            <h3>每周只推进一个重点</h3>
+            <p>围绕当前阶段给出本周目标，例如完成水电点位确认或交付验收清单。</p>
+          </article>
+          <article class="step">
+            <div class="step-num">03 / 留下记录</div>
+            <h3>让信息可追踪</h3>
+            <p>把材料、费用、验收、交底和协作记录沉淀下来，减少后续扯皮和遗忘。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="contact">
+      <div class="section-inner notice">
+        <div class="notice-main">
+          <h2>服务说明</h2>
+          <p>
+            装修不凡提供装修项目管理、资料记录、进度管理、材料记录、验收提醒与项目助手等生活服务工具功能。平台不直接提供装修施工、房产交易或资金托管服务。
+          </p>
+          <div class="info-list">
+            <div class="info-row"><span>服务域名</span><strong>yinnkhome.com</strong></div>
+            <div class="info-row"><span>主办单位</span><strong>印氪科技</strong></div>
+            <div class="info-row"><span>App 名称</span><strong>装修不凡</strong></div>
+            <div class="info-row"><span>Android 包名</span><strong>com.yinnkhome.zhuangxiubufan</strong></div>
+          </div>
+        </div>
+        <div class="notice-side">
+          <h2>联系与备案</h2>
+          <p>
+            如需联系运营方、反馈产品问题或处理账号相关事项，请通过 App 内帮助与反馈入口提交。ICP备案与公安联网备案信息完成后将在本页底部展示。
+          </p>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="footer-inner">
+      <div>
+        <strong>装修不凡</strong>
+        <span>让装修项目推进更清楚。</span>
+      </div>
+      <div>
+        <span>© 2026 yinnkhome.com</span><br>
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">粤ICP备2025480867号-2</a>
+        <span> · 公安联网备案信息待更新</span>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>
