@@ -682,9 +682,6 @@ async function getProjectInfoChangeRequests(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
-  if (role !== 'designer') {
-    return error(res, '只有项目设计师可以提交设计师案例分享申请', 403);
-  }
   const params = [projectId];
   let visibilitySql = '';
   if (role !== 'owner') {
