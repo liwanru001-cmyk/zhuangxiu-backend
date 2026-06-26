@@ -730,6 +730,14 @@ async function getNotifications(req, res) {
      LEFT JOIN users creator ON creator.id = item.created_by
      LEFT JOIN users case_creator ON case_creator.id = case_share.designer_id
      WHERE n.recipient_id = ?
+       AND (
+         n.event_type <> 'assigned'
+         OR EXISTS (
+           SELECT 1 FROM project_action_item_assignees assigned
+           WHERE assigned.item_id = n.item_id
+             AND assigned.user_id = n.recipient_id
+         )
+       )
      ORDER BY n.created_at DESC, n.id DESC
      LIMIT 80`,
     [req.user.id]

@@ -3640,6 +3640,8 @@ async function getProjectTodos(req, res) {
 }
 
 async function getProjectActionItems(projectId, userId) {
+  const role = await getProjectMemberRole(projectId, userId);
+  const canViewAllActionItems = ['owner', 'project_manager', 'project_supervisor'].includes(role);
   const [items] = await db.query(
     `SELECT item.id, item.project_id, item.content, item.due_date, item.status,
             item.created_at, item.updated_at, item.created_by,
@@ -3647,9 +3649,23 @@ async function getProjectActionItems(projectId, userId) {
      FROM project_action_items item
      JOIN users creator ON creator.id = item.created_by
      WHERE item.project_id = ?
+       AND (
+         ? = 1
+         OR item.created_by = ?
+         OR EXISTS (
+           SELECT 1 FROM project_action_item_assignees assigned_filter
+           WHERE assigned_filter.item_id = item.id
+             AND assigned_filter.user_id = ?
+         )
+         OR EXISTS (
+           SELECT 1 FROM project_action_item_feedback feedback_filter
+           WHERE feedback_filter.item_id = item.id
+             AND feedback_filter.submitted_by = ?
+         )
+       )
      ORDER BY CASE item.status WHEN 'pending' THEN 0 ELSE 1 END,
               item.due_date, item.updated_at DESC`,
-    [projectId]
+    [projectId, canViewAllActionItems ? 1 : 0, userId, userId, userId]
   );
   if (!items.length) return [];
   const itemIds = items.map((item) => item.id);
