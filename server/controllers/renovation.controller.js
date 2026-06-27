@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { success, error } = require('../utils/response');
 const fs = require('fs/promises');
 const path = require('path');
+const storageService = require('../services/storage.service');
 
 const stages = [
   { id: 1, name: '梦想落地期', traditional: '设计准备', emoji: '📐', days: 14, taskCount: 3, keyTaskCount: 1 },
@@ -2827,11 +2828,24 @@ const designDocumentCategories = new Set([
   'other',
 ]);
 const designDocumentStatuses = new Set([
+  'draft',
   'pending',
   'confirmed',
   'revision_requested',
+  'superseded',
+  'voided',
+  'archived',
 ]);
-const handoverStatuses = new Set(['pending', 'confirmed', 'needs_supplement']);
+const handoverStatuses = new Set([
+  'draft',
+  'pending_confirm',
+  'confirmed',
+  'revision_needed',
+  'archived',
+  // Legacy handover状态，保留读取和过渡兼容。
+  'pending',
+  'needs_supplement',
+]);
 const materialCategories = new Set([
   'tile',
   'floor',
@@ -3119,21 +3133,122 @@ async function getProjectDesignDocuments(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   const [rows] = await db.query(
-    `SELECT doc.id, doc.project_id, doc.category, doc.space_key, doc.title, doc.file_url,
+    `SELECT doc.id, doc.project_id, doc.version_group_id, doc.version_no,
+            doc.is_current, doc.superseded_by,
+            doc.category, doc.space_key, doc.title, doc.file_url,
+            doc.storage_key, doc.preview_url, doc.thumbnail_url,
+            doc.preview_status, doc.preview_type,
             doc.file_type, doc.mime_type, doc.file_size, doc.original_name,
             doc.version_note, doc.status, doc.uploaded_by, doc.reviewed_by,
-            doc.reviewed_at, doc.created_at, doc.updated_at,
+            doc.reviewed_at, doc.confirmed_at, doc.voided_at,
+            doc.created_at, doc.updated_at,
             uploader.nickname AS uploader_name, uploader.avatar AS uploader_avatar,
             reviewer.nickname AS reviewer_name
      FROM project_design_documents doc
      JOIN users uploader ON uploader.id = doc.uploaded_by
      LEFT JOIN users reviewer ON reviewer.id = doc.reviewed_by
      WHERE doc.project_id = ?
-     ORDER BY FIELD(doc.status, 'pending', 'revision_requested', 'confirmed'),
+     ORDER BY doc.is_current DESC,
+              FIELD(doc.status, 'draft', 'pending', 'revision_requested', 'confirmed', 'superseded', 'voided', 'archived'),
               doc.created_at DESC, doc.id DESC`,
     [projectId]
   );
-  return success(res, rows);
+  if (!rows.length) return success(res, []);
+  const groupIds = [...new Set(rows.map((row) => row.version_group_id || row.id))];
+  const [references] = await db.query(
+    `SELECT ref.id, ref.project_id, ref.disclosure_id, ref.design_document_id,
+            ref.design_document_version_id, ref.purpose, ref.snapshot_title,
+            ref.snapshot_version_no, ref.snapshot_file_url,
+            ref.snapshot_category, ref.snapshot_space_key, ref.created_at,
+            handover.title AS disclosure_title, handover.status AS disclosure_status
+     FROM construction_disclosure_documents ref
+     JOIN project_handovers handover ON handover.id = ref.disclosure_id
+     WHERE ref.project_id = ?
+       AND ref.design_document_id IN (${groupIds.map(() => '?').join(', ')})
+     ORDER BY ref.created_at DESC, ref.id DESC`,
+    [projectId, ...groupIds]
+  );
+  const [revisionRequests] = await db.query(
+    `SELECT request.id, request.project_id, request.design_document_id,
+            request.design_document_version_id, request.version_no,
+            request.requested_by, request.assignee_id, request.reason,
+            request.status, request.created_at, request.updated_at,
+            requester.nickname AS requester_name,
+            assignee.nickname AS assignee_name
+     FROM project_design_document_revision_requests request
+     JOIN users requester ON requester.id = request.requested_by
+     LEFT JOIN users assignee ON assignee.id = request.assignee_id
+     WHERE request.project_id = ?
+       AND request.design_document_id IN (${groupIds.map(() => '?').join(', ')})
+     ORDER BY request.created_at DESC, request.id DESC`,
+    [projectId, ...groupIds]
+  );
+  const referencesByGroup = new Map();
+  const referencesByVersion = new Map();
+  for (const item of references) {
+    if (!referencesByGroup.has(item.design_document_id)) {
+      referencesByGroup.set(item.design_document_id, []);
+    }
+    if (!referencesByVersion.has(item.design_document_version_id)) {
+      referencesByVersion.set(item.design_document_version_id, []);
+    }
+    referencesByGroup.get(item.design_document_id).push(item);
+    referencesByVersion.get(item.design_document_version_id).push(item);
+  }
+  const revisionRequestsByGroup = new Map();
+  const revisionRequestsByVersion = new Map();
+  for (const item of revisionRequests) {
+    if (!revisionRequestsByGroup.has(item.design_document_id)) {
+      revisionRequestsByGroup.set(item.design_document_id, []);
+    }
+    if (!revisionRequestsByVersion.has(item.design_document_version_id)) {
+      revisionRequestsByVersion.set(item.design_document_version_id, []);
+    }
+    revisionRequestsByGroup.get(item.design_document_id).push(item);
+    revisionRequestsByVersion.get(item.design_document_version_id).push(item);
+  }
+  const versionsByGroup = new Map();
+  for (const row of rows) {
+    const groupId = row.version_group_id || row.id;
+    if (!versionsByGroup.has(groupId)) versionsByGroup.set(groupId, []);
+    versionsByGroup.get(groupId).push({
+      id: row.id,
+      version_group_id: groupId,
+      version_no: row.version_no || 1,
+      is_current: Boolean(row.is_current),
+      status: row.status,
+      title: row.title,
+      file_url: row.file_url,
+      preview_url: row.preview_url,
+      thumbnail_url: row.thumbnail_url,
+      preview_status: row.preview_status,
+      preview_type: row.preview_type,
+      created_at: row.created_at,
+      confirmed_at: row.confirmed_at,
+      voided_at: row.voided_at,
+      disclosure_references: referencesByVersion.get(row.id) || [],
+      revision_requests: revisionRequestsByVersion.get(row.id) || [],
+    });
+  }
+  return success(
+    res,
+    rows.map((row) => {
+      const groupId = row.version_group_id || row.id;
+      return {
+        ...row,
+        version_group_id: groupId,
+        is_current: row.is_current === null || row.is_current === undefined
+          ? true
+          : Boolean(row.is_current),
+        disclosure_references: referencesByVersion.get(row.id) || [],
+        group_disclosure_references: referencesByGroup.get(groupId) || [],
+        revision_requests: revisionRequestsByVersion.get(row.id) || [],
+        group_revision_requests: revisionRequestsByGroup.get(groupId) || [],
+        latest_revision_request: (revisionRequestsByVersion.get(row.id) || [])[0] || null,
+        version_history: versionsByGroup.get(groupId) || [],
+      };
+    })
+  );
 }
 
 function getDesignDocumentFileType(file) {
@@ -3155,14 +3270,30 @@ async function uploadProjectDesignDocument(req, res) {
     return error(res, '项目不存在或无上传权限', 404);
   }
   if (!req.file) return error(res, '请选择要上传的设计资料');
-  const fileUrl = `${req.protocol}://${req.get('host')}/uploads/design-documents/${req.file.filename}`;
-  return success(res, {
-    url: fileUrl,
-    file_type: getDesignDocumentFileType(req.file),
-    mime_type: req.file.mimetype,
-    file_size: req.file.size,
-    original_name: req.file.originalname,
-  });
+  const fileType = getDesignDocumentFileType(req.file);
+  try {
+    const stored = await storageService.storeDesignDocument({
+      req,
+      file: req.file,
+      fileType,
+    });
+    await removeUploadedFiles([req.file]);
+    return success(res, {
+      url: stored.fileUrl,
+      storage_key: stored.storageKey,
+      preview_url: stored.previewUrl,
+      thumbnail_url: stored.thumbnailUrl,
+      preview_status: stored.previewStatus,
+      preview_type: stored.previewType,
+      file_type: fileType,
+      mime_type: req.file.mimetype,
+      file_size: req.file.size,
+      original_name: req.file.originalname,
+    });
+  } catch (uploadError) {
+    await removeUploadedFiles([req.file]);
+    throw uploadError;
+  }
 }
 
 async function createProjectDesignDocument(req, res) {
@@ -3175,11 +3306,19 @@ async function createProjectDesignDocument(req, res) {
   const spaceKey = String(req.body.space_key || 'whole_house').trim().slice(0, 32);
   const title = String(req.body.title || '').trim().slice(0, 120);
   const fileUrl = String(req.body.file_url || '').trim();
+  const storageKey = String(req.body.storage_key || '').trim().slice(0, 500);
+  const previewUrl = String(req.body.preview_url || '').trim().slice(0, 500);
+  const thumbnailUrl = String(req.body.thumbnail_url || '').trim().slice(0, 500);
+  const requestedPreviewStatus = String(req.body.preview_status || '').trim();
+  const requestedPreviewType = String(req.body.preview_type || '').trim();
   const fileType = String(req.body.file_type || 'image').trim().slice(0, 32);
   const mimeType = String(req.body.mime_type || '').trim().slice(0, 120);
   const fileSize = Math.max(0, Number(req.body.file_size || 0));
   const originalName = String(req.body.original_name || '').trim().slice(0, 255);
   const versionNote = String(req.body.version_note || '').trim().slice(0, 500);
+  const requestedVersionGroupId = req.body.version_group_id
+    ? Number(req.body.version_group_id)
+    : null;
   if (!designDocumentCategories.has(category)) {
     return error(res, '设计资料分类不正确');
   }
@@ -3187,6 +3326,14 @@ async function createProjectDesignDocument(req, res) {
   if (!fileUrl) {
     return error(res, fileType === 'webview_link' ? '请填写链接地址' : '请上传设计资料文件');
   }
+  const previewStatuses = new Set(['pending', 'ready', 'failed', 'none']);
+  const previewTypes = new Set(['image', 'pdf', 'none']);
+  const previewStatus = previewStatuses.has(requestedPreviewStatus)
+    ? requestedPreviewStatus
+    : (previewUrl ? 'ready' : 'none');
+  const previewType = previewTypes.has(requestedPreviewType)
+    ? requestedPreviewType
+    : (fileType === 'image' ? 'image' : fileType === 'pdf' ? 'pdf' : 'none');
   if (fileType === 'webview_link') {
     let parsedUrl;
     try {
@@ -3201,26 +3348,170 @@ async function createProjectDesignDocument(req, res) {
       return error(res, '链接资料仅支持添加到效果图');
     }
   }
-  const [result] = await db.query(
-    `INSERT INTO project_design_documents
-     (project_id, category, space_key, title, file_url, file_type,
-      mime_type, file_size, original_name, version_note, status, uploaded_by)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    let versionGroupId = requestedVersionGroupId;
+    let versionNo = 1;
+    let currentDocument = null;
+    let hasDisclosureReferences = false;
+    if (versionGroupId) {
+      const [currentRows] = await connection.query(
+        `SELECT id, version_no
+         FROM project_design_documents
+         WHERE project_id = ? AND version_group_id = ? AND is_current = 1
+         ORDER BY version_no DESC, id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [projectId, versionGroupId]
+      );
+      currentDocument = currentRows[0] || null;
+      const [maxRows] = await connection.query(
+        `SELECT COALESCE(MAX(version_no), 0) AS max_version
+         FROM project_design_documents
+         WHERE project_id = ? AND version_group_id = ?`,
+        [projectId, versionGroupId]
+      );
+      versionNo = Number(maxRows[0]?.max_version || 0) + 1;
+      if (currentDocument) {
+        const [referenceRows] = await connection.query(
+          `SELECT id
+           FROM construction_disclosure_documents
+           WHERE project_id = ? AND design_document_version_id = ?
+           LIMIT 1`,
+          [projectId, currentDocument.id]
+        );
+        hasDisclosureReferences = Boolean(referenceRows[0]);
+      }
+    }
+    const [result] = await connection.query(
+      `INSERT INTO project_design_documents
+       (project_id, version_group_id, version_no, is_current, category,
+        space_key, title, file_url, storage_key, preview_url, thumbnail_url,
+        preview_status, preview_type, file_type, mime_type, file_size,
+        original_name, version_note, status, uploaded_by)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+      [
+        projectId,
+        versionGroupId,
+        versionNo,
+        category,
+        spaceKey || 'whole_house',
+        title,
+        fileUrl,
+        storageKey || null,
+        previewUrl || null,
+        thumbnailUrl || null,
+        previewStatus,
+        previewType,
+        fileType || 'image',
+        mimeType || null,
+        Number.isFinite(fileSize) ? fileSize : 0,
+        originalName || null,
+        versionNote || null,
+        req.user.id,
+      ]
+    );
+    const documentId = result.insertId;
+    if (!versionGroupId) {
+      versionGroupId = documentId;
+      await connection.query(
+        'UPDATE project_design_documents SET version_group_id = ? WHERE id = ?',
+        [versionGroupId, documentId]
+      );
+    }
+    if (currentDocument) {
+      await connection.query(
+        `UPDATE project_design_documents
+         SET is_current = 0, status = 'superseded', superseded_by = ?
+         WHERE id = ?`,
+        [documentId, currentDocument.id]
+      );
+    }
+    await connection.commit();
+    return success(
+      res,
+      {
+        id: documentId,
+        version_group_id: versionGroupId,
+        version_no: versionNo,
+        has_disclosure_references: hasDisclosureReferences,
+        disclosure_warning: hasDisclosureReferences
+          ? '已有设计交底引用旧版本，是否需要重新交底？'
+          : null,
+      },
+      hasDisclosureReferences
+        ? '设计资料新版已上传。已有设计交底引用旧版本，是否需要重新交底？'
+        : '设计资料已上传'
+    );
+  } catch (createError) {
+    await connection.rollback();
+    throw createError;
+  } finally {
+    connection.release();
+  }
+}
+
+// Future physical-delete routes must call this guard before removing a design
+// document row or file. Documents referenced by design handovers are
+// immutable evidence and should only be voided or archived.
+async function canDeleteDesignDocument(documentId, connection = db) {
+  const [references] = await connection.query(
+    `SELECT id
+     FROM construction_disclosure_documents
+     WHERE design_document_version_id = ? OR design_document_id = ?
+     LIMIT 1`,
+    [documentId, documentId]
+  );
+  if (references[0]) {
+    return {
+      canDelete: false,
+      reason: '该资料已被设计交底引用，只能作废或归档',
+    };
+  }
+  return { canDelete: true, reason: null };
+}
+
+async function updateProjectDesignDocument(req, res) {
+  const projectId = Number(req.params.id);
+  const documentId = Number(req.params.documentId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
+    return error(res, '项目不存在或无编辑权限', 404);
+  }
+  const category = String(req.body.category || 'other');
+  const spaceKey = String(req.body.space_key || 'whole_house').trim().slice(0, 32);
+  const title = String(req.body.title || '').trim().slice(0, 120);
+  const versionNote = String(req.body.version_note || '').trim().slice(0, 500);
+  if (!designDocumentCategories.has(category)) {
+    return error(res, '设计资料分类不正确');
+  }
+  if (!title) return error(res, '请填写资料标题');
+  const [documents] = await db.query(
+    `SELECT id, file_type
+     FROM project_design_documents
+     WHERE id = ? AND project_id = ?`,
+    [documentId, projectId]
+  );
+  const document = documents[0];
+  if (!document) return error(res, '设计资料不存在', 404);
+  if (document.file_type === 'webview_link' && category !== 'rendering') {
+    return error(res, '链接资料仅支持添加到效果图');
+  }
+  await db.query(
+    `UPDATE project_design_documents
+     SET category = ?, space_key = ?, title = ?, version_note = ?
+     WHERE id = ? AND project_id = ?`,
     [
-      projectId,
       category,
       spaceKey || 'whole_house',
       title,
-      fileUrl,
-      fileType || 'image',
-      mimeType || null,
-      Number.isFinite(fileSize) ? fileSize : 0,
-      originalName || null,
       versionNote || null,
-      req.user.id,
+      documentId,
+      projectId,
     ]
   );
-  return success(res, { id: result.insertId }, '设计资料已上传');
+  return success(res, null, '设计资料已更新');
 }
 
 async function updateProjectDesignDocumentStatus(req, res) {
@@ -3230,17 +3521,67 @@ async function updateProjectDesignDocumentStatus(req, res) {
     return error(res, '只有业主可以确认设计资料', 403);
   }
   const status = String(req.body.status || '');
-  if (!designDocumentStatuses.has(status) || status === 'pending') {
+  if (!designDocumentStatuses.has(status) || ['draft', 'pending', 'superseded'].includes(status)) {
     return error(res, '设计资料状态不正确');
   }
-  const [result] = await db.query(
-    `UPDATE project_design_documents
-     SET status = ?, reviewed_by = ?, reviewed_at = NOW()
+  const revisionReason = String(req.body.revision_reason || '').trim().slice(0, 500);
+  const assigneeId = req.body.assignee_id ? Number(req.body.assignee_id) : null;
+  if (status === 'revision_requested') {
+    if (!revisionReason) return error(res, '请填写修改原因');
+    if (assigneeId) {
+      const assignee = await requireActiveProjectMember(projectId, assigneeId);
+      if (!assignee) return error(res, '修改人不是项目成员');
+    }
+  }
+  const [documents] = await db.query(
+    `SELECT id, version_group_id, version_no
+     FROM project_design_documents
      WHERE id = ? AND project_id = ?`,
-    [status, req.user.id, documentId, projectId]
+    [documentId, projectId]
   );
-  if (result.affectedRows === 0) return error(res, '设计资料不存在', 404);
-  return success(res, null, '设计资料状态已更新');
+  const document = documents[0];
+  if (!document) return error(res, '设计资料不存在', 404);
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    if (status === 'revision_requested') {
+      await connection.query(
+        `INSERT INTO project_design_document_revision_requests
+         (project_id, design_document_id, design_document_version_id,
+          version_no, requested_by, assignee_id, reason, status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'open')`,
+        [
+          projectId,
+          document.version_group_id || document.id,
+          document.id,
+          document.version_no || 1,
+          req.user.id,
+          assigneeId || null,
+          revisionReason,
+        ]
+      );
+    }
+    const [result] = await connection.query(
+      `UPDATE project_design_documents
+       SET status = ?, reviewed_by = ?, reviewed_at = NOW(),
+           confirmed_at = CASE WHEN ? = 'confirmed' THEN NOW() ELSE confirmed_at END,
+           voided_at = CASE WHEN ? = 'voided' THEN NOW() ELSE voided_at END,
+           is_current = CASE WHEN ? IN ('voided', 'archived') THEN 0 ELSE is_current END
+       WHERE id = ? AND project_id = ?`,
+      [status, req.user.id, status, status, status, documentId, projectId]
+    );
+    if (result.affectedRows === 0) {
+      await connection.rollback();
+      return error(res, '设计资料不存在', 404);
+    }
+    await connection.commit();
+    return success(res, null, '设计资料状态已更新');
+  } catch (statusError) {
+    await connection.rollback();
+    throw statusError;
+  } finally {
+    connection.release();
+  }
 }
 
 async function getProjectHandovers(req, res) {
@@ -3251,6 +3592,7 @@ async function getProjectHandovers(req, res) {
   const [rows] = await db.query(
     `SELECT handover.id, handover.project_id, handover.stage_id, handover.title,
             handover.content, handover.target_user_id, handover.status,
+            handover.version_no,
             handover.created_by, handover.confirmed_by, handover.confirmed_at,
             handover.created_at, handover.updated_at,
             creator.nickname AS creator_name, creator.avatar AS creator_avatar,
@@ -3261,7 +3603,8 @@ async function getProjectHandovers(req, res) {
      LEFT JOIN users target ON target.id = handover.target_user_id
      LEFT JOIN users confirmer ON confirmer.id = handover.confirmed_by
      WHERE handover.project_id = ?
-     ORDER BY FIELD(handover.status, 'pending', 'needs_supplement', 'confirmed'),
+     ORDER BY FIELD(handover.status, 'draft', 'pending_confirm', 'pending',
+                    'revision_needed', 'needs_supplement', 'confirmed', 'archived'),
               handover.created_at DESC, handover.id DESC`,
     [projectId]
   );
@@ -3279,23 +3622,111 @@ async function getProjectHandovers(req, res) {
     if (!mediaMap.has(item.handover_id)) mediaMap.set(item.handover_id, []);
     mediaMap.get(item.handover_id).push(item);
   }
+  const [documents] = await db.query(
+    `SELECT ref.id, ref.project_id, ref.disclosure_id,
+            ref.design_document_id, ref.design_document_version_id,
+            ref.purpose, ref.snapshot_title, ref.snapshot_version_no,
+            ref.snapshot_file_url, ref.snapshot_category,
+            ref.snapshot_space_key, ref.created_at
+     FROM construction_disclosure_documents ref
+     WHERE ref.disclosure_id IN (${ids.map(() => '?').join(', ')})
+     ORDER BY ref.id`,
+    ids
+  );
+  const documentMap = new Map();
+  for (const item of documents) {
+    if (!documentMap.has(item.disclosure_id)) documentMap.set(item.disclosure_id, []);
+    documentMap.get(item.disclosure_id).push(item);
+  }
   return success(
     res,
     rows.map((item) => ({
       ...item,
       stage_name: stages.find((stage) => stage.id === Number(item.stage_id))?.name || null,
       media: mediaMap.get(item.id) || [],
+      design_documents: documentMap.get(item.id) || [],
     }))
   );
+}
+
+async function getProjectDesignHandoverItems(req, res) {
+  const projectId = Number(req.params.id);
+  const stageId = req.query.stage_id ? Number(req.query.stage_id) : null;
+  const usage = String(req.query.usage || 'progress').trim();
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const usageFilter = usage === 'inspection'
+    ? "AND item.check_type IN ('inspection_check', 'both')"
+    : "AND item.check_type IN ('progress_note', 'both')";
+  const stageFilter = stageId
+    ? 'AND (item.related_stage_id = ? OR item.related_stage_id IS NULL)'
+    : '';
+  const params = stageId ? [projectId, stageId] : [projectId];
+  const [rows] = await db.query(
+    `SELECT item.id, item.project_id, item.design_handover_id,
+            item.related_stage_id, item.importance, item.check_type,
+            item.source_section, item.summary, item.sort_order,
+            handover.title AS source_title,
+            handover.version_no AS source_version_no
+     FROM project_design_handover_items item
+     JOIN project_handovers handover ON handover.id = item.design_handover_id
+     WHERE item.project_id = ?
+       AND handover.status = 'confirmed'
+       ${stageFilter}
+       ${usageFilter}
+     ORDER BY item.related_stage_id IS NULL ASC,
+              FIELD(item.importance, 'critical', 'important', 'normal'),
+              item.sort_order, item.id`,
+    params
+  );
+  if (rows.length) return success(res, rows);
+  const [handovers] = await db.query(
+    `SELECT id, project_id, stage_id, title, content, version_no
+     FROM project_handovers
+     WHERE project_id = ?
+       AND status = 'confirmed'
+       ${stageId ? 'AND (stage_id = ? OR stage_id IS NULL)' : ''}
+     ORDER BY stage_id IS NULL ASC, confirmed_at DESC, id DESC
+     LIMIT 5`,
+    stageId ? [projectId, stageId] : [projectId]
+  );
+  const fallbackItems = handovers.flatMap((handover) =>
+    buildDesignHandoverItems({
+      projectId,
+      handoverId: handover.id,
+      stageId: handover.stage_id,
+      content: handover.content,
+    })
+      .filter((item) =>
+        usage === 'inspection'
+          ? ['inspection_check', 'both'].includes(item.checkType)
+          : ['progress_note', 'both'].includes(item.checkType)
+      )
+      .map((item, index) => ({
+        id: 0,
+        project_id: projectId,
+        design_handover_id: handover.id,
+        related_stage_id: item.relatedStageId,
+        importance: item.importance,
+        check_type: item.checkType,
+        source_section: item.sourceSection,
+        summary: item.summary,
+        sort_order: item.sortOrder + index,
+        source_title: handover.title,
+        source_version_no: handover.version_no || 1,
+      }))
+  );
+  return success(res, fallbackItems);
 }
 
 async function createProjectHandover(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   const files = req.files || [];
-  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
+  if (!['designer', 'project_manager', 'project_supervisor'].includes(role)) {
     await removeUploadedFiles(files);
-    return error(res, '项目不存在或无新建权限', 404);
+    return error(res, '只有设计师、项目经理或管理员可以创建设计交底', 403);
   }
   const title = String(req.body.title || '').trim().slice(0, 120);
   const content = String(req.body.content || '').trim().slice(0, 3000);
@@ -3303,13 +3734,32 @@ async function createProjectHandover(req, res) {
   const targetUserId = req.body.target_user_id
     ? Number(req.body.target_user_id)
     : null;
+  const rawDesignDocumentIds = (() => {
+    if (Array.isArray(req.body.design_document_ids)) return req.body.design_document_ids;
+    if (typeof req.body.design_document_ids === 'string') {
+      try {
+        const parsed = JSON.parse(req.body.design_document_ids);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_) {
+        return req.body.design_document_ids.split(',');
+      }
+    }
+    return [];
+  })();
+  const designDocumentIds = [
+    ...new Set(
+      rawDesignDocumentIds
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0)
+    ),
+  ];
   if (!title) {
     await removeUploadedFiles(files);
-    return error(res, '请填写交底标题');
+    return error(res, '请填写设计交底标题');
   }
   if (!content) {
     await removeUploadedFiles(files);
-    return error(res, '请填写交底内容');
+    return error(res, '请填写设计交底内容');
   }
   if (stageId !== null && !stages.some((stage) => stage.id === stageId)) {
     await removeUploadedFiles(files);
@@ -3319,8 +3769,34 @@ async function createProjectHandover(req, res) {
     const member = await requireActiveProjectMember(projectId, targetUserId);
     if (!member) {
       await removeUploadedFiles(files);
-      return error(res, '交底对象不是项目成员');
+      return error(res, '项目经理不是项目成员');
     }
+    if (member.role !== 'project_manager') {
+      await removeUploadedFiles(files);
+      return error(res, '设计交底确认人必须是项目经理');
+    }
+  }
+  let referencedDocuments = [];
+  if (designDocumentIds.length) {
+    const [documents] = await db.query(
+      `SELECT id, project_id, version_group_id, version_no, title, file_url,
+              category, space_key, status, is_current
+       FROM project_design_documents
+       WHERE project_id = ? AND id IN (${designDocumentIds.map(() => '?').join(', ')})`,
+      [projectId, ...designDocumentIds]
+    );
+    if (documents.length !== designDocumentIds.length) {
+      await removeUploadedFiles(files);
+      return error(res, '引用的设计资料不存在');
+    }
+    const invalidReference = documents.find(
+      (document) => document.status !== 'confirmed' || !Boolean(document.is_current)
+    );
+    if (invalidReference) {
+      await removeUploadedFiles(files);
+      return error(res, '设计交底只能引用当前已确认版本的设计资料');
+    }
+    referencedDocuments = documents;
   }
 
   const connection = await db.getConnection();
@@ -3329,7 +3805,7 @@ async function createProjectHandover(req, res) {
     const [result] = await connection.query(
       `INSERT INTO project_handovers
        (project_id, stage_id, title, content, target_user_id, status, created_by)
-       VALUES (?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, ?, ?, ?, ?, 'pending_confirm', ?)`,
       [projectId, stageId, title, content, targetUserId, req.user.id]
     );
     if (files.length) {
@@ -3346,8 +3822,36 @@ async function createProjectHandover(req, res) {
         ])
       );
     }
+    await replaceDesignHandoverItems(connection, {
+      projectId,
+      handoverId: result.insertId,
+      stageId,
+      content,
+    });
+    if (referencedDocuments.length) {
+      await connection.query(
+        `INSERT INTO construction_disclosure_documents
+         (project_id, disclosure_id, design_document_id,
+          design_document_version_id, purpose, snapshot_title,
+          snapshot_version_no, snapshot_file_url, snapshot_category,
+          snapshot_space_key)
+         VALUES ${referencedDocuments.map(() => '(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+        referencedDocuments.flatMap((document) => [
+          projectId,
+          result.insertId,
+          document.version_group_id || document.id,
+          document.id,
+          '设计交底依据',
+          document.title,
+          document.version_no || 1,
+          document.file_url,
+          document.category || 'other',
+          document.space_key || 'whole_house',
+        ])
+      );
+    }
     await connection.commit();
-    return success(res, { id: result.insertId }, '施工交底资料已创建');
+    return success(res, { id: result.insertId }, '设计交底已发布，等待项目经理确认');
   } catch (handoverError) {
     await connection.rollback();
     await removeUploadedFiles(files);
@@ -3360,31 +3864,43 @@ async function createProjectHandover(req, res) {
 async function updateProjectHandoverStatus(req, res) {
   const projectId = Number(req.params.id);
   const handoverId = Number(req.params.handoverId);
-  const status = String(req.body.status || '');
-  if (!handoverStatuses.has(status) || status === 'pending') {
-    return error(res, '交底状态不正确');
+  const rawStatus = String(req.body.status || '');
+  const status = rawStatus === 'needs_supplement' ? 'revision_needed' : rawStatus;
+  if (!handoverStatuses.has(status) || ['pending', 'pending_confirm', 'draft'].includes(status)) {
+    return error(res, '设计交底状态不正确');
   }
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
   const [rows] = await db.query(
-    `SELECT id, target_user_id FROM project_handovers
+    `SELECT id, target_user_id, status FROM project_handovers
      WHERE id = ? AND project_id = ?`,
     [handoverId, projectId]
   );
   const handover = rows[0];
-  if (!handover) return error(res, '交底资料不存在', 404);
+  if (!handover) return error(res, '设计交底不存在', 404);
+  if (handover.status === 'confirmed' && status !== 'confirmed' && status !== 'archived') {
+    return error(res, '设计交底已确认，不能直接修改原内容，请创建新版本或追加补充说明', 409);
+  }
   const canReview =
-    role === 'owner' ||
-    !handover.target_user_id ||
-    Number(handover.target_user_id) === Number(req.user.id);
-  if (!canReview) return error(res, '只有业主或交底对象可以确认', 403);
+    role === 'project_manager' &&
+    (!handover.target_user_id ||
+      Number(handover.target_user_id) === Number(req.user.id));
+  if (!canReview) return error(res, '只有项目经理可以确认或要求补充设计交底', 403);
   await db.query(
     `UPDATE project_handovers
-     SET status = ?, confirmed_by = ?, confirmed_at = NOW()
+     SET status = ?,
+         confirmed_by = CASE
+           WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN ?
+           ELSE confirmed_by
+         END,
+         confirmed_at = CASE
+           WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN NOW()
+           ELSE confirmed_at
+         END
      WHERE id = ? AND project_id = ?`,
-    [status, req.user.id, handoverId, projectId]
+    [status, status, req.user.id, status, handoverId, projectId]
   );
-  return success(res, null, '交底状态已更新');
+  return success(res, null, '设计交底状态已更新');
 }
 
 async function getProjectMaterials(req, res) {
@@ -3977,6 +4493,33 @@ async function getProjectProgress(req, res) {
     projectRows[0].current_stage,
     projectRows[0].status
   );
+  const [designBriefRows] = await db.query(
+    `SELECT id, title, content, confirmed_at
+     FROM project_handovers
+     WHERE project_id = ?
+       AND status = 'confirmed'
+       AND (stage_id = ? OR stage_id IS NULL)
+     ORDER BY stage_id IS NULL ASC, confirmed_at DESC, id DESC
+     LIMIT 5`,
+    [projectId, derivedProgress.current_stage]
+  );
+  const designBriefTips = designBriefRows.map((row) => {
+    const sections = extractDesignBriefSections(row.content);
+    return {
+      handover_id: row.id,
+      title: row.title,
+      confirmed_at: row.confirmed_at,
+      design_focus: sections['本项目设计重点'] || '',
+      process_notes: sections['特殊工艺说明'] || '',
+      acceptance_tips: [
+        sections['关键尺寸/不可随意变更项'],
+        sections['易错点提醒'],
+        sections['材料/五金注意事项'],
+      ].filter(Boolean).join('\n'),
+    };
+  }).filter((item) =>
+    item.design_focus || item.process_notes || item.acceptance_tips
+  );
 
   return success(res, {
     project_id: projectId,
@@ -3990,6 +4533,7 @@ async function getProjectProgress(req, res) {
     expected_end: stats.expected_end,
     pace_mode: projectRows[0].pace_mode || 'normal',
     pace_updated_at: projectRows[0].pace_updated_at,
+    design_brief_tips: designBriefTips,
   });
 }
 
@@ -4010,13 +4554,175 @@ async function canManageProjectProgress(projectId, userId) {
 async function requireActiveProjectMember(projectId, userId) {
   if (!userId) return null;
   const [rows] = await db.query(
-    `SELECT pm.user_id, u.nickname
+    `SELECT pm.user_id, pm.role, u.nickname
      FROM project_members pm
      JOIN users u ON u.id = pm.user_id
      WHERE pm.project_id = ? AND pm.user_id = ? AND pm.status = 1`,
     [projectId, userId]
   );
   return rows[0] || null;
+}
+
+function extractDesignBriefSections(content) {
+  const labels = [
+    '本项目设计重点',
+    '特殊工艺说明',
+    '客户特殊要求',
+    '关键尺寸/不可随意变更项',
+    '易错点提醒',
+    '材料/五金注意事项',
+    '项目经理备注',
+  ];
+  const sections = {};
+  let current = null;
+  let buffer = [];
+  const flush = () => {
+    if (!current) return;
+    sections[current] = buffer.join('\n').trim();
+    buffer = [];
+  };
+  for (const rawLine of String(content || '').split('\n')) {
+    const line = rawLine.trim();
+    const matched = labels.find((label) =>
+      line === label || line === `${label}:` || line === `${label}：`
+    );
+    if (matched) {
+      flush();
+      current = matched;
+    } else if (current) {
+      buffer.push(rawLine);
+    }
+  }
+  flush();
+  return sections;
+}
+
+function designHandoverItemMeta(section) {
+  switch (section) {
+    case '关键尺寸/不可随意变更项':
+      return { importance: 'critical', checkType: 'inspection_check' };
+    case '特殊工艺说明':
+    case '易错点提醒':
+      return { importance: 'important', checkType: 'both' };
+    case '材料/五金注意事项':
+      return { importance: 'important', checkType: 'inspection_check' };
+    default:
+      return { importance: 'normal', checkType: 'progress_note' };
+  }
+}
+
+function buildDesignHandoverItems({ projectId, handoverId, stageId, content }) {
+  const sections = extractDesignBriefSections(content);
+  let sortOrder = 0;
+  return Object.entries(sections)
+    .map(([section, summary]) => {
+      const value = String(summary || '').trim().slice(0, 500);
+      if (!value) return null;
+      const meta = designHandoverItemMeta(section);
+      sortOrder += 10;
+      return {
+        projectId,
+        handoverId,
+        relatedStageId: stageId || null,
+        importance: meta.importance,
+        checkType: meta.checkType,
+        sourceSection: section,
+        summary: value,
+        sortOrder,
+      };
+    })
+    .filter(Boolean);
+}
+
+async function replaceDesignHandoverItems(connection, { projectId, handoverId, stageId, content }) {
+  await connection.query(
+    'DELETE FROM project_design_handover_items WHERE design_handover_id = ? AND project_id = ?',
+    [handoverId, projectId]
+  );
+  const items = buildDesignHandoverItems({ projectId, handoverId, stageId, content });
+  if (!items.length) return;
+  await connection.query(
+    `INSERT INTO project_design_handover_items
+     (project_id, design_handover_id, related_stage_id, importance,
+      check_type, source_section, summary, sort_order)
+     VALUES ${items.map(() => '(?, ?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+    items.flatMap((item) => [
+      item.projectId,
+      item.handoverId,
+      item.relatedStageId,
+      item.importance,
+      item.checkType,
+      item.sourceSection,
+      item.summary,
+      item.sortOrder,
+    ])
+  );
+}
+
+async function designHandoverInspectionItems(connection, projectId, stageId) {
+  const [rows] = await connection.query(
+    `SELECT item.id, item.design_handover_id, item.summary,
+            handover.title AS source_title,
+            handover.version_no AS source_version_no
+     FROM project_design_handover_items item
+     JOIN project_handovers handover ON handover.id = item.design_handover_id
+     WHERE item.project_id = ?
+       AND handover.status = 'confirmed'
+       AND (item.related_stage_id = ? OR item.related_stage_id IS NULL)
+       AND item.check_type IN ('inspection_check', 'both')
+     ORDER BY item.related_stage_id IS NULL ASC,
+              FIELD(item.importance, 'critical', 'important', 'normal'),
+              item.sort_order, item.id
+     LIMIT 12`,
+    [projectId, stageId]
+  );
+  if (rows.length) return rows;
+  const [handovers] = await connection.query(
+    `SELECT id, project_id, stage_id, title, content, version_no
+     FROM project_handovers
+     WHERE project_id = ?
+       AND status = 'confirmed'
+       AND (stage_id = ? OR stage_id IS NULL)
+     ORDER BY stage_id IS NULL ASC, confirmed_at DESC, id DESC
+     LIMIT 5`,
+    [projectId, stageId]
+  );
+  return handovers.flatMap((handover) =>
+    buildDesignHandoverItems({
+      projectId,
+      handoverId: handover.id,
+      stageId: handover.stage_id,
+      content: handover.content,
+    })
+      .filter((item) => ['inspection_check', 'both'].includes(item.checkType))
+      .map((item) => ({
+        id: null,
+        design_handover_id: handover.id,
+        summary: item.summary,
+        source_title: handover.title,
+        source_version_no: handover.version_no || 1,
+      }))
+  );
+}
+
+async function createInspectionDesignChecks(connection, { projectId, inspectionId, stageId }) {
+  const items = await designHandoverInspectionItems(connection, projectId, stageId);
+  if (!items.length) return;
+  await connection.query(
+    `INSERT INTO project_inspection_design_checks
+     (project_id, inspection_id, design_handover_id, design_handover_item_id,
+      snapshot_source_title, snapshot_version_no, snapshot_summary)
+     VALUES ${items.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+    items.flatMap((item) => [
+      projectId,
+      inspectionId,
+      item.design_handover_id,
+      item.id,
+      item.source_title,
+      item.source_version_no || 1,
+      item.summary,
+    ])
+  );
 }
 
 async function refreshProjectStageByTaskCompletion(projectId) {
@@ -4903,11 +5609,28 @@ async function getProjectInspections(req, res) {
     if (!imageMap.has(image.inspection_id)) imageMap.set(image.inspection_id, []);
     imageMap.get(image.inspection_id).push(image);
   }
+  const [designChecks] = await db.query(
+    `SELECT id, inspection_id, design_handover_id, design_handover_item_id,
+            snapshot_source_title, snapshot_version_no, snapshot_summary,
+            check_result, checked_by, checked_at, created_at, updated_at
+     FROM project_inspection_design_checks
+     WHERE project_id = ?
+     ORDER BY id`,
+    [projectId]
+  );
+  const designCheckMap = new Map();
+  for (const item of designChecks) {
+    if (!designCheckMap.has(item.inspection_id)) {
+      designCheckMap.set(item.inspection_id, []);
+    }
+    designCheckMap.get(item.inspection_id).push(item);
+  }
   return success(
     res,
     rows.map((item) => ({
       ...item,
       images: imageMap.get(item.id) || [],
+      design_checks: designCheckMap.get(item.id) || [],
     }))
   );
 }
@@ -5224,6 +5947,11 @@ async function createProjectInspection(req, res) {
         req.user.id,
       ])
     );
+    await createInspectionDesignChecks(connection, {
+      projectId,
+      inspectionId: result.insertId,
+      stageId: progressItem?.stage_id || tasks[0].stage_id,
+    });
     await connection.commit();
     return success(res, { id: result.insertId }, '验收已提交');
   } catch (inspectionError) {
@@ -5370,6 +6098,43 @@ async function reviewProjectInspection(req, res) {
   } finally {
     connection.release();
   }
+}
+
+async function updateProjectInspectionDesignCheck(req, res) {
+  const projectId = Number(req.params.id);
+  const inspectionId = Number(req.params.inspectionId);
+  const checkId = Number(req.params.checkId);
+  const checkResult = String(req.body.check_result || '');
+  if (!['conforms', 'issue', 'not_applicable', 'pending'].includes(checkResult)) {
+    return error(res, '设计检查结果不正确');
+  }
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'project_manager', 'project_supervisor'].includes(role)) {
+    return error(res, '只有业主、项目经理或监理可以记录验收检查结果', 403);
+  }
+  const [result] = await db.query(
+    `UPDATE project_inspection_design_checks check_item
+     JOIN project_inspections inspection ON inspection.id = check_item.inspection_id
+     SET check_item.check_result = ?,
+         check_item.checked_by = CASE WHEN ? = 'pending' THEN NULL ELSE ? END,
+         check_item.checked_at = CASE WHEN ? = 'pending' THEN NULL ELSE NOW() END
+     WHERE check_item.id = ?
+       AND check_item.inspection_id = ?
+       AND check_item.project_id = ?
+       AND inspection.project_id = ?`,
+    [
+      checkResult,
+      checkResult,
+      req.user.id,
+      checkResult,
+      checkId,
+      inspectionId,
+      projectId,
+      projectId,
+    ]
+  );
+  if (result.affectedRows === 0) return error(res, '设计检查项不存在', 404);
+  return success(res, null, '设计检查结果已记录');
 }
 
 async function resubmitProjectInspection(req, res) {
@@ -5554,8 +6319,11 @@ module.exports = {
   getProjectDesignDocuments,
   uploadProjectDesignDocument,
   createProjectDesignDocument,
+  canDeleteDesignDocument,
+  updateProjectDesignDocument,
   updateProjectDesignDocumentStatus,
   getProjectHandovers,
+  getProjectDesignHandoverItems,
   createProjectHandover,
   updateProjectHandoverStatus,
   getProjectMaterials,
@@ -5584,6 +6352,7 @@ module.exports = {
   getProjectInspectionTemplateDetail,
   createProjectInspection,
   reviewProjectInspection,
+  updateProjectInspectionDesignCheck,
   resubmitProjectInspection,
   getStageTasks,
   getChecklist,

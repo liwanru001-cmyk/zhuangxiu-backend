@@ -77,7 +77,10 @@ async function ensureAppTables() {
   await ensureRenovationProjectCodeColumn();
   await ensureRenovationProjectArchiveColumns();
   await ensureProjectDesignDocumentTables();
+  await ensureProjectDesignDocumentRevisionRequestTables();
   await ensureProjectHandoverTables();
+  await ensureProjectDesignHandoverReferenceTables();
+  await ensureConstructionDisclosureDocumentTables();
   await ensureProjectMaterialTables();
   await ensureProjectTipsTable();
   await ensureWorkItemTemplateTables();
@@ -384,7 +387,7 @@ async function ensureAppTables() {
       project_city VARCHAR(80) DEFAULT NULL,
       renovation_stage VARCHAR(80) DEFAULT NULL,
       has_project TINYINT(1) NOT NULL DEFAULT 0,
-      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      status VARCHAR(32) NOT NULL DEFAULT 'pending_confirm',
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
@@ -638,6 +641,17 @@ async function ensureProjectDesignDocumentTables() {
     ['mime_type', "VARCHAR(120) DEFAULT NULL AFTER file_type"],
     ['file_size', "BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER mime_type"],
     ['original_name', "VARCHAR(255) DEFAULT NULL AFTER file_size"],
+    ['version_group_id', "BIGINT UNSIGNED DEFAULT NULL AFTER project_id"],
+    ['version_no', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER version_group_id"],
+    ['is_current', "TINYINT UNSIGNED NOT NULL DEFAULT 1 AFTER version_no"],
+    ['superseded_by', "BIGINT UNSIGNED DEFAULT NULL AFTER is_current"],
+    ['confirmed_at', "TIMESTAMP NULL DEFAULT NULL AFTER reviewed_at"],
+    ['voided_at', "TIMESTAMP NULL DEFAULT NULL AFTER confirmed_at"],
+    ['storage_key', "VARCHAR(500) DEFAULT NULL AFTER file_url"],
+    ['preview_url', "VARCHAR(500) DEFAULT NULL AFTER storage_key"],
+    ['thumbnail_url', "VARCHAR(500) DEFAULT NULL AFTER preview_url"],
+    ['preview_status', "VARCHAR(32) NOT NULL DEFAULT 'none' AFTER thumbnail_url"],
+    ['preview_type', "VARCHAR(32) NOT NULL DEFAULT 'none' AFTER preview_status"],
   ];
   for (const [columnName, definition] of optionalColumns) {
     const [existing] = await pool.query(
@@ -655,6 +669,16 @@ async function ensureProjectDesignDocumentTables() {
       `);
     }
   }
+  await pool.query(`
+    UPDATE project_design_documents
+    SET version_group_id = id
+    WHERE version_group_id IS NULL
+  `);
+  await pool.query(`
+    UPDATE project_design_documents
+    SET is_current = 1
+    WHERE is_current IS NULL
+  `);
 }
 
 async function ensureProjectHandoverTables() {
@@ -666,7 +690,8 @@ async function ensureProjectHandoverTables() {
       title VARCHAR(120) NOT NULL,
       content TEXT NOT NULL,
       target_user_id BIGINT UNSIGNED DEFAULT NULL,
-      status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      version_no INT UNSIGNED NOT NULL DEFAULT 1,
+      status VARCHAR(32) NOT NULL DEFAULT 'pending_confirm',
       created_by BIGINT UNSIGNED NOT NULL,
       confirmed_by BIGINT UNSIGNED DEFAULT NULL,
       confirmed_at TIMESTAMP NULL DEFAULT NULL,
@@ -690,6 +715,134 @@ async function ensureProjectHandoverTables() {
       KEY idx_handover_media (handover_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  const optionalColumns = [
+    ['version_no', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER target_user_id"],
+  ];
+  for (const [columnName, definition] of optionalColumns) {
+    const [existing] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'project_handovers'
+         AND COLUMN_NAME = ?`,
+      [columnName]
+    );
+    if (!existing.length) {
+      await pool.query(`
+        ALTER TABLE project_handovers
+        ADD COLUMN ${columnName} ${definition}
+      `);
+    }
+  }
+}
+
+async function ensureProjectDesignHandoverReferenceTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_design_handover_items (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      design_handover_id BIGINT UNSIGNED NOT NULL,
+      related_stage_id TINYINT UNSIGNED DEFAULT NULL,
+      importance VARCHAR(16) NOT NULL DEFAULT 'normal',
+      check_type VARCHAR(24) NOT NULL DEFAULT 'progress_note',
+      source_section VARCHAR(80) NOT NULL,
+      summary VARCHAR(500) NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_design_handover_items_stage (project_id, related_stage_id, check_type, importance),
+      KEY idx_design_handover_items_handover (design_handover_id, sort_order)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_inspection_design_checks (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      inspection_id BIGINT UNSIGNED NOT NULL,
+      design_handover_id BIGINT UNSIGNED NOT NULL,
+      design_handover_item_id BIGINT UNSIGNED DEFAULT NULL,
+      snapshot_source_title VARCHAR(120) NOT NULL,
+      snapshot_version_no INT UNSIGNED NOT NULL DEFAULT 1,
+      snapshot_summary VARCHAR(500) NOT NULL,
+      check_result VARCHAR(24) NOT NULL DEFAULT 'pending',
+      checked_by BIGINT UNSIGNED DEFAULT NULL,
+      checked_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_inspection_design_checks (inspection_id, created_at),
+      KEY idx_project_design_checks (project_id, design_handover_id, created_at),
+      KEY idx_design_check_item (design_handover_item_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureProjectDesignDocumentRevisionRequestTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_design_document_revision_requests (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      design_document_id BIGINT UNSIGNED NOT NULL,
+      design_document_version_id BIGINT UNSIGNED NOT NULL,
+      version_no INT UNSIGNED NOT NULL DEFAULT 1,
+      requested_by BIGINT UNSIGNED NOT NULL,
+      assignee_id BIGINT UNSIGNED DEFAULT NULL,
+      reason VARCHAR(500) NOT NULL,
+      status VARCHAR(32) NOT NULL DEFAULT 'open',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_design_revision_project (project_id, created_at),
+      KEY idx_design_revision_group (design_document_id, created_at),
+      KEY idx_design_revision_version (design_document_version_id, created_at),
+      KEY idx_design_revision_assignee (assignee_id, status, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureConstructionDisclosureDocumentTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS construction_disclosure_documents (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      disclosure_id BIGINT UNSIGNED NOT NULL,
+      design_document_id BIGINT UNSIGNED NOT NULL,
+      design_document_version_id BIGINT UNSIGNED NOT NULL,
+      purpose VARCHAR(80) DEFAULT NULL,
+      snapshot_title VARCHAR(120) NOT NULL,
+      snapshot_version_no INT UNSIGNED NOT NULL DEFAULT 1,
+      snapshot_file_url VARCHAR(500) NOT NULL,
+      snapshot_category VARCHAR(32) NOT NULL DEFAULT 'other',
+      snapshot_space_key VARCHAR(32) NOT NULL DEFAULT 'whole_house',
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_disclosure_documents (disclosure_id, created_at),
+      KEY idx_design_document_disclosures (design_document_id, created_at),
+      KEY idx_design_document_version_disclosures (design_document_version_id, created_at),
+      KEY idx_disclosure_project (project_id, disclosure_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const optionalColumns = [
+    ['snapshot_category', "VARCHAR(32) NOT NULL DEFAULT 'other' AFTER snapshot_file_url"],
+    ['snapshot_space_key', "VARCHAR(32) NOT NULL DEFAULT 'whole_house' AFTER snapshot_category"],
+  ];
+  for (const [columnName, definition] of optionalColumns) {
+    const [existing] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'construction_disclosure_documents'
+         AND COLUMN_NAME = ?`,
+      [columnName]
+    );
+    if (!existing.length) {
+      await pool.query(`
+        ALTER TABLE construction_disclosure_documents
+        ADD COLUMN ${columnName} ${definition}
+      `);
+    }
+  }
 }
 
 async function ensureProjectMaterialTables() {

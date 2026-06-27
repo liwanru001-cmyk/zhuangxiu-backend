@@ -424,6 +424,11 @@ router.put(
   ...protectedRoute,
   asyncHandler(controller.reviewProjectInspection)
 );
+router.put(
+  '/projects/:id/inspections/:inspectionId/design-checks/:checkId',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectInspectionDesignCheck)
+);
 router.post(
   '/projects/:id/inspections/:inspectionId/resubmit',
   ...protectedRoute,
@@ -499,6 +504,11 @@ router.post(
   asyncHandler(controller.createProjectDesignDocument)
 );
 router.put(
+  '/projects/:id/design-documents/:documentId',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectDesignDocument)
+);
+router.put(
   '/projects/:id/design-documents/:documentId/status',
   ...protectedRoute,
   asyncHandler(controller.updateProjectDesignDocumentStatus)
@@ -507,6 +517,11 @@ router.get(
   '/projects/:id/handovers',
   ...protectedRoute,
   asyncHandler(controller.getProjectHandovers)
+);
+router.get(
+  '/projects/:id/design-handover-items',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectDesignHandoverItems)
 );
 router.post(
   '/projects/:id/handovers',
