@@ -92,6 +92,8 @@ jobs:
             . ./.env
             set +a
 
+            node scripts/run-migration.js migrations/20260628_project_event_notifications.sql
+
             pm2 startOrReload ecosystem.config.cjs --env production --update-env
             pm2 save
 

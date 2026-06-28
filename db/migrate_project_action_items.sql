@@ -54,12 +54,13 @@ CREATE TABLE IF NOT EXISTS project_action_item_media (
 
 CREATE TABLE IF NOT EXISTS project_action_notifications (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    item_id BIGINT UNSIGNED NOT NULL,
+    item_id BIGINT UNSIGNED DEFAULT NULL,
     recipient_id BIGINT UNSIGNED NOT NULL,
-    event_type ENUM('assigned', 'feedback') NOT NULL,
-    delivery_status ENUM('pending', 'sent', 'failed') NOT NULL DEFAULT 'pending',
+    event_type ENUM('assigned', 'feedback', 'case_share_request', 'project_event') NOT NULL,
+    delivery_status ENUM('pending', 'sent', 'failed', 'read') NOT NULL DEFAULT 'pending',
     payload JSON DEFAULT NULL,
     sent_at DATETIME DEFAULT NULL,
+    read_at DATETIME DEFAULT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_action_notification_delivery (delivery_status, created_at),
     INDEX idx_action_notification_recipient (recipient_id, created_at),

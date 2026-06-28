@@ -669,6 +669,13 @@ function parseNotificationPayload(payload) {
 
 function buildNotificationText(row) {
   const payload = parseNotificationPayload(row.payload);
+  if (row.event_type === 'project_event' || payload.source === 'project_event') {
+    return {
+      type: payload.projectEventType || 'project_event',
+      title: payload.title || '项目协同提醒',
+      content: payload.content || '项目有新的协同动态',
+    };
+  }
   if (row.event_type === 'case_share_request' || payload.source === 'case_share_request') {
     return {
       type: 'project_case_share',
@@ -714,7 +721,12 @@ async function getNotifications(req, res) {
   const [rows] = await db.query(
     `SELECT n.id, n.item_id, n.event_type, n.delivery_status, n.payload,
             n.read_at, n.created_at,
-            COALESCE(item.project_id, case_share.project_id) AS project_id,
+            COALESCE(
+              item.project_id,
+              case_share.project_id,
+              CAST(JSON_UNQUOTE(JSON_EXTRACT(n.payload, '$.projectId')) AS UNSIGNED),
+              CAST(JSON_UNQUOTE(JSON_EXTRACT(n.payload, '$.project_id')) AS UNSIGNED)
+            ) AS project_id,
             item.content,
             COALESCE(item.status, CAST(case_share.status AS CHAR)) AS item_status,
             item.created_by, creator.nickname AS creator_name,
@@ -723,10 +735,15 @@ async function getNotifications(req, res) {
             p.project_name
      FROM project_action_notifications n
      LEFT JOIN project_action_items item
-       ON item.id = n.item_id AND n.event_type <> 'case_share_request'
+       ON item.id = n.item_id AND n.event_type NOT IN ('case_share_request', 'project_event')
      LEFT JOIN project_case_shares case_share
        ON case_share.id = n.item_id AND n.event_type = 'case_share_request'
-     JOIN renovation_projects p ON p.id = COALESCE(item.project_id, case_share.project_id)
+     JOIN renovation_projects p ON p.id = COALESCE(
+       item.project_id,
+       case_share.project_id,
+       CAST(JSON_UNQUOTE(JSON_EXTRACT(n.payload, '$.projectId')) AS UNSIGNED),
+       CAST(JSON_UNQUOTE(JSON_EXTRACT(n.payload, '$.project_id')) AS UNSIGNED)
+     )
      LEFT JOIN users creator ON creator.id = item.created_by
      LEFT JOIN users case_creator ON case_creator.id = case_share.designer_id
      WHERE n.recipient_id = ?
@@ -744,6 +761,7 @@ async function getNotifications(req, res) {
   );
   return success(res, rows.map((row) => {
     const text = buildNotificationText(row);
+    const payload = parseNotificationPayload(row.payload);
     return {
       id: row.id,
       type: text.type,
@@ -754,6 +772,10 @@ async function getNotifications(req, res) {
       action_item_id: row.item_id,
       event_type: row.event_type,
       item_status: row.item_status,
+      route: row.event_type === 'project_event' ? payload.route || null : null,
+      deep_link: row.event_type === 'project_event' ? payload.deepLink || null : null,
+      entity_type: row.event_type === 'project_event' ? payload.entityType || null : null,
+      entity_id: row.event_type === 'project_event' ? payload.entityId || null : null,
       is_read: Boolean(row.read_at),
       created_at: row.created_at,
     };

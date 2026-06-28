@@ -3,6 +3,7 @@ const { success, error } = require('../utils/response');
 const fs = require('fs/promises');
 const path = require('path');
 const storageService = require('../services/storage.service');
+const { ProjectEventType, emitProjectEvent } = require('../services/project-event.service');
 
 const stages = [
   { id: 1, name: '设计准备', traditional: '设计准备', emoji: '📐', days: 14, taskCount: 3, keyTaskCount: 1 },
@@ -3557,7 +3558,7 @@ async function updateProjectDesignDocumentStatus(req, res) {
     }
   }
   const [documents] = await db.query(
-    `SELECT id, version_group_id, version_no
+    `SELECT id, version_group_id, version_no, title, uploaded_by
      FROM project_design_documents
      WHERE id = ? AND project_id = ?`,
     [documentId, projectId]
@@ -3596,6 +3597,29 @@ async function updateProjectDesignDocumentStatus(req, res) {
     if (result.affectedRows === 0) {
       await connection.rollback();
       return error(res, '设计资料不存在', 404);
+    }
+    if (status === 'confirmed' || status === 'revision_requested') {
+      await emitProjectEvent(
+        status === 'confirmed'
+          ? ProjectEventType.DESIGN_DOCUMENT_CONFIRMED
+          : ProjectEventType.DESIGN_DOCUMENT_REVISION_REQUESTED,
+        {
+          projectId,
+          actorId: req.user.id,
+          targetUserIds: await getDesignDocumentNotificationTargets(
+            projectId,
+            document.uploaded_by,
+            connection
+          ),
+          entityType: 'design_document',
+          entityId: documentId,
+          title: status === 'confirmed' ? '设计资料已确认' : '设计资料需修改',
+          content: document.title || '设计资料',
+          route: 'project_design_documents',
+          deepLink: { projectId, documentId },
+        },
+        connection
+      );
     }
     await connection.commit();
     return success(res, null, '设计资料状态已更新');
@@ -3895,7 +3919,7 @@ async function updateProjectHandoverStatus(req, res) {
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
   const [rows] = await db.query(
-    `SELECT id, target_user_id, status FROM project_handovers
+    `SELECT id, target_user_id, status, title, created_by FROM project_handovers
      WHERE id = ? AND project_id = ?`,
     [handoverId, projectId]
   );
@@ -3909,21 +3933,50 @@ async function updateProjectHandoverStatus(req, res) {
     (!handover.target_user_id ||
       Number(handover.target_user_id) === Number(req.user.id));
   if (!canReview) return error(res, '只有项目经理可以确认或要求补充设计交底', 403);
-  await db.query(
-    `UPDATE project_handovers
-     SET status = ?,
-         confirmed_by = CASE
-           WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN ?
-           ELSE confirmed_by
-         END,
-         confirmed_at = CASE
-           WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN NOW()
-           ELSE confirmed_at
-         END
-     WHERE id = ? AND project_id = ?`,
-    [status, status, req.user.id, status, handoverId, projectId]
-  );
-  return success(res, null, '设计交底状态已更新');
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query(
+      `UPDATE project_handovers
+       SET status = ?,
+           confirmed_by = CASE
+             WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN ?
+             ELSE confirmed_by
+           END,
+           confirmed_at = CASE
+             WHEN ? = 'confirmed' AND confirmed_at IS NULL THEN NOW()
+             ELSE confirmed_at
+           END
+       WHERE id = ? AND project_id = ?`,
+      [status, status, req.user.id, status, handoverId, projectId]
+    );
+    if (status === 'confirmed' || status === 'revision_needed') {
+      await emitProjectEvent(
+        status === 'confirmed'
+          ? ProjectEventType.DESIGN_HANDOVER_CONFIRMED
+          : ProjectEventType.DESIGN_HANDOVER_REVISION_REQUESTED,
+        {
+          projectId,
+          actorId: req.user.id,
+          targetUserIds: [handover.created_by],
+          entityType: 'design_handover',
+          entityId: handoverId,
+          title: status === 'confirmed' ? '设计交底已确认' : '设计交底需补充',
+          content: handover.title || '设计交底',
+          route: 'project_handover',
+          deepLink: { projectId, handoverId },
+        },
+        connection
+      );
+    }
+    await connection.commit();
+    return success(res, null, '设计交底状态已更新');
+  } catch (handoverStatusError) {
+    await connection.rollback();
+    throw handoverStatusError;
+  } finally {
+    connection.release();
+  }
 }
 
 async function getProjectMaterials(req, res) {
@@ -4614,6 +4667,26 @@ async function requireActiveProjectMember(projectId, userId) {
     [projectId, userId]
   );
   return rows[0] || null;
+}
+
+async function getActiveProjectMemberUserIds(projectId, roles, executor = db) {
+  const [rows] = await executor.query(
+    `SELECT DISTINCT user_id
+     FROM project_members
+     WHERE project_id = ?
+       AND status = 1
+       AND role IN (${roles.map(() => '?').join(', ')})`,
+    [projectId, ...roles]
+  );
+  return rows.map((row) => Number(row.user_id)).filter(Boolean);
+}
+
+async function getDesignDocumentNotificationTargets(projectId, uploadedBy, executor = db) {
+  const targets = new Set();
+  if (uploadedBy) targets.add(Number(uploadedBy));
+  const designerIds = await getActiveProjectMemberUserIds(projectId, ['designer'], executor);
+  designerIds.forEach((id) => targets.add(id));
+  return [...targets].filter(Boolean);
 }
 
 function extractDesignBriefSections(content) {
@@ -5428,6 +5501,15 @@ const progressItemAdjustmentFields = [
   { key: 'sortOrder', label: '排序', column: 'sort_order' },
 ];
 
+const progressItemNotificationFields = new Set([
+  'planned_start',
+  'planned_end',
+  'actual_finish',
+  'status',
+  'requires_inspection',
+  'remark',
+]);
+
 function normalizeProgressItemValue(value) {
   if (value === undefined || value === null || value === '') return null;
   if (value instanceof Date) return value.toISOString().slice(0, 10);
@@ -5660,6 +5742,22 @@ async function updateProjectProgressItem(req, res) {
       userId: req.user.id,
       role: memberRole,
     });
+    if (changes.some((change) => progressItemNotificationFields.has(change.field))) {
+      await emitProjectEvent(ProjectEventType.PROGRESS_ITEM_UPDATED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: await getActiveProjectMemberUserIds(projectId, [
+          'designer',
+          'project_manager',
+        ]),
+        entityType: 'progress_item',
+        entityId: itemId,
+        title: '项目进度已调整',
+        content: item.title,
+        route: 'project_progress',
+        deepLink: { projectId, progressItemId: itemId },
+      });
+    }
   }
   return success(res, { updated: true }, '子事项已更新');
 }
@@ -6276,6 +6374,36 @@ async function reviewProjectInspection(req, res) {
         ]
       );
     }
+    const projectEventTargetUserIds = await getActiveProjectMemberUserIds(
+      projectId,
+      ['designer', 'project_manager', 'project_supervisor'],
+      connection
+    );
+    await emitProjectEvent(
+      result === 'passed'
+        ? ProjectEventType.INSPECTION_PASSED
+        : ProjectEventType.INSPECTION_REWORK_REQUIRED,
+      {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: result === 'rework'
+          ? projectEventTargetUserIds.filter(
+            (userId) => Number(userId) !== Number(responsibleUserId)
+          )
+          : projectEventTargetUserIds,
+        entityType: 'inspection',
+        entityId: inspectionId,
+        title: result === 'passed' ? '验收已通过' : '验收需要整改',
+        content: rows[0].task_name || '验收事项',
+        route: 'project_inspection',
+        deepLink: {
+          projectId,
+          inspectionId,
+          progressItemId: rows[0].progress_item_id,
+        },
+      },
+      connection
+    );
     await connection.commit();
     const progress = await refreshProjectStageByTaskCompletion(projectId);
     return success(
