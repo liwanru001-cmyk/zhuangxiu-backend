@@ -47,6 +47,17 @@ jobs:
               npm install -g pm2
             fi
 
+            git_fetch_with_retry() {
+              for attempt in 1 2 3; do
+                if git fetch origin "$APP_BRANCH"; then
+                  return 0
+                fi
+                echo "git fetch failed, retrying... ($attempt/3)"
+                sleep $((attempt * 5))
+              done
+              return 1
+            }
+
             if [ -d "$APP_DIR" ] && [ ! -d "$APP_DIR/.git" ]; then
               backup_dir="${APP_DIR}-legacy-$(date +%Y%m%d_%H%M%S)"
               staging_dir="${APP_DIR}.deploy-tmp"
@@ -76,7 +87,7 @@ jobs:
             fi
 
             cd "$APP_DIR"
-            git fetch origin "$APP_BRANCH"
+            git_fetch_with_retry
             git reset --hard "origin/$APP_BRANCH"
 
             cd server
