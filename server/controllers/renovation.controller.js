@@ -1111,6 +1111,27 @@ async function inviteProjectOwnerMember(req, res) {
   try {
     await connection.beginTransaction();
     await upsertProjectMember(connection, projectId, targetUserId, 'owner_member');
+    await connection.query(
+      `INSERT INTO project_action_notifications
+         (item_id, recipient_id, event_type, delivery_status, payload)
+       VALUES (NULL, ?, 'project_event', 'pending', ?)`,
+      [
+        targetUserId,
+        JSON.stringify({
+          source: 'project_event',
+          projectEventType: 'OWNER_MEMBER_ADDED',
+          project_id: projectId,
+          projectId,
+          actorId: req.user.id,
+          entityType: 'project',
+          entityId: projectId,
+          title: '你已加入业主方',
+          content: '你已加入该项目的业主方',
+          route: 'project_overview',
+          deepLink: { projectId },
+        }),
+      ]
+    );
     await connection.commit();
   } catch (inviteError) {
     await connection.rollback();
