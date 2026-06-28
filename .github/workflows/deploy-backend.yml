@@ -18,25 +18,46 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Upload checkout over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          APP_DIR: ${{ secrets.APP_DIR }}
+        run: |
+          set -euo pipefail
+
+          ssh_port="${SSH_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh_opts=(
+            -i ~/.ssh/deploy_key
+            -p "$ssh_port"
+            -o StrictHostKeyChecking=accept-new
+            -o ServerAliveInterval=15
+          )
+
+          remote="${SSH_USER}@${SSH_HOST}"
+          staging_dir="${APP_DIR}.deploy-tmp"
+
+          ssh "${ssh_opts[@]}" "$remote" "rm -rf '$staging_dir' && mkdir -p '$staging_dir'"
+          tar --exclude='.git' -czf - . | ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'"
+
       - name: Deploy over SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           APP_DIR: ${{ secrets.APP_DIR }}
-          REPO_URL: ${{ github.server_url }}/${{ github.repository }}.git
-          APP_BRANCH: main
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR,REPO_URL,APP_BRANCH
+          envs: APP_DIR
           script: |
             set -euo pipefail
-
-            if ! command -v git >/dev/null 2>&1; then
-              echo "git is required on the server"
-              exit 1
-            fi
 
             if ! command -v node >/dev/null 2>&1; then
               echo "Node.js is required on the server"
@@ -47,24 +68,15 @@ jobs:
               npm install -g pm2
             fi
 
-            git_fetch_with_retry() {
-              for attempt in 1 2 3; do
-                if git fetch origin "$APP_BRANCH"; then
-                  return 0
-                fi
-                echo "git fetch failed, retrying... ($attempt/3)"
-                sleep $((attempt * 5))
-              done
-              return 1
-            }
+            staging_dir="${APP_DIR}.deploy-tmp"
+            backup_dir="${APP_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
 
-            if [ -d "$APP_DIR" ] && [ ! -d "$APP_DIR/.git" ]; then
-              backup_dir="${APP_DIR}-legacy-$(date +%Y%m%d_%H%M%S)"
-              staging_dir="${APP_DIR}.deploy-tmp"
+            if [ ! -d "$staging_dir" ]; then
+              echo "Missing uploaded staging directory: $staging_dir"
+              exit 1
+            fi
 
-              rm -rf "$staging_dir"
-              git clone --branch "$APP_BRANCH" "$REPO_URL" "$staging_dir"
-
+            if [ -d "$APP_DIR" ]; then
               mkdir -p "$staging_dir/server"
               if [ -f "$APP_DIR/server/.env" ]; then
                 cp -p "$APP_DIR/server/.env" "$staging_dir/server/.env"
@@ -77,18 +89,22 @@ jobs:
                 rm -rf "$staging_dir/server/logs"
                 cp -a "$APP_DIR/server/logs" "$staging_dir/server/logs"
               fi
+              if [ -d "$APP_DIR/server/storage" ]; then
+                rm -rf "$staging_dir/server/storage"
+                cp -a "$APP_DIR/server/storage" "$staging_dir/server/storage"
+              fi
 
               mv "$APP_DIR" "$backup_dir"
               mv "$staging_dir" "$APP_DIR"
-              echo "Migrated legacy deployment to git checkout. Backup: $backup_dir"
-            elif [ ! -d "$APP_DIR/.git" ]; then
               mkdir -p "$(dirname "$APP_DIR")"
-              git clone --branch "$APP_BRANCH" "$REPO_URL" "$APP_DIR"
+              echo "Activated uploaded checkout. Backup: $backup_dir"
+            else
+              mkdir -p "$(dirname "$APP_DIR")"
+              mv "$staging_dir" "$APP_DIR"
+              echo "Activated uploaded checkout."
             fi
 
             cd "$APP_DIR"
-            git_fetch_with_retry
-            git reset --hard "origin/$APP_BRANCH"
 
             cd server
             npm ci --omit=dev
