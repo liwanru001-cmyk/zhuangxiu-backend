@@ -29,11 +29,18 @@ const taskNames = {
 
 const memberPermissions = {
   owner: { manage_members: true, manage_tasks: true, view_project: true },
+  owner_member: {
+    view_project: true,
+    confirm_design: true,
+    feedback_design: true,
+    review_inspection: true,
+  },
   designer: { manage_tasks: true, view_project: true },
   project_manager: { manage_tasks: true, view_project: true },
   project_supervisor: { manage_tasks: true, view_project: true },
   merchant: { view_project: true },
 };
+const ownerSideRoles = new Set(['owner', 'owner_member']);
 const notePublishRoles = new Set(['owner', 'designer', 'merchant', 'project_manager']);
 
 async function ensureProjectCheckInCircleSharesTable(executor = db) {
@@ -120,10 +127,21 @@ async function getProjectMemberRole(projectId, userId) {
   const [rows] = await db.query(
     `SELECT role FROM project_members
      WHERE project_id = ? AND user_id = ? AND status = 1
+     ORDER BY FIELD(role, 'owner', 'owner_member', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
+              id ASC
      LIMIT 1`,
     [projectId, userId]
   );
   return rows[0]?.role || null;
+}
+
+function isOwnerSideRole(role) {
+  return ownerSideRoles.has(role);
+}
+
+async function isOwnerSide(projectId, userId) {
+  const role = await getProjectMemberRole(projectId, userId);
+  return isOwnerSideRole(role);
 }
 
 async function ensureDefaultProjectSpaces(projectId, userId) {
@@ -686,7 +704,7 @@ async function getProjectInfoChangeRequests(req, res) {
   if (!role) return error(res, '项目不存在或无权限', 404);
   const params = [projectId];
   let visibilitySql = '';
-  if (role !== 'owner') {
+  if (!isOwnerSideRole(role)) {
     visibilitySql = 'AND request.requester_id = ?';
     params.push(req.user.id);
   }
@@ -720,7 +738,7 @@ async function createProjectInfoChangeRequest(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
-  if (role === 'owner') return error(res, '业主可以直接修改项目档案');
+  if (isOwnerSideRole(role)) return error(res, '业主方可以直接修改项目档案');
   const payload = projectInfoRequestPayload(req.body);
   if (Object.keys(payload).length === 0) return error(res, '没有可提交的修改内容');
   const [projects] = await db.query(
@@ -1026,7 +1044,7 @@ async function getProjectMembers(req, res) {
      FROM project_members pm
      JOIN users u ON u.id = pm.user_id
      WHERE pm.project_id = ? AND pm.status = 1
-     ORDER BY FIELD(pm.role, 'owner', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
+     ORDER BY FIELD(pm.role, 'owner', 'owner_member', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
               pm.joined_at`,
     [projectId]
   );
@@ -2388,7 +2406,7 @@ async function getAccessibleProjects(req, res) {
      JOIN renovation_projects p ON p.id = pm.project_id
      JOIN users owner ON owner.id = p.user_id
      WHERE pm.user_id = ? AND pm.status = 1
-     ORDER BY FIELD(pm.role, 'owner', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
+     ORDER BY FIELD(pm.role, 'owner', 'owner_member', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
               p.updated_at DESC, p.id DESC`,
     [req.user.id]
   );
@@ -2426,7 +2444,7 @@ async function getProjectCheckIns(req, res) {
   await ensureProjectCheckInCircleSharesTable();
 
   const where =
-    role === 'owner'
+    isOwnerSideRole(role)
       ? 'checkin.project_id = ?'
       : `checkin.project_id = ?
          AND (
@@ -2438,7 +2456,7 @@ async function getProjectCheckIns(req, res) {
            )
          )`;
   const params =
-    role === 'owner' ? [projectId] : [projectId, req.user.id, req.user.id];
+    isOwnerSideRole(role) ? [projectId] : [projectId, req.user.id, req.user.id];
   const [rows] = await db.query(
     `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
             checkin.description, checkin.checkin_date,
@@ -4263,7 +4281,7 @@ async function getProjectTodos(req, res) {
 
 async function getProjectActionItems(projectId, userId) {
   const role = await getProjectMemberRole(projectId, userId);
-  const canViewAllActionItems = ['owner', 'project_manager', 'project_supervisor'].includes(role);
+  const canViewAllActionItems = isOwnerSideRole(role) || ['project_manager', 'project_supervisor'].includes(role);
   const [items] = await db.query(
     `SELECT item.id, item.project_id, item.content, item.due_date, item.status,
             item.created_at, item.updated_at, item.created_by,
@@ -6428,7 +6446,7 @@ async function updateProjectInspectionDesignCheck(req, res) {
     return error(res, '设计检查结果不正确');
   }
   const role = await getProjectMemberRole(projectId, req.user.id);
-  if (!['owner', 'project_manager', 'project_supervisor'].includes(role)) {
+  if (!isOwnerSideRole(role) && !['project_manager', 'project_supervisor'].includes(role)) {
     return error(res, '只有业主、项目经理或监理可以记录验收检查结果', 403);
   }
   const [result] = await db.query(
