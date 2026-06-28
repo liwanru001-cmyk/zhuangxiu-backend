@@ -3272,6 +3272,18 @@ function getDesignDocumentFileType(file) {
   return 'file';
 }
 
+function normalizeUploadedOriginalName(originalName) {
+  const value = String(originalName || '').trim();
+  if (!value) return value;
+  if (!/[ÃÂÄÅÆÇÈÉåæäçéè]/.test(value)) return value;
+  try {
+    const decoded = Buffer.from(value, 'latin1').toString('utf8');
+    return decoded.includes('\uFFFD') ? value : decoded;
+  } catch (_) {
+    return value;
+  }
+}
+
 async function uploadProjectDesignDocument(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -3281,6 +3293,7 @@ async function uploadProjectDesignDocument(req, res) {
   }
   if (!req.file) return error(res, '请选择要上传的设计资料');
   const fileType = getDesignDocumentFileType(req.file);
+  const originalName = normalizeUploadedOriginalName(req.file.originalname);
   try {
     const stored = await storageService.storeDesignDocument({
       req,
@@ -3298,7 +3311,7 @@ async function uploadProjectDesignDocument(req, res) {
       file_type: fileType,
       mime_type: req.file.mimetype,
       file_size: req.file.size,
-      original_name: req.file.originalname,
+      original_name: originalName,
     });
   } catch (uploadError) {
     await removeUploadedFiles([req.file]);
