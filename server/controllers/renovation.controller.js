@@ -3400,7 +3400,7 @@ async function createProjectDesignDocument(req, res) {
         space_key, title, file_url, storage_key, preview_url, thumbnail_url,
         preview_status, preview_type, file_type, mime_type, file_size,
         original_name, version_note, status, uploaded_by)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         projectId,
         versionGroupId,
