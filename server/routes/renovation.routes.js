@@ -263,6 +263,17 @@ router.get(
   asyncHandler(controller.getAccessibleProjects)
 );
 router.get('/projects/:id', ...protectedRoute, asyncHandler(controller.getProjectDetail));
+router.put('/projects/:id/archive', ...protectedRoute, asyncHandler(controller.archiveProject));
+router.put('/projects/:id/restore', ...protectedRoute, asyncHandler(controller.restoreProject));
+router.delete('/projects/:id', ...protectedRoute, asyncHandler(controller.deleteProject));
+router.use(
+  '/projects/:id',
+  ...protectedRoute,
+  asyncHandler((req, res, next) => {
+    if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+    return controller.requireProjectActiveRoute(req, res, next);
+  })
+);
 router.put('/projects/:id/info', ...protectedRoute, asyncHandler(controller.updateProjectInfo));
 router.get(
   '/projects/:id/info-change-requests',

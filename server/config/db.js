@@ -577,6 +577,11 @@ async function ensureRenovationProjectArchiveColumns() {
     ['style_preference', "VARCHAR(255) DEFAULT NULL AFTER lifestyle_notes"],
     ['key_spaces', "VARCHAR(255) DEFAULT NULL AFTER style_preference"],
     ['special_needs', "TEXT DEFAULT NULL AFTER key_spaces"],
+    ['lifecycle_status', "VARCHAR(16) NOT NULL DEFAULT 'active' AFTER status"],
+    ['archived_at', "TIMESTAMP NULL DEFAULT NULL AFTER lifecycle_status"],
+    ['archived_by', "BIGINT UNSIGNED DEFAULT NULL AFTER archived_at"],
+    ['deleted_at', "TIMESTAMP NULL DEFAULT NULL AFTER archived_by"],
+    ['deleted_by', "BIGINT UNSIGNED DEFAULT NULL AFTER deleted_at"],
   ];
 
   for (const [name, definition] of columns) {

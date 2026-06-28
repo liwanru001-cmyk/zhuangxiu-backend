@@ -144,6 +144,89 @@ async function isOwnerSide(projectId, userId) {
   return isOwnerSideRole(role);
 }
 
+function normalizeProjectLifecycle(project) {
+  return project?.lifecycle_status || 'active';
+}
+
+async function getProjectLifecycle(projectId) {
+  const [rows] = await db.query(
+    'SELECT id, user_id, lifecycle_status FROM renovation_projects WHERE id = ? LIMIT 1',
+    [projectId]
+  );
+  return rows[0] || null;
+}
+
+async function requireProjectActiveRoute(req, res, next) {
+  const projectId = Number(req.params.id);
+  if (!projectId) return next();
+  const project = await getProjectLifecycle(projectId);
+  if (!project) return error(res, '项目不存在', 404);
+  if (normalizeProjectLifecycle(project) !== 'active') {
+    return error(res, '项目已归档，不可继续操作', 409);
+  }
+  return next();
+}
+
+async function assertProjectActive(projectId) {
+  const project = await getProjectLifecycle(projectId);
+  if (!project) {
+    const err = new Error('项目不存在');
+    err.status = 404;
+    throw err;
+  }
+  if (normalizeProjectLifecycle(project) !== 'active') {
+    const err = new Error('项目已归档，不可继续操作');
+    err.status = 409;
+    throw err;
+  }
+}
+
+async function projectDeletionBlockers(projectId, ownerId) {
+  const checks = [
+    [
+      'members',
+      '存在其他项目成员',
+      `SELECT id FROM project_members
+       WHERE project_id = ? AND status = 1
+         AND NOT (role = 'owner' AND user_id = ?)
+       LIMIT 1`,
+      [projectId, ownerId],
+    ],
+    ['designDocs', '已有设计资料', 'SELECT id FROM project_design_documents WHERE project_id = ? LIMIT 1', [projectId]],
+    ['handovers', '已有设计交底', 'SELECT id FROM project_handovers WHERE project_id = ? LIMIT 1', [projectId]],
+    ['tasks', '已有项目任务', 'SELECT id FROM renovation_tasks WHERE project_id = ? LIMIT 1', [projectId]],
+    ['progressItems', '已有项目进度事项', 'SELECT id FROM project_progress_items WHERE project_id = ? LIMIT 1', [projectId]],
+    ['inspections', '已有验收记录', 'SELECT id FROM project_inspections WHERE project_id = ? LIMIT 1', [projectId]],
+    ['actionItems', '已有待办事项', 'SELECT id FROM project_action_items WHERE project_id = ? LIMIT 1', [projectId]],
+    ['checkIns', '已有工地打卡', 'SELECT id FROM project_checkins WHERE project_id = ? LIMIT 1', [projectId]],
+    ['expenses', '已有费用记录', 'SELECT id FROM project_expenses WHERE project_id = ? LIMIT 1', [projectId]],
+    ['materials', '已有材料记录', 'SELECT id FROM project_material_items WHERE project_id = ? LIMIT 1', [projectId]],
+    [
+      'events',
+      '已有协同通知事件',
+      `SELECT id FROM project_action_notifications
+       WHERE event_type = 'project_event'
+         AND (
+           CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.projectId')) AS UNSIGNED) = ?
+           OR CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.project_id')) AS UNSIGNED) = ?
+         )
+       LIMIT 1`,
+      [projectId, projectId],
+    ],
+  ];
+  const blockers = [];
+  for (const [key, reason, sql, params] of checks) {
+    try {
+      const [rows] = await db.query(sql, params);
+      if (rows[0]) blockers.push({ key, reason });
+    } catch (checkError) {
+      // Optional tables may not exist in older deployments; ignore those checks.
+      if (checkError.code !== 'ER_NO_SUCH_TABLE') throw checkError;
+    }
+  }
+  return blockers;
+}
+
 async function ensureDefaultProjectSpaces(projectId, userId) {
   const [spaces] = await db.query(
     'SELECT id FROM project_spaces WHERE project_id = ? LIMIT 1',
@@ -221,6 +304,7 @@ async function findProject(userId) {
      FROM renovation_projects p
      LEFT JOIN users u ON p.designer_id = u.id
      WHERE p.user_id = ?
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY p.created_at DESC, p.id DESC
      LIMIT 1`,
     [userId]
@@ -258,6 +342,8 @@ async function calendarForProject(project) {
       total_days: project.total_days,
       current_stage: derivedProgress.current_stage,
       status: derivedProgress.status,
+      lifecycle_status: normalizeProjectLifecycle(project),
+      archived_at: project.archived_at || null,
       pace_mode: project.pace_mode || 'normal',
       pace_updated_at: project.pace_updated_at,
       project_type: project.project_type,
@@ -336,6 +422,7 @@ async function setup(req, res) {
       : await connection.query(
           `SELECT id FROM renovation_projects
            WHERE user_id = ?
+             AND COALESCE(lifecycle_status, 'active') = 'active'
            ORDER BY created_at DESC, id DESC
            LIMIT 1 FOR UPDATE`,
           [req.user.id]
@@ -482,6 +569,7 @@ async function updateTask(req, res) {
      JOIN renovation_projects p ON t.project_id = p.id
      SET ${updates.join(', ')}
      WHERE t.id = ?
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
        AND EXISTS (
          SELECT 1 FROM project_members pm
          WHERE pm.project_id = p.id
@@ -824,8 +912,89 @@ async function handleProjectInfoChangeRequest(req, res) {
 }
 
 async function resetProject(req, res) {
-  await db.query('DELETE FROM renovation_projects WHERE user_id = ?', [req.user.id]);
+  const project = await findProject(req.user.id);
+  if (!project) return error(res, '装修档案不存在', 404);
+  const blockers = await projectDeletionBlockers(project.id, req.user.id);
+  if (blockers.length) {
+    return error(
+      res,
+      `项目已有协同数据，不能删除，可归档项目。原因：${blockers[0].reason}`,
+      409,
+      { blockers }
+    );
+  }
+  await db.query(
+    `UPDATE renovation_projects
+     SET lifecycle_status = 'deleted', deleted_at = NOW(), deleted_by = ?, updated_at = NOW()
+     WHERE id = ? AND user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
+    [req.user.id, project.id, req.user.id]
+  );
   return success(res, null, '装修档案已删除');
+}
+
+async function archiveProject(req, res) {
+  const projectId = Number(req.params.id);
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    return error(res, '只有主业主可以归档项目', 403);
+  }
+  const [result] = await db.query(
+    `UPDATE renovation_projects
+     SET lifecycle_status = 'archived', archived_at = NOW(), archived_by = ?, updated_at = NOW()
+     WHERE id = ? AND user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
+    [req.user.id, projectId, req.user.id]
+  );
+  if (result.affectedRows === 0) return error(res, '项目不存在或已归档', 404);
+  return success(res, { project_id: projectId, lifecycle_status: 'archived' }, '项目已归档');
+}
+
+async function restoreProject(req, res) {
+  const projectId = Number(req.params.id);
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    return error(res, '只有主业主可以恢复项目', 403);
+  }
+  const [result] = await db.query(
+    `UPDATE renovation_projects
+     SET lifecycle_status = 'active',
+         archived_at = NULL,
+         archived_by = NULL,
+         updated_at = NOW()
+     WHERE id = ? AND user_id = ? AND COALESCE(lifecycle_status, 'active') = 'archived'`,
+    [projectId, req.user.id]
+  );
+  if (result.affectedRows === 0) return error(res, '项目不存在或未归档', 404);
+  return success(res, { project_id: projectId, lifecycle_status: 'active' }, '项目已恢复');
+}
+
+async function deleteProject(req, res) {
+  const projectId = Number(req.params.id);
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    return error(res, '只有主业主可以删除项目', 403);
+  }
+  const [projects] = await db.query(
+    `SELECT id, user_id, lifecycle_status
+     FROM renovation_projects
+     WHERE id = ? AND user_id = ? AND COALESCE(lifecycle_status, 'active') != 'deleted'
+     LIMIT 1`,
+    [projectId, req.user.id]
+  );
+  const project = projects[0];
+  if (!project) return error(res, '项目不存在', 404);
+  const blockers = await projectDeletionBlockers(projectId, req.user.id);
+  if (blockers.length) {
+    return error(
+      res,
+      `项目已有协同数据，不能删除，可归档项目。原因：${blockers[0].reason}`,
+      409,
+      { blockers }
+    );
+  }
+  await db.query(
+    `UPDATE renovation_projects
+     SET lifecycle_status = 'deleted', deleted_at = NOW(), deleted_by = ?, updated_at = NOW()
+     WHERE id = ? AND user_id = ?`,
+    [req.user.id, projectId, req.user.id]
+  );
+  return success(res, { project_id: projectId, lifecycle_status: 'deleted' }, '项目已删除');
 }
 
 // 浏览所有用户（业主用来找潜在设计师）
@@ -875,7 +1044,9 @@ async function requestDesigner(req, res) {
   );
   if (!users[0]) return error(res, '该用户不是设计师账号', 400);
   const [projects] = await db.query(
-    'SELECT id, designer_id FROM renovation_projects WHERE id = ? AND user_id = ?',
+    `SELECT id, designer_id FROM renovation_projects
+     WHERE id = ? AND user_id = ?
+       AND COALESCE(lifecycle_status, 'active') = 'active'`,
     [projectId, req.user.id]
   );
   if (!projects[0]) return error(res, '项目不存在', 404);
@@ -904,6 +1075,7 @@ async function getReceivedRequests(req, res) {
      JOIN users u ON r.owner_id = u.id
      JOIN renovation_projects p ON r.project_id = p.id AND r.owner_id = p.user_id
      WHERE r.designer_id = ?
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY
        CASE r.status WHEN 0 THEN 0 ELSE 1 END,
        r.created_at DESC`,
@@ -931,7 +1103,8 @@ async function handleRequest(req, res) {
       const [result] = await connection.query(
         `UPDATE renovation_projects
          SET designer_id = ?
-         WHERE id = ? AND user_id = ? AND designer_id IS NULL`,
+         WHERE id = ? AND user_id = ? AND designer_id IS NULL
+           AND COALESCE(lifecycle_status, 'active') = 'active'`,
         [req.user.id, rows[0].project_id, rows[0].owner_id]
       );
       if (result.affectedRows === 0) {
@@ -989,11 +1162,14 @@ async function unbindDesigner(req, res) {
       `UPDATE project_members pm
        JOIN renovation_projects p ON p.id = pm.project_id
        SET pm.status = 2, pm.updated_at = NOW()
-       WHERE p.user_id = ? AND pm.role = 'designer' AND pm.status = 1`,
+       WHERE p.user_id = ? AND pm.role = 'designer' AND pm.status = 1
+         AND COALESCE(p.lifecycle_status, 'active') = 'active'`,
       [req.user.id]
     );
     await connection.query(
-      'UPDATE renovation_projects SET designer_id = NULL WHERE user_id = ?',
+      `UPDATE renovation_projects
+       SET designer_id = NULL
+       WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
       [req.user.id]
     );
     await connection.commit();
@@ -1022,6 +1198,7 @@ async function getMyProjects(req, res) {
      JOIN renovation_projects p ON p.id = pm.project_id
      JOIN users u ON p.user_id = u.id
      WHERE pm.user_id = ? AND pm.role = ? AND pm.status = 1
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY p.updated_at DESC`,
     [req.user.id, memberRole]
   );
@@ -1077,7 +1254,7 @@ async function inviteProjectOwnerMember(req, res) {
   if (!projectId || !targetUserId) return error(res, '邀请信息不完整');
   if (targetUserId === Number(req.user.id)) return error(res, '不能邀请自己');
   if (!(await requireProjectOwner(projectId, req.user.id))) {
-    return error(res, '只有主业主可以添加业主成员', 403);
+    return error(res, '只有主业主可以添加家庭成员', 403);
   }
 
   const [projects] = await db.query(
@@ -1087,7 +1264,7 @@ async function inviteProjectOwnerMember(req, res) {
   const project = projects[0];
   if (!project) return error(res, '项目不存在', 404);
   if (Number(project.user_id) === targetUserId) {
-    return error(res, '主业主已经在业主方中', 400);
+    return error(res, '主业主无需添加为家庭成员', 400);
   }
 
   const [users] = await db.query(
@@ -1105,7 +1282,7 @@ async function inviteProjectOwnerMember(req, res) {
      LIMIT 1`,
     [projectId, targetUserId]
   );
-  if (existingOwnerSide[0]) return error(res, '该用户已经是业主方成员', 409);
+  if (existingOwnerSide[0]) return error(res, '该用户已经是家庭成员', 409);
 
   const connection = await db.getConnection();
   try {
@@ -1125,8 +1302,8 @@ async function inviteProjectOwnerMember(req, res) {
           actorId: req.user.id,
           entityType: 'project',
           entityId: projectId,
-          title: '你已加入业主方',
-          content: '你已加入该项目的业主方',
+          title: '你已加入家庭成员',
+          content: '你已作为家庭成员加入该项目',
           route: 'project_overview',
           deepLink: { projectId },
         }),
@@ -1148,7 +1325,7 @@ async function inviteProjectOwnerMember(req, res) {
       role: 'owner_member',
       user: users[0],
     },
-    '业主成员已加入'
+    '家庭成员已加入'
   );
 }
 
@@ -1157,7 +1334,7 @@ async function removeProjectOwnerMember(req, res) {
   const memberId = Number(req.params.memberId);
   if (!projectId || !memberId) return error(res, '成员信息不完整');
   if (!(await requireProjectOwner(projectId, req.user.id))) {
-    return error(res, '只有主业主可以移除业主成员', 403);
+    return error(res, '只有主业主可以移除家庭成员', 403);
   }
 
   const [members] = await db.query(
@@ -1166,15 +1343,15 @@ async function removeProjectOwnerMember(req, res) {
     [memberId, projectId]
   );
   const member = members[0];
-  if (!member) return error(res, '业主成员不存在', 404);
+  if (!member) return error(res, '家庭成员不存在', 404);
   if (member.role === 'owner') return error(res, '不能移除主业主', 400);
-  if (member.role !== 'owner_member') return error(res, '该成员不是业主成员', 400);
+  if (member.role !== 'owner_member') return error(res, '该成员不是家庭成员', 400);
 
   await db.query(
     'UPDATE project_members SET status = 2, updated_at = NOW() WHERE id = ?',
     [memberId]
   );
-  return success(res, null, '业主成员已移除');
+  return success(res, null, '家庭成员已移除');
 }
 
 async function getProjectSpaces(req, res) {
@@ -2031,6 +2208,7 @@ async function getReceivedMemberRequests(req, res) {
      JOIN users u ON u.id = r.owner_id
      JOIN renovation_projects p ON p.id = r.project_id
      WHERE r.target_user_id = ? AND r.member_role = ?
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY CASE r.status WHEN 0 THEN 0 ELSE 1 END, r.updated_at DESC`,
     [req.user.id, requestedRole]
   );
@@ -2078,7 +2256,8 @@ async function handleMemberRequest(req, res) {
       if (rows[0].member_role === 'designer') {
         await connection.query(
           `UPDATE renovation_projects SET designer_id = ?
-           WHERE id = ? AND designer_id IS NULL`,
+           WHERE id = ? AND designer_id IS NULL
+             AND COALESCE(lifecycle_status, 'active') = 'active'`,
           [req.user.id, rows[0].project_id]
         );
       }
@@ -2183,6 +2362,7 @@ async function searchProjectOwners(req, res) {
      ${invitationJoin}
      WHERE u.id != ?
        AND (u.phone = ? OR p.project_code = ?)
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY u.nickname, u.id
      LIMIT 5`,
     hasMemberRole
@@ -2225,7 +2405,8 @@ async function inviteProjectOwner(req, res) {
   }
 
   const [projects] = await db.query(
-    'SELECT id, designer_id FROM renovation_projects WHERE user_id = ?',
+    `SELECT id, designer_id FROM renovation_projects
+     WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
     [ownerId]
   );
   if (!projects[0]) return error(res, '该用户还没有创建装修档案', 404);
@@ -2350,7 +2531,9 @@ async function handleProjectInvitation(req, res) {
     if (action === 'accept') {
       if (rows[0].member_role === 'designer') {
         const [result] = await connection.query(
-          'UPDATE renovation_projects SET designer_id = COALESCE(designer_id, ?) WHERE user_id = ?',
+          `UPDATE renovation_projects
+           SET designer_id = COALESCE(designer_id, ?)
+           WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
           [rows[0].designer_id, req.user.id]
         );
         if (result.affectedRows === 0) {
@@ -2359,7 +2542,8 @@ async function handleProjectInvitation(req, res) {
         }
       }
       const [projects] = await connection.query(
-        'SELECT id FROM renovation_projects WHERE user_id = ?',
+        `SELECT id FROM renovation_projects
+         WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
         [req.user.id]
       );
       if (!projects.length) {
@@ -2414,6 +2598,7 @@ async function planTask(req, res) {
      JOIN renovation_projects p ON t.project_id = p.id
      SET ${fields.join(', ')}
      WHERE t.id = ?
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
        AND EXISTS (
          SELECT 1 FROM project_members pm
          WHERE pm.project_id = p.id
@@ -2447,6 +2632,7 @@ async function addTask(req, res) {
      FROM project_members pm
      JOIN renovation_projects p ON p.id = pm.project_id
      WHERE pm.user_id = ? AND pm.role = ? AND pm.status = 1
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
        AND (? IS NULL OR p.id = ?)
      ORDER BY p.updated_at DESC
      LIMIT 1`,
@@ -2518,6 +2704,7 @@ async function getProjects(req, res) {
      FROM renovation_projects p
      LEFT JOIN users u ON p.designer_id = u.id
      WHERE p.user_id = ?
+       AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY p.created_at DESC, p.id DESC`,
     [req.user.id]
   );
@@ -2531,6 +2718,8 @@ async function getProjects(req, res) {
       total_days: project.total_days,
       current_stage: project.current_stage,
       status: project.status,
+      lifecycle_status: normalizeProjectLifecycle(project),
+      archived_at: project.archived_at || null,
       project_type: project.project_type,
       house_layout: project.house_layout,
       floor_plan_image: project.floor_plan_image,
@@ -2551,21 +2740,30 @@ async function getProjects(req, res) {
 }
 
 async function getAccessibleProjects(req, res) {
+  const includeArchived =
+    req.query.include_archived === '1' || req.query.includeArchived === '1';
   const [rows] = await db.query(
     `SELECT p.id, p.project_code, p.project_name, p.house_area, p.start_date, p.total_days, p.current_stage,
             p.status, p.project_type, p.house_layout, p.floor_plan_image,
             p.renovation_method, p.budget_range, p.expected_move_in_date,
             p.resident_info, p.lifestyle_notes, p.style_preference,
-            p.key_spaces, p.special_needs, p.created_at, pm.role AS member_role,
+            p.key_spaces, p.special_needs, p.lifecycle_status, p.archived_at,
+            p.created_at, pm.role AS member_role,
             owner.nickname AS owner_nickname, owner.phone AS owner_phone,
             owner.city AS owner_city
      FROM project_members pm
      JOIN renovation_projects p ON p.id = pm.project_id
      JOIN users owner ON owner.id = p.user_id
      WHERE pm.user_id = ? AND pm.status = 1
+       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
+       AND (
+         COALESCE(p.lifecycle_status, 'active') = 'active'
+         OR (? = 1 AND pm.role = 'owner')
+       )
      ORDER BY FIELD(pm.role, 'owner', 'owner_member', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
+              FIELD(COALESCE(p.lifecycle_status, 'active'), 'active', 'archived'),
               p.updated_at DESC, p.id DESC`,
-    [req.user.id]
+    [req.user.id, includeArchived ? 1 : 0]
   );
   return success(res, {
     projects: rows.map((project) => ({
@@ -2584,6 +2782,7 @@ async function getProjectDetail(req, res) {
      FROM renovation_projects p
      LEFT JOIN users u ON p.designer_id = u.id
      WHERE p.id = ?
+       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
        AND EXISTS (
          SELECT 1 FROM project_members pm
          WHERE pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
@@ -2600,20 +2799,8 @@ async function getProjectCheckIns(req, res) {
   if (!role) return error(res, '项目不存在或无权限', 404);
   await ensureProjectCheckInCircleSharesTable();
 
-  const where =
-    isOwnerSideRole(role)
-      ? 'checkin.project_id = ?'
-      : `checkin.project_id = ?
-         AND (
-           checkin.user_id = ?
-           OR EXISTS (
-             SELECT 1 FROM project_checkin_shares share
-             WHERE share.checkin_id = checkin.id
-               AND share.shared_with_user_id = ?
-           )
-         )`;
-  const params =
-    isOwnerSideRole(role) ? [projectId] : [projectId, req.user.id, req.user.id];
+  const where = 'checkin.project_id = ? AND checkin.user_id = ?';
+  const params = [projectId, req.user.id];
   const [rows] = await db.query(
     `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
             checkin.description, checkin.checkin_date,
@@ -4441,8 +4628,6 @@ async function getProjectTodos(req, res) {
 }
 
 async function getProjectActionItems(projectId, userId) {
-  const role = await getProjectMemberRole(projectId, userId);
-  const canViewAllActionItems = isOwnerSideRole(role) || ['project_manager', 'project_supervisor'].includes(role);
   const [items] = await db.query(
     `SELECT item.id, item.project_id, item.content, item.due_date, item.status,
             item.created_at, item.updated_at, item.created_by,
@@ -4451,8 +4636,7 @@ async function getProjectActionItems(projectId, userId) {
      JOIN users creator ON creator.id = item.created_by
      WHERE item.project_id = ?
        AND (
-         ? = 1
-         OR item.created_by = ?
+         item.created_by = ?
          OR EXISTS (
            SELECT 1 FROM project_action_item_assignees assigned_filter
            WHERE assigned_filter.item_id = item.id
@@ -4466,7 +4650,7 @@ async function getProjectActionItems(projectId, userId) {
        )
      ORDER BY CASE item.status WHEN 'pending' THEN 0 ELSE 1 END,
               item.due_date, item.updated_at DESC`,
-    [projectId, canViewAllActionItems ? 1 : 0, userId, userId, userId]
+    [projectId, userId, userId, userId]
   );
   if (!items.length) return [];
   const itemIds = items.map((item) => item.id);
@@ -4739,10 +4923,9 @@ async function submitProjectActionItemFeedback(req, res) {
 // GET /api/renovation/projects/:id/progress - 获取项目进度
 async function getProjectProgress(req, res) {
   const projectId = Number(req.params.id);
-  await recomputeProjectProgressDerivedStatuses(projectId);
   const [projectRows] = await db.query(
     `SELECT p.id, p.current_stage, p.status, p.start_date, p.total_days,
-            p.pace_mode, p.pace_updated_at
+            p.pace_mode, p.pace_updated_at, p.lifecycle_status
      FROM renovation_projects p
      WHERE p.id = ?
        AND EXISTS (
@@ -4752,6 +4935,9 @@ async function getProjectProgress(req, res) {
     [projectId, req.user.id]
   );
   if (!projectRows[0]) return error(res, '项目不存在', 404);
+  if (normalizeProjectLifecycle(projectRows[0]) === 'active') {
+    await recomputeProjectProgressDerivedStatuses(projectId);
+  }
 
   const [taskStats] = await db.query(
     `SELECT
@@ -6788,6 +6974,10 @@ module.exports = {
   createProjectInfoChangeRequest,
   handleProjectInfoChangeRequest,
   resetProject,
+  archiveProject,
+  restoreProject,
+  deleteProject,
+  requireProjectActiveRoute,
   listUsers,
   requestDesigner,
   getReceivedRequests,
