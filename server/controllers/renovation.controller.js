@@ -1737,21 +1737,27 @@ async function createProjectCaseShare(req, res) {
     ]
   );
 
-  await db.query(
-    `INSERT INTO project_action_notifications
-       (item_id, recipient_id, event_type, delivery_status, payload)
-     VALUES (?, ?, 'case_share_request', 'pending', ?)`,
-    [
-      result.insertId,
-      project.owner_id,
-      JSON.stringify({
-        source: 'case_share_request',
-        project_id: projectId,
-        case_share_id: result.insertId,
-        title,
-      }),
-    ]
-  );
+  const ownerSideRecipients = uniqueUserIds(
+    await getOwnerSideMemberUserIds(projectId),
+    [project.owner_id]
+  ).filter((userId) => Number(userId) !== Number(req.user.id));
+  if (ownerSideRecipients.length) {
+    await db.query(
+      `INSERT INTO project_action_notifications
+         (item_id, recipient_id, event_type, delivery_status, payload)
+       VALUES ${ownerSideRecipients.map(() => "(?, ?, 'case_share_request', 'pending', ?)").join(', ')}`,
+      ownerSideRecipients.flatMap((userId) => [
+        result.insertId,
+        userId,
+        JSON.stringify({
+          source: 'case_share_request',
+          project_id: projectId,
+          case_share_id: result.insertId,
+          title,
+        }),
+      ])
+    );
+  }
 
   return success(
     res,
@@ -4082,7 +4088,10 @@ async function updateProjectHandoverStatus(req, res) {
         {
           projectId,
           actorId: req.user.id,
-          targetUserIds: [handover.created_by],
+          targetUserIds: uniqueUserIds(
+            [handover.created_by],
+            await getOwnerSideMemberUserIds(projectId, connection)
+          ),
           entityType: 'design_handover',
           entityId: handoverId,
           title: status === 'confirmed' ? '设计交底已确认' : '设计交底需补充',
@@ -4805,11 +4814,28 @@ async function getActiveProjectMemberUserIds(projectId, roles, executor = db) {
   return rows.map((row) => Number(row.user_id)).filter(Boolean);
 }
 
+async function getOwnerSideMemberUserIds(projectId, executor = db) {
+  return getActiveProjectMemberUserIds(projectId, ['owner', 'owner_member'], executor);
+}
+
+function uniqueUserIds(...groups) {
+  return [
+    ...new Set(
+      groups
+        .flat()
+        .map((id) => Number(id))
+        .filter((id) => Number.isInteger(id) && id > 0)
+    ),
+  ];
+}
+
 async function getDesignDocumentNotificationTargets(projectId, uploadedBy, executor = db) {
   const targets = new Set();
   if (uploadedBy) targets.add(Number(uploadedBy));
   const designerIds = await getActiveProjectMemberUserIds(projectId, ['designer'], executor);
+  const ownerSideIds = await getOwnerSideMemberUserIds(projectId, executor);
   designerIds.forEach((id) => targets.add(id));
+  ownerSideIds.forEach((id) => targets.add(id));
   return [...targets].filter(Boolean);
 }
 
@@ -5870,10 +5896,13 @@ async function updateProjectProgressItem(req, res) {
       await emitProjectEvent(ProjectEventType.PROGRESS_ITEM_UPDATED, {
         projectId,
         actorId: req.user.id,
-        targetUserIds: await getActiveProjectMemberUserIds(projectId, [
-          'designer',
-          'project_manager',
-        ]),
+        targetUserIds: uniqueUserIds(
+          await getActiveProjectMemberUserIds(projectId, [
+            'designer',
+            'project_manager',
+          ]),
+          await getOwnerSideMemberUserIds(projectId)
+        ),
         entityType: 'progress_item',
         entityId: itemId,
         title: '项目进度已调整',
@@ -6498,10 +6527,13 @@ async function reviewProjectInspection(req, res) {
         ]
       );
     }
-    const projectEventTargetUserIds = await getActiveProjectMemberUserIds(
-      projectId,
-      ['designer', 'project_manager', 'project_supervisor'],
-      connection
+    const projectEventTargetUserIds = uniqueUserIds(
+      await getActiveProjectMemberUserIds(
+        projectId,
+        ['designer', 'project_manager', 'project_supervisor'],
+        connection
+      ),
+      await getOwnerSideMemberUserIds(projectId, connection)
     );
     await emitProjectEvent(
       result === 'passed'
