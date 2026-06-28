@@ -181,9 +181,35 @@ async function assertProjectActive(projectId) {
   }
 }
 
+async function getExistingColumnNames(tableName) {
+  const [rows] = await db.query(
+    `SELECT COLUMN_NAME
+     FROM INFORMATION_SCHEMA.COLUMNS
+     WHERE TABLE_SCHEMA = DATABASE()
+       AND TABLE_NAME = ?`,
+    [tableName]
+  );
+  return new Set(rows.map((row) => row.COLUMN_NAME));
+}
+
 async function projectDeletionBlockers(projectId, ownerId) {
   const defaultTasks = await getDefaultProgressTaskTemplates();
   const defaultTaskCount = defaultTasks.length;
+  const taskColumns = await getExistingColumnNames('renovation_tasks');
+  const taskConditions = [];
+  if (taskColumns.has('actual_start')) taskConditions.push('actual_start IS NOT NULL');
+  if (taskColumns.has('actual_end')) taskConditions.push('actual_end IS NOT NULL');
+  if (taskColumns.has('status')) taskConditions.push('status = 3');
+  if (taskColumns.has('remark')) {
+    taskConditions.push("NULLIF(TRIM(COALESCE(remark, '')), '') IS NOT NULL");
+  }
+  if (taskColumns.has('updated_at') && taskColumns.has('created_at')) {
+    taskConditions.push('updated_at > created_at');
+  }
+  taskConditions.push(`(
+             SELECT COUNT(*) FROM renovation_tasks WHERE project_id = ?
+           ) > ?`);
+  const taskParams = [projectId, projectId, defaultTaskCount];
   const checks = [
     [
       'members',
@@ -202,17 +228,10 @@ async function projectDeletionBlockers(projectId, ownerId) {
       `SELECT id FROM renovation_tasks
        WHERE project_id = ?
          AND (
-           actual_start IS NOT NULL
-           OR actual_end IS NOT NULL
-           OR status = 3
-           OR NULLIF(TRIM(COALESCE(remark, '')), '') IS NOT NULL
-           OR updated_at > created_at
-           OR (
-             SELECT COUNT(*) FROM renovation_tasks WHERE project_id = ?
-           ) > ?
+           ${taskConditions.join('\n           OR ')}
          )
        LIMIT 1`,
-      [projectId, projectId, defaultTaskCount],
+      taskParams,
     ],
     ['progressItems', '已有项目进度事项', 'SELECT id FROM project_progress_items WHERE project_id = ? LIMIT 1', [projectId]],
     ['inspections', '已有验收记录', 'SELECT id FROM project_inspections WHERE project_id = ? LIMIT 1', [projectId]],
@@ -225,6 +244,7 @@ async function projectDeletionBlockers(projectId, ownerId) {
       '已有协同通知事件',
       `SELECT id FROM project_action_notifications
        WHERE event_type = 'project_event'
+         AND JSON_VALID(payload)
          AND (
            CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.projectId')) AS UNSIGNED) = ?
            OR CAST(JSON_UNQUOTE(JSON_EXTRACT(payload, '$.project_id')) AS UNSIGNED) = ?
