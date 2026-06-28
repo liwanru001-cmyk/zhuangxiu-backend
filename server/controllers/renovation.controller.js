@@ -3664,8 +3664,8 @@ async function updateProjectDesignDocument(req, res) {
 async function updateProjectDesignDocumentStatus(req, res) {
   const projectId = Number(req.params.id);
   const documentId = Number(req.params.documentId);
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
-    return error(res, '只有业主可以确认设计资料', 403);
+  if (!(await isOwnerSide(projectId, req.user.id))) {
+    return error(res, '只有业主方可以确认设计资料', 403);
   }
   const status = String(req.body.status || '');
   if (!designDocumentStatuses.has(status) || ['draft', 'pending', 'superseded'].includes(status)) {
@@ -4052,10 +4052,11 @@ async function updateProjectHandoverStatus(req, res) {
     return error(res, '设计交底已确认，不能直接修改原内容，请创建新版本或追加补充说明', 409);
   }
   const canReview =
-    role === 'project_manager' &&
-    (!handover.target_user_id ||
-      Number(handover.target_user_id) === Number(req.user.id));
-  if (!canReview) return error(res, '只有项目经理可以确认或要求补充设计交底', 403);
+    isOwnerSideRole(role) ||
+    (role === 'project_manager' &&
+      (!handover.target_user_id ||
+        Number(handover.target_user_id) === Number(req.user.id)));
+  if (!canReview) return error(res, '只有业主方或指定项目经理可以确认或要求补充设计交底', 403);
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -6386,8 +6387,8 @@ async function reviewProjectInspection(req, res) {
   if (!['passed', 'rework'].includes(result)) {
     return error(res, '验收结果不正确');
   }
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
-    return error(res, '只有业主可以确认验收', 403);
+  if (!(await isOwnerSide(projectId, req.user.id))) {
+    return error(res, '只有业主方可以确认验收', 403);
   }
   if (result === 'rework' && !remark) return error(res, '请填写整改要求');
   if (result === 'rework' && !responsibleUserId) {
