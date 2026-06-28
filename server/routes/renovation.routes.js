@@ -443,6 +443,21 @@ router.post(
 );
 router.get('/projects/:id/members', ...protectedRoute, asyncHandler(controller.getProjectMembers));
 router.get(
+  '/projects/:id/owner-members',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectOwnerSideMembers)
+);
+router.post(
+  '/projects/:id/owner-members',
+  ...protectedRoute,
+  asyncHandler(controller.inviteProjectOwnerMember)
+);
+router.delete(
+  '/projects/:id/owner-members/:memberId',
+  ...protectedRoute,
+  asyncHandler(controller.removeProjectOwnerMember)
+);
+router.get(
   '/projects/:id/check-ins',
   ...protectedRoute,
   asyncHandler(controller.getProjectCheckIns)

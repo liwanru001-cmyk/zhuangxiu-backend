@@ -1051,6 +1051,111 @@ async function getProjectMembers(req, res) {
   return success(res, rows);
 }
 
+async function getProjectOwnerSideMembers(req, res) {
+  const projectId = Number(req.params.id);
+  if (!projectId || !(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const [rows] = await db.query(
+    `SELECT pm.id, pm.project_id, pm.user_id, pm.role, pm.status,
+            pm.permissions, pm.joined_at,
+            u.nickname, u.phone, u.avatar, u.city
+     FROM project_members pm
+     JOIN users u ON u.id = pm.user_id
+     WHERE pm.project_id = ?
+       AND pm.status = 1
+       AND pm.role IN ('owner', 'owner_member')
+     ORDER BY FIELD(pm.role, 'owner', 'owner_member'), pm.joined_at, pm.id`,
+    [projectId]
+  );
+  return success(res, rows);
+}
+
+async function inviteProjectOwnerMember(req, res) {
+  const projectId = Number(req.params.id);
+  const targetUserId = Number(req.body.target_user_id);
+  if (!projectId || !targetUserId) return error(res, '邀请信息不完整');
+  if (targetUserId === Number(req.user.id)) return error(res, '不能邀请自己');
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    return error(res, '只有主业主可以添加业主成员', 403);
+  }
+
+  const [projects] = await db.query(
+    'SELECT id, user_id FROM renovation_projects WHERE id = ?',
+    [projectId]
+  );
+  const project = projects[0];
+  if (!project) return error(res, '项目不存在', 404);
+  if (Number(project.user_id) === targetUserId) {
+    return error(res, '主业主已经在业主方中', 400);
+  }
+
+  const [users] = await db.query(
+    'SELECT id, nickname, phone, avatar, city FROM users WHERE id = ?',
+    [targetUserId]
+  );
+  if (!users[0]) return error(res, '用户不存在', 404);
+
+  const [existingOwnerSide] = await db.query(
+    `SELECT id, role, status FROM project_members
+     WHERE project_id = ?
+       AND user_id = ?
+       AND role IN ('owner', 'owner_member')
+       AND status = 1
+     LIMIT 1`,
+    [projectId, targetUserId]
+  );
+  if (existingOwnerSide[0]) return error(res, '该用户已经是业主方成员', 409);
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await upsertProjectMember(connection, projectId, targetUserId, 'owner_member');
+    await connection.commit();
+  } catch (inviteError) {
+    await connection.rollback();
+    throw inviteError;
+  } finally {
+    connection.release();
+  }
+
+  return success(
+    res,
+    {
+      project_id: projectId,
+      user_id: targetUserId,
+      role: 'owner_member',
+      user: users[0],
+    },
+    '业主成员已加入'
+  );
+}
+
+async function removeProjectOwnerMember(req, res) {
+  const projectId = Number(req.params.id);
+  const memberId = Number(req.params.memberId);
+  if (!projectId || !memberId) return error(res, '成员信息不完整');
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    return error(res, '只有主业主可以移除业主成员', 403);
+  }
+
+  const [members] = await db.query(
+    `SELECT id, user_id, role FROM project_members
+     WHERE id = ? AND project_id = ? AND status = 1`,
+    [memberId, projectId]
+  );
+  const member = members[0];
+  if (!member) return error(res, '业主成员不存在', 404);
+  if (member.role === 'owner') return error(res, '不能移除主业主', 400);
+  if (member.role !== 'owner_member') return error(res, '该成员不是业主成员', 400);
+
+  await db.query(
+    'UPDATE project_members SET status = 2, updated_at = NOW() WHERE id = ?',
+    [memberId]
+  );
+  return success(res, null, '业主成员已移除');
+}
+
 async function getProjectSpaces(req, res) {
   const projectId = Number(req.params.id);
   if (!projectId || !(await canAccessProject(projectId, req.user.id))) {
@@ -6626,6 +6731,9 @@ module.exports = {
   createProjectCaseShare,
   handleProjectCaseShare,
   removeProjectMember,
+  getProjectOwnerSideMembers,
+  inviteProjectOwnerMember,
+  removeProjectOwnerMember,
   getMemberCandidates,
   requestProjectMember,
   getSentMemberRequests,
