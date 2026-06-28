@@ -98,7 +98,7 @@ jobs:
             pm2 save
 
             if command -v nginx >/dev/null 2>&1; then
-              nginx_placeholder_conf="$(grep -Rsl 'frontend not deployed' /etc/nginx /usr/local/nginx/conf 2>/dev/null | head -n 1 || true)"
+              nginx_placeholder_conf="$(grep -Rsl 'frontend not deployed' /etc/nginx /usr/local/nginx/conf 2>/dev/null | grep -v '\.bak\.' | head -n 1 || true)"
               if [ -n "$nginx_placeholder_conf" ] && [ -f "$nginx_placeholder_conf" ]; then
                 nginx_runner=""
                 if [ "$(id -u)" -eq 0 ]; then
