@@ -1841,7 +1841,7 @@ async function removeProjectMember(req, res) {
 
 async function getMemberCandidates(req, res) {
   const role = String(req.query.role || '');
-  if (!['designer', 'project_manager', 'project_supervisor', 'merchant'].includes(role)) {
+  if (!['owner_member', 'designer', 'project_manager', 'project_supervisor', 'merchant'].includes(role)) {
     return error(res, '成员身份不正确');
   }
   const projectId = Number(req.query.project_id);
@@ -1854,6 +1854,31 @@ async function getMemberCandidates(req, res) {
     [projectId, req.user.id]
   );
   if (!owners[0]) return error(res, '只有业主可以添加成员', 403);
+
+  if (role === 'owner_member') {
+    const [rows] = await db.query(
+      `SELECT u.id, u.nickname, u.avatar, u.city, u.bio, u.phone,
+              'owner_member' AS role,
+              pm.status AS member_status,
+              NULL AS request_status
+       FROM users u
+       LEFT JOIN project_members pm
+         ON pm.project_id = ? AND pm.user_id = u.id
+            AND pm.role IN ('owner', 'owner_member') AND pm.status = 1
+       WHERE u.id != ?
+         AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.city LIKE ?)
+       ORDER BY u.id DESC
+       LIMIT 30`,
+      [
+        projectId,
+        req.user.id,
+        `%${keyword}%`,
+        `%${keyword}%`,
+        `%${keyword}%`,
+      ]
+    );
+    return success(res, rows);
+  }
 
   const [rows] = await db.query(
     `SELECT u.id, u.nickname, u.avatar, u.city, u.bio, u.phone, ur.role,
