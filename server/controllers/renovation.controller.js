@@ -182,6 +182,8 @@ async function assertProjectActive(projectId) {
 }
 
 async function projectDeletionBlockers(projectId, ownerId) {
+  const defaultTasks = await getDefaultProgressTaskTemplates();
+  const defaultTaskCount = defaultTasks.length;
   const checks = [
     [
       'members',
@@ -194,7 +196,24 @@ async function projectDeletionBlockers(projectId, ownerId) {
     ],
     ['designDocs', '已有设计资料', 'SELECT id FROM project_design_documents WHERE project_id = ? LIMIT 1', [projectId]],
     ['handovers', '已有设计交底', 'SELECT id FROM project_handovers WHERE project_id = ? LIMIT 1', [projectId]],
-    ['tasks', '已有项目任务', 'SELECT id FROM renovation_tasks WHERE project_id = ? LIMIT 1', [projectId]],
+    [
+      'tasks',
+      '已有人工处理过的项目任务',
+      `SELECT id FROM renovation_tasks
+       WHERE project_id = ?
+         AND (
+           actual_start IS NOT NULL
+           OR actual_end IS NOT NULL
+           OR status = 3
+           OR NULLIF(TRIM(COALESCE(remark, '')), '') IS NOT NULL
+           OR updated_at > created_at
+           OR (
+             SELECT COUNT(*) FROM renovation_tasks WHERE project_id = ?
+           ) > ?
+         )
+       LIMIT 1`,
+      [projectId, projectId, defaultTaskCount],
+    ],
     ['progressItems', '已有项目进度事项', 'SELECT id FROM project_progress_items WHERE project_id = ? LIMIT 1', [projectId]],
     ['inspections', '已有验收记录', 'SELECT id FROM project_inspections WHERE project_id = ? LIMIT 1', [projectId]],
     ['actionItems', '已有待办事项', 'SELECT id FROM project_action_items WHERE project_id = ? LIMIT 1', [projectId]],
