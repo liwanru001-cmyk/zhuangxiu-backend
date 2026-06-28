@@ -5,14 +5,14 @@ const path = require('path');
 const storageService = require('../services/storage.service');
 
 const stages = [
-  { id: 1, name: '梦想落地期', traditional: '设计准备', emoji: '📐', days: 14, taskCount: 3, keyTaskCount: 1 },
-  { id: 2, name: '破旧立新区', traditional: '主体拆改', emoji: '🔨', days: 5, taskCount: 2, keyTaskCount: 1 },
-  { id: 3, name: '隐蔽保卫战', traditional: '水电改造', emoji: '⚡', days: 10, taskCount: 3, keyTaskCount: 1 },
-  { id: 4, name: '防漏攻坚战', traditional: '泥瓦防水', emoji: '🧱', days: 14, taskCount: 3, keyTaskCount: 1 },
-  { id: 5, name: '面子工程局', traditional: '木工施工', emoji: '🪵', days: 10, taskCount: 2, keyTaskCount: 1 },
-  { id: 6, name: '美颜焕新颜', traditional: '油漆施工', emoji: '🎨', days: 12, taskCount: 3, keyTaskCount: 1 },
-  { id: 7, name: '大件进场战', traditional: '安装阶段', emoji: '🏠', days: 10, taskCount: 3, keyTaskCount: 1 },
-  { id: 8, name: '通关大吉日', traditional: '竣工验收', emoji: '🎉', days: 7, taskCount: 2, keyTaskCount: 1 },
+  { id: 1, name: '设计准备', traditional: '设计准备', emoji: '📐', days: 14, taskCount: 3, keyTaskCount: 1 },
+  { id: 2, name: '主体拆改', traditional: '主体拆改', emoji: '🔨', days: 5, taskCount: 2, keyTaskCount: 1 },
+  { id: 3, name: '水电改造', traditional: '水电改造', emoji: '⚡', days: 10, taskCount: 3, keyTaskCount: 1 },
+  { id: 4, name: '泥瓦防水', traditional: '泥瓦防水', emoji: '🧱', days: 14, taskCount: 3, keyTaskCount: 1 },
+  { id: 5, name: '木工施工', traditional: '木工施工', emoji: '🪵', days: 10, taskCount: 2, keyTaskCount: 1 },
+  { id: 6, name: '油漆施工', traditional: '油漆施工', emoji: '🎨', days: 12, taskCount: 3, keyTaskCount: 1 },
+  { id: 7, name: '安装阶段', traditional: '安装阶段', emoji: '🏠', days: 10, taskCount: 3, keyTaskCount: 1 },
+  { id: 8, name: '竣工验收', traditional: '竣工验收', emoji: '🎉', days: 7, taskCount: 2, keyTaskCount: 1 },
 ];
 
 const taskNames = {
@@ -2873,6 +2873,16 @@ const materialArrivalStatuses = new Set([
   'installed',
   'returned',
 ]);
+const materialSpaceTags = new Set([
+  'whole_house',
+  'living_room',
+  'kitchen',
+  'master_bedroom',
+  'bedroom',
+  'bathroom',
+  'balcony',
+  'other',
+]);
 
 async function getProjectExpenses(req, res) {
   const projectId = Number(req.params.id);
@@ -3910,7 +3920,7 @@ async function getProjectMaterials(req, res) {
   }
   const [rows] = await db.query(
     `SELECT material.id, material.project_id, material.name, material.category,
-            material.location, material.brand_model, material.quantity,
+            material.location, material.space_tags, material.brand_model, material.quantity,
             material.unit, material.budget_unit_price, material.actual_unit_price,
             material.supplier_type, material.arrival_status,
             material.confirm_status, material.note, material.created_by,
@@ -3963,6 +3973,7 @@ async function createProjectMaterial(req, res) {
   const name = String(req.body.name || '').trim().slice(0, 120);
   const category = String(req.body.category || 'other');
   const location = String(req.body.location || '').trim().slice(0, 80);
+  const spaceTags = parseMaterialSpaceTags(req.body.space_tags);
   const brandModel = String(req.body.brand_model || '').trim().slice(0, 160);
   const quantity = parseOptionalNumber(req.body.quantity);
   const unit = String(req.body.unit || '').trim().slice(0, 20);
@@ -3988,6 +3999,11 @@ async function createProjectMaterial(req, res) {
     await removeUploadedFiles(files);
     return error(res, '到场状态不正确');
   }
+  const invalidSpaceTag = spaceTags.find((tag) => !materialSpaceTags.has(tag));
+  if (invalidSpaceTag) {
+    await removeUploadedFiles(files);
+    return error(res, '使用位置标签不正确');
+  }
   if (quantity !== null && quantity <= 0) {
     await removeUploadedFiles(files);
     return error(res, '数量必须大于0');
@@ -4006,15 +4022,16 @@ async function createProjectMaterial(req, res) {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `INSERT INTO project_material_items
-       (project_id, name, category, location, brand_model, quantity, unit,
+       (project_id, name, category, location, space_tags, brand_model, quantity, unit,
         budget_unit_price, actual_unit_price, supplier_type, arrival_status,
         confirm_status, note, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       [
         projectId,
         name,
         category,
         location || null,
+        spaceTags.length ? JSON.stringify(spaceTags) : null,
         brandModel || null,
         quantity,
         unit || null,
@@ -4065,6 +4082,29 @@ async function confirmProjectMaterial(req, res) {
   );
   if (result.affectedRows === 0) return error(res, '材料不存在', 404);
   return success(res, null, '材料项已确认');
+}
+
+function parseMaterialSpaceTags(value) {
+  const rawTags = (() => {
+    if (Array.isArray(value)) return value;
+    if (typeof value === 'string') {
+      try {
+        const parsed = JSON.parse(value);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (_) {
+        return value.split(',');
+      }
+    }
+    return [];
+  })();
+  return [
+    ...new Set(
+      rawTags
+        .map((item) => String(item || '').trim())
+        .filter(Boolean)
+        .slice(0, 8)
+    ),
+  ];
 }
 
 function parseOptionalNumber(value) {
@@ -5263,6 +5303,31 @@ async function getProjectProgressItems(req, res) {
   return success(res, rows);
 }
 
+async function getProjectProgressItemAdjustments(req, res) {
+  const projectId = Number(req.params.id);
+  const itemId = Number(req.params.itemId);
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '无权查看该项目', 403);
+  }
+  const [items] = await db.query(
+    'SELECT id FROM project_progress_items WHERE id = ? AND project_id = ?',
+    [itemId, projectId]
+  );
+  if (!items[0]) return error(res, '子事项不存在', 404);
+  const [rows] = await db.query(
+    `SELECT adjustment.id, adjustment.project_id, adjustment.progress_item_id,
+            adjustment.action, adjustment.changed_fields,
+            adjustment.changed_by, adjustment.changed_role, adjustment.created_at,
+            user.nickname AS changed_by_name
+     FROM project_progress_item_adjustments adjustment
+     JOIN users user ON user.id = adjustment.changed_by
+     WHERE adjustment.project_id = ? AND adjustment.progress_item_id = ?
+     ORDER BY adjustment.created_at DESC, adjustment.id DESC`,
+    [projectId, itemId]
+  );
+  return success(res, rows);
+}
+
 async function getProgressItemDepth(projectId, parentId) {
   if (!parentId) return 0;
   let depth = 1;
@@ -5334,10 +5399,93 @@ function validateProgressItem(item) {
   return null;
 }
 
+const progressItemAdjustmentFields = [
+  { key: 'title', label: '子事项名称', column: 'title' },
+  { key: 'stageId', label: '所属阶段', column: 'stage_id' },
+  { key: 'taskId', label: '所属事项', column: 'task_id' },
+  { key: 'parentId', label: '父级子事项', column: 'parent_id' },
+  { key: 'plannedStart', label: '计划开始', column: 'planned_start' },
+  { key: 'plannedEnd', label: '计划结束', column: 'planned_end' },
+  { key: 'actualFinish', label: '实际完成', column: 'actual_finish' },
+  { key: 'status', label: '状态', column: 'status' },
+  { key: 'remark', label: '事项备注', column: 'remark' },
+  { key: 'isKeyNode', label: '关键节点', column: 'is_key_node' },
+  { key: 'requiresInspection', label: '需要验收', column: 'requires_inspection' },
+  { key: 'inspectionTemplateKey', label: '验收模板', column: 'inspection_template_key' },
+  { key: 'sortOrder', label: '排序', column: 'sort_order' },
+];
+
+function normalizeProgressItemValue(value) {
+  if (value === undefined || value === null || value === '') return null;
+  if (value instanceof Date) return value.toISOString().slice(0, 10);
+  if (typeof value === 'boolean') return value ? 1 : 0;
+  if (typeof value === 'number') return value;
+  const text = String(value).trim();
+  if (/^\d{4}-\d{2}-\d{2}/.test(text)) return text.slice(0, 10);
+  return text;
+}
+
+function progressItemSnapshot(item) {
+  return {
+    title: item.title,
+    stageId: item.stageId ?? item.stage_id,
+    taskId: item.taskId ?? item.task_id,
+    parentId: item.parentId ?? item.parent_id,
+    plannedStart: item.plannedStart ?? item.planned_start,
+    plannedEnd: item.plannedEnd ?? item.planned_end,
+    actualFinish: item.actualFinish ?? item.actual_finish,
+    status: item.status,
+    remark: item.remark,
+    isKeyNode: item.isKeyNode ?? item.is_key_node,
+    requiresInspection: item.requiresInspection ?? item.requires_inspection,
+    inspectionTemplateKey:
+      item.inspectionTemplateKey ?? item.inspection_template_key,
+    sortOrder: item.sortOrder ?? item.sort_order,
+  };
+}
+
+function buildProgressItemChanges(before, after, { includeAll = false } = {}) {
+  const beforeSnapshot = before ? progressItemSnapshot(before) : {};
+  const afterSnapshot = progressItemSnapshot(after);
+  return progressItemAdjustmentFields.reduce((changes, field) => {
+    const oldValue = normalizeProgressItemValue(beforeSnapshot[field.key]);
+    const newValue = normalizeProgressItemValue(afterSnapshot[field.key]);
+    if (includeAll || oldValue !== newValue) {
+      changes.push({
+        field: field.column,
+        label: field.label,
+        old_value: oldValue,
+        new_value: newValue,
+      });
+    }
+    return changes;
+  }, []);
+}
+
+async function recordProjectProgressItemAdjustment(
+  executor,
+  { projectId, itemId, action, changes, userId, role }
+) {
+  await executor.query(
+    `INSERT INTO project_progress_item_adjustments
+       (project_id, progress_item_id, action, changed_fields, changed_by, changed_role)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [
+      projectId,
+      itemId,
+      action,
+      JSON.stringify(changes || []),
+      userId,
+      role || null,
+    ]
+  );
+}
+
 async function createProjectProgressItem(req, res) {
   const projectId = Number(req.params.id);
-  if (!(await canManageProjectProgress(projectId, req.user.id))) {
-    return error(res, '只有业主、设计师或项目经理可以维护子事项', 403);
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(memberRole)) {
+    return error(res, '只有业主、设计师、项目经理或项目监理可以维护子事项', 403);
   }
   const item = sanitizeProgressItemBody(req.body);
   const parentDepth = await getProgressItemDepth(projectId, item.parentId);
@@ -5402,18 +5550,28 @@ async function createProjectProgressItem(req, res) {
       [projectId, item.templateKey]
     );
   }
+  await recordProjectProgressItemAdjustment(db, {
+    projectId,
+    itemId: result.insertId,
+    action: 'created',
+    changes: buildProgressItemChanges(null, item, { includeAll: true }),
+    userId: req.user.id,
+    role: memberRole,
+  });
   return success(res, { id: result.insertId }, '子事项已创建');
 }
 
 async function updateProjectProgressItem(req, res) {
   const projectId = Number(req.params.id);
   const itemId = Number(req.params.itemId);
-  if (!(await canManageProjectProgress(projectId, req.user.id))) {
-    return error(res, '只有业主、设计师或项目经理可以维护子事项', 403);
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(memberRole)) {
+    return error(res, '只有业主、设计师、项目经理或项目监理可以维护子事项', 403);
   }
   const [existingRows] = await db.query(
-    `SELECT id, stage_id, task_id, parent_id, template_key,
-            requires_inspection, inspection_template_key
+    `SELECT id, stage_id, task_id, parent_id, template_key, title,
+            planned_start, planned_end, actual_finish, status, remark,
+            is_key_node, requires_inspection, inspection_template_key, sort_order
      FROM project_progress_items
      WHERE id = ? AND project_id = ?`,
     [itemId, projectId]
@@ -5452,6 +5610,7 @@ async function updateProjectProgressItem(req, res) {
   }
   const validationError = validateProgressItem(item);
   if (validationError) return error(res, validationError);
+  const changes = buildProgressItemChanges(existingRows[0], item);
   const [result] = await db.query(
     `UPDATE project_progress_items
      SET stage_id = ?, task_id = ?, parent_id = ?, title = ?, planned_start = ?,
@@ -5479,14 +5638,25 @@ async function updateProjectProgressItem(req, res) {
     ]
   );
   if (!result.affectedRows) return error(res, '子事项不存在', 404);
+  if (changes.length) {
+    await recordProjectProgressItemAdjustment(db, {
+      projectId,
+      itemId,
+      action: 'updated',
+      changes,
+      userId: req.user.id,
+      role: memberRole,
+    });
+  }
   return success(res, { updated: true }, '子事项已更新');
 }
 
 async function deleteProjectProgressItem(req, res) {
   const projectId = Number(req.params.id);
   const itemId = Number(req.params.itemId);
-  if (!(await canManageProjectProgress(projectId, req.user.id))) {
-    return error(res, '只有业主、设计师或项目经理可以维护子事项', 403);
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(memberRole)) {
+    return error(res, '只有业主、设计师、项目经理或项目监理可以维护子事项', 403);
   }
   const connection = await db.getConnection();
   try {
@@ -5513,6 +5683,14 @@ async function deleteProjectProgressItem(req, res) {
       'UPDATE project_inspections SET progress_item_id = NULL WHERE project_id = ? AND progress_item_id IN (?)',
       [projectId, ids]
     );
+    await recordProjectProgressItemAdjustment(connection, {
+      projectId,
+      itemId,
+      action: 'deleted',
+      changes: [],
+      userId: req.user.id,
+      role: memberRole,
+    });
     await connection.query(
       'DELETE FROM project_progress_items WHERE project_id = ? AND id IN (?)',
       [projectId, ids]
@@ -6342,6 +6520,7 @@ module.exports = {
   deleteProjectTask,
   completeProjectStage,
   getProjectProgressItems,
+  getProjectProgressItemAdjustments,
   createProjectProgressItem,
   updateProjectProgressItem,
   deleteProjectProgressItem,

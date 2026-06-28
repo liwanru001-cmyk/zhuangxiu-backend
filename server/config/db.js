@@ -305,6 +305,7 @@ async function ensureAppTables() {
     `);
   }
   await ensureProjectProgressTemplateColumns();
+  await ensureProjectProgressItemAdjustmentTables();
   await ensureProjectWorkItemSelectionTables();
   await ensureProjectActionTables();
   await ensureProjectInfoChangeRequestTables();
@@ -853,6 +854,7 @@ async function ensureProjectMaterialTables() {
       name VARCHAR(120) NOT NULL,
       category VARCHAR(32) NOT NULL DEFAULT 'other',
       location VARCHAR(80) DEFAULT NULL,
+      space_tags JSON DEFAULT NULL,
       brand_model VARCHAR(160) DEFAULT NULL,
       quantity DECIMAL(10,2) DEFAULT NULL,
       unit VARCHAR(20) DEFAULT NULL,
@@ -874,6 +876,18 @@ async function ensureProjectMaterialTables() {
       KEY idx_material_creator (created_by, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  const [materialColumns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_material_items'
+      AND COLUMN_NAME = 'space_tags'
+  `);
+  if (!materialColumns.length) {
+    await pool.query(`
+      ALTER TABLE project_material_items
+      ADD COLUMN space_tags JSON DEFAULT NULL AFTER location
+    `);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS project_material_media (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -974,6 +988,24 @@ async function ensureProjectProgressTemplateColumns() {
       ON project_progress_items (project_id, template_key)
     `);
   }
+}
+
+async function ensureProjectProgressItemAdjustmentTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_progress_item_adjustments (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      progress_item_id BIGINT UNSIGNED NOT NULL,
+      action VARCHAR(24) NOT NULL DEFAULT 'updated',
+      changed_fields JSON DEFAULT NULL,
+      changed_by BIGINT UNSIGNED NOT NULL,
+      changed_role VARCHAR(32) DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_progress_adjustment_item (project_id, progress_item_id, created_at),
+      KEY idx_progress_adjustment_actor (changed_by, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 async function ensureProjectWorkItemSelectionTables() {

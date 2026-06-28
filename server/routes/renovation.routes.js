@@ -380,6 +380,11 @@ router.get(
   ...protectedRoute,
   asyncHandler(controller.getProjectProgressItems)
 );
+router.get(
+  '/projects/:id/progress-items/:itemId/adjustments',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectProgressItemAdjustments)
+);
 router.post(
   '/projects/:id/progress-items',
   ...protectedRoute,
