@@ -32,7 +32,21 @@ Add these secrets to the GitHub repository:
 - `SSH_PRIVATE_KEY`: private key that can SSH into the server
 - `APP_DIR`: absolute deployment path, for example `/var/www/zhuangxiu`
 
-The workflow deploys on pushes to `main` when files under `server/` change.
+The workflow deploys on pushes to `main` when files under `server/`,
+`zhuangxiu_app/`, or the deployment workflow change.
+
+Before uploading to the server, the workflow builds the Flutter web frontend
+with local web resources:
+
+```sh
+bash scripts/build-web.sh
+```
+
+That script always runs `flutter build web --release --no-web-resources-cdn`
+and verifies that `flutter_bootstrap.js` contains `"useLocalCanvasKit":true`
+and that `server/public/canvaskit/` exists. This keeps CanvasKit served from
+the site itself, matching the strict Content Security Policy used by the
+backend.
 
 ## First Server Setup
 
