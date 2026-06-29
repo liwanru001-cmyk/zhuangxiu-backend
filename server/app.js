@@ -9,6 +9,10 @@ const authRoutes = require('./routes/auth.routes');
 const noteRoutes = require('./routes/note.routes');
 const userRoutes = require('./routes/user.routes');
 const renovationRoutes = require('./routes/renovation.routes');
+const marketplaceRoutes = require('./routes/marketplace.routes');
+const consultationRoutes = require('./routes/consultation.routes');
+const projectParticipantsRoutes = require('./routes/project-participants.routes');
+const entityRelationsRoutes = require('./routes/entity-relations.routes');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -57,6 +61,10 @@ app.use('/api/auth', authRoutes);
 app.use('/api/notes', noteRoutes);
 app.use('/api/users', userRoutes);
 app.use('/api/renovation', renovationRoutes);
+app.use('/api', marketplaceRoutes);
+app.use('/api/consultations', consultationRoutes);
+app.use('/api/projects', projectParticipantsRoutes);
+app.use('/api/entity-relations', entityRelationsRoutes);
 
 // ===================== Admin =====================
 const ADMIN_CREDENTIALS = { username: 'admin', password: 'admin123' };
@@ -403,6 +411,222 @@ app.get('/api/admin/features', adminAuth, (req, res) => {
   return success(res, {
     inspectionKb: INSPECTION_KB_ENABLED,
   });
+});
+
+const ADMIN_COMPANY_STATUSES = ['draft', 'active', 'suspended', 'deleted'];
+
+function adminCompanyStatusLabel(status) {
+  return {
+    draft: '待审核',
+    active: '正常',
+    suspended: '停用',
+    deleted: '已删除',
+  }[status] || status || '-';
+}
+
+function parseAdminCompanyBusinesses(value) {
+  if (!value) return [];
+  return String(value)
+    .split('||')
+    .map((item) => {
+      const [id, code, name, parentCode, parentName, isPrimary] = item.split('::');
+      if (!id || !name) return null;
+      return {
+        id: Number(id),
+        code: code || '',
+        name: name || '',
+        parent_code: parentCode || '',
+        parent_name: parentName || '',
+        is_primary: Number(isPrimary) === 1,
+      };
+    })
+    .filter(Boolean);
+}
+
+// admin 公司列表
+app.get('/api/admin/companies', adminAuth, async (req, res) => {
+  const params = [];
+  let where = '1=1';
+
+  if (req.query.keyword) {
+    where += ' AND (c.name LIKE ? OR c.intro LIKE ? OR u.nickname LIKE ? OR u.phone LIKE ?)';
+    const kw = `%${req.query.keyword}%`;
+    params.push(kw, kw, kw, kw);
+  }
+  if (req.query.status) {
+    const status = String(req.query.status);
+    if (!ADMIN_COMPANY_STATUSES.includes(status)) return error(res, '公司状态不正确');
+    where += ' AND c.status = ?';
+    params.push(status);
+  }
+
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+
+  const [rows] = await db.query(
+    `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
+            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.legacy_merchant_user_id, c.created_at, c.updated_at,
+            u.nickname AS owner_name, u.phone AS owner_phone,
+            (
+              SELECT GROUP_CONCAT(
+                CONCAT_WS('::', bc.id, bc.code, bc.name, COALESCE(parent.code, ''),
+                          COALESCE(parent.name, ''), cb.is_primary)
+                ORDER BY cb.is_primary DESC, parent.sort_order ASC, bc.sort_order ASC
+                SEPARATOR '||'
+              )
+              FROM company_businesses cb
+              JOIN business_catalog bc ON bc.id = cb.business_catalog_id
+              LEFT JOIN business_catalog parent ON parent.id = bc.parent_id
+              WHERE cb.company_id = c.id AND cb.status = 'active'
+            ) AS business_text,
+            (
+              SELECT COUNT(*) FROM company_members cm
+              WHERE cm.company_id = c.id AND cm.status = 'active'
+            ) AS member_count,
+            (
+              SELECT COUNT(*) FROM project_participants_ext ppe
+              WHERE ppe.company_id = c.id AND ppe.status <> 'removed'
+            ) AS project_count
+     FROM companies c
+     LEFT JOIN users u ON u.id = COALESCE(c.owner_user_id, c.legacy_merchant_user_id)
+     WHERE ${where}
+     ORDER BY c.updated_at DESC, c.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM companies c
+     LEFT JOIN users u ON u.id = COALESCE(c.owner_user_id, c.legacy_merchant_user_id)
+     WHERE ${where}`,
+    params
+  );
+
+  return success(res, {
+    companies: rows.map((row) => ({
+      id: row.id,
+      owner_user_id: row.owner_user_id,
+      name: row.name,
+      logo_url: row.logo_url || '',
+      intro: row.intro || '',
+      service_area: row.service_area || '',
+      city: row.city || '',
+      address: row.address || '',
+      contact_phone: row.contact_phone || '',
+      status: row.status,
+      status_label: adminCompanyStatusLabel(row.status),
+      source: row.source,
+      legacy_merchant_user_id: row.legacy_merchant_user_id,
+      owner_name: row.owner_name || '',
+      owner_phone: row.owner_phone || '',
+      businesses: parseAdminCompanyBusinesses(row.business_text),
+      member_count: Number(row.member_count) || 0,
+      project_count: Number(row.project_count) || 0,
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    })),
+    total: countRows[0].total,
+    page,
+    pageSize,
+  });
+});
+
+// admin 公司详情
+app.get('/api/admin/companies/:id', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!companyId) return error(res, '公司不存在', 404);
+
+  const [[company]] = await db.query(
+    `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
+            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.legacy_merchant_user_id, c.created_at, c.updated_at,
+            u.nickname AS owner_name, u.phone AS owner_phone
+     FROM companies c
+     LEFT JOIN users u ON u.id = COALESCE(c.owner_user_id, c.legacy_merchant_user_id)
+     WHERE c.id = ?`,
+    [companyId]
+  );
+  if (!company) return error(res, '公司不存在', 404);
+
+  const [businesses] = await db.query(
+    `SELECT bc.id, bc.code, bc.name, parent.code AS parent_code,
+            parent.name AS parent_name, cb.is_primary, cb.status
+     FROM company_businesses cb
+     JOIN business_catalog bc ON bc.id = cb.business_catalog_id
+     LEFT JOIN business_catalog parent ON parent.id = bc.parent_id
+     WHERE cb.company_id = ? AND cb.status = 'active'
+     ORDER BY cb.is_primary DESC, parent.sort_order ASC, bc.sort_order ASC`,
+    [companyId]
+  );
+  const [members] = await db.query(
+    `SELECT cm.id AS member_id, cm.user_id, cm.professional_id, cm.member_role,
+            cm.title, cm.status, cm.joined_at, cm.created_at,
+            u.nickname AS display_name, u.avatar AS avatar_url, u.phone,
+            p.display_name AS professional_name
+     FROM company_members cm
+     JOIN users u ON u.id = cm.user_id
+     LEFT JOIN professionals p ON p.id = cm.professional_id
+     WHERE cm.company_id = ?
+     ORDER BY FIELD(cm.status, 'active', 'pending', 'rejected', 'removed'),
+              FIELD(cm.member_role, 'owner', 'admin', 'designer', 'supervisor',
+                    'project_manager', 'customer_service', 'merchant_staff'),
+              cm.id DESC
+     LIMIT 50`,
+    [companyId]
+  );
+  const [projects] = await db.query(
+    `SELECT ppe.id, ppe.project_id, ppe.participant_type, ppe.role_type,
+            ppe.status, ppe.created_at, p.project_code, p.project_name
+     FROM project_participants_ext ppe
+     LEFT JOIN renovation_projects p ON p.id = ppe.project_id
+     WHERE ppe.company_id = ? AND ppe.status <> 'removed'
+     ORDER BY ppe.updated_at DESC, ppe.id DESC
+     LIMIT 20`,
+    [companyId]
+  );
+
+  return success(res, {
+    company: {
+      ...company,
+      logo_url: company.logo_url || '',
+      intro: company.intro || '',
+      service_area: company.service_area || '',
+      city: company.city || '',
+      address: company.address || '',
+      contact_phone: company.contact_phone || '',
+      owner_name: company.owner_name || '',
+      owner_phone: company.owner_phone || '',
+      status_label: adminCompanyStatusLabel(company.status),
+    },
+    businesses: businesses.map((item) => ({
+      id: item.id,
+      code: item.code,
+      name: item.name,
+      parent_code: item.parent_code || '',
+      parent_name: item.parent_name || '',
+      is_primary: Number(item.is_primary) === 1,
+      status: item.status,
+    })),
+    members,
+    projects,
+  });
+});
+
+// admin 更新公司状态
+app.put('/api/admin/companies/:id/status', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  const status = String(req.body?.status || '');
+  if (!companyId) return error(res, '公司不存在', 404);
+  if (!ADMIN_COMPANY_STATUSES.includes(status)) return error(res, '公司状态不正确');
+
+  const [result] = await db.query(
+    'UPDATE companies SET status = ? WHERE id = ?',
+    [status, companyId]
+  );
+  if (result.affectedRows === 0) return error(res, '公司不存在', 404);
+  return success(res, { id: companyId, status, status_label: adminCompanyStatusLabel(status) });
 });
 
 app.get('/api/admin/progress-item-library', adminAuth, async (req, res) => {
