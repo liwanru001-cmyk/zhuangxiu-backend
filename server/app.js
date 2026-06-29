@@ -25,10 +25,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "script-src": ["'self'", "'unsafe-inline'", "'unsafe-eval'", "'wasm-unsafe-eval'"],
+      "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
       "script-src-attr": ["'unsafe-inline'"],
-      "connect-src": ["'self'", "https://yinnkhome.com", "https://www.yinnkhome.com"],
-      "img-src": ["'self'", "data:", "blob:", "https://yinnkhome.com", "https://www.yinnkhome.com"],
       "worker-src": ["'self'", "blob:"],
     },
   },
