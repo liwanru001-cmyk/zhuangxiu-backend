@@ -178,6 +178,29 @@ jobs:
                   fi
                 fi
               fi
+
+              nginx_runner=""
+              if [ "$(id -u)" -eq 0 ]; then
+                nginx_runner=""
+              elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                nginx_runner="sudo"
+              fi
+
+              if [ "$(id -u)" -eq 0 ] || [ -n "$nginx_runner" ]; then
+                if $nginx_runner nginx -t; then
+                  if command -v systemctl >/dev/null 2>&1 && $nginx_runner systemctl reload nginx; then
+                    echo "nginx reloaded with systemctl."
+                  else
+                    $nginx_runner nginx -s reload
+                    echo "nginx reloaded with nginx -s reload."
+                  fi
+                else
+                  echo "nginx config test failed; skipping reload."
+                  exit 1
+                fi
+              else
+                echo "Skipping nginx reload: deployment user has no root or passwordless sudo."
+              fi
             fi
 
             for attempt in $(seq 1 30); do
