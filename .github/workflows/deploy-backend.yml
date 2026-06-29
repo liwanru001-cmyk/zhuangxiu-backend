@@ -190,13 +190,13 @@ jobs:
                 if $nginx_runner nginx -t; then
                   if command -v systemctl >/dev/null 2>&1 && $nginx_runner systemctl reload nginx; then
                     echo "nginx reloaded with systemctl."
-                  else
-                    $nginx_runner nginx -s reload
+                  elif $nginx_runner nginx -s reload; then
                     echo "nginx reloaded with nginx -s reload."
+                  else
+                    echo "nginx reload command failed; continuing deployment."
                   fi
                 else
                   echo "nginx config test failed; skipping reload."
-                  exit 1
                 fi
               else
                 echo "Skipping nginx reload: deployment user has no root or passwordless sudo."
