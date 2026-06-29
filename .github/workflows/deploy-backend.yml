@@ -6,9 +6,6 @@ on:
       - main
     paths:
       - 'server/**'
-      - 'zhuangxiu_app/**'
-      - 'scripts/build-web.sh'
-      - 'scripts/check-web-build.sh'
       - '.github/workflows/deploy-backend.yml'
   workflow_dispatch:
 
@@ -20,25 +17,6 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-
-      - name: Setup Flutter
-        if: hashFiles('zhuangxiu_app/pubspec.yaml') != ''
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
-          cache: true
-
-      - name: Build web frontend
-        if: hashFiles('zhuangxiu_app/pubspec.yaml') != ''
-        env:
-          API_BASE_URL: https://yinnkhome.com/api
-        run: |
-          bash scripts/build-web.sh
-          bash scripts/check-web-build.sh server/public
-
-      - name: Check committed web frontend
-        if: hashFiles('zhuangxiu_app/pubspec.yaml') == ''
-        run: bash scripts/check-web-build.sh server/public
 
       - name: Upload checkout over SSH
         env:
