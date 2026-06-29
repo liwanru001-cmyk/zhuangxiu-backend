@@ -25,9 +25,8 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       ...helmet.contentSecurityPolicy.getDefaultDirectives(),
-      "script-src": ["'self'", "'unsafe-inline'", "'wasm-unsafe-eval'"],
+      "script-src": ["'self'", "'unsafe-inline'"],
       "script-src-attr": ["'unsafe-inline'"],
-      "worker-src": ["'self'", "blob:"],
     },
   },
 }));
