@@ -18,6 +18,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Guard marketing homepage
+        run: |
+          set -euo pipefail
+
+          if grep -qE 'zhuangxiu_app|flutter_bootstrap\.js' server/public/index.html; then
+            echo "server/public/index.html points to the Flutter app entrypoint, not the marketing website."
+            exit 1
+          fi
+
+          if ! grep -q '粤ICP备2025480867号-2' server/public/index.html; then
+            echo "server/public/index.html is missing the required ICP footer."
+            exit 1
+          fi
+
       - name: Upload checkout over SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}

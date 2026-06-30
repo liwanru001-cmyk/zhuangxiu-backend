@@ -1,46 +1,382 @@
 <!DOCTYPE html>
-<html>
+<html lang="zh-CN">
 <head>
-  <!--
-    If you are serving your web app in a path other than the root, change the
-    href value below to reflect the base path you are serving from.
-
-    The path provided below has to start and end with a slash "/" in order for
-    it to work correctly.
-
-    For more details:
-    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
-
-    This is a placeholder for base href that will be replaced by the value of
-    the `--base-href` argument provided to `flutter build`.
-  -->
-  <base href="/">
-
   <meta charset="UTF-8">
-  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
-  <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="装修不凡是一款面向家庭装修用户的项目管理工具，提供装修档案、进度记录、材料管理、验收提醒和项目助手服务。">
+  <link rel="icon" href="/favicon.png">
+  <title>装修不凡 - 让装修推进更清楚</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --line: #e8edf3;
+      --blue: #2f73e8;
+      --blue-dark: #1857c6;
+      --coral: #ff7a59;
+      --mint: #16a37b;
+      --paper: #fffdf8;
+      --soft: #f5f2ea;
+      --white: #ffffff;
+      --shadow: 0 20px 60px rgba(30, 64, 120, .14);
+    }
 
-  <!-- iOS meta tags & icons -->
-  <meta name="mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-status-bar-style" content="black">
-  <meta name="apple-mobile-web-app-title" content="zhuangxiu_app">
-  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+    * { box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background: var(--paper);
+    }
+    a { color: inherit; text-decoration: none; }
+    img { display: block; max-width: 100%; }
 
-  <!-- Favicon -->
-  <link rel="icon" type="image/png" href="favicon.png"/>
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 10;
+      background: rgba(255, 253, 248, .86);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(232, 237, 243, .85);
+    }
+    .nav-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      height: 68px;
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+      letter-spacing: 0;
+    }
+    .brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(47, 115, 232, .22);
+    }
+    .nav-links {
+      display: flex;
+      align-items: center;
+      gap: 24px;
+      font-size: 14px;
+      color: var(--muted);
+      font-weight: 700;
+    }
+    .nav-links a:hover { color: var(--blue); }
 
-  <title>zhuangxiu_app</title>
-  <link rel="manifest" href="manifest.json">
+    .hero {
+      min-height: calc(100vh - 68px);
+      display: grid;
+      align-items: center;
+      background:
+        linear-gradient(135deg, rgba(47, 115, 232, .11), rgba(255, 122, 89, .08) 46%, rgba(22, 163, 123, .10));
+    }
+    .hero-inner {
+      max-width: 1120px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 72px 22px 88px;
+    }
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border: 1px solid rgba(47, 115, 232, .18);
+      border-radius: 999px;
+      color: var(--blue-dark);
+      background: rgba(255, 255, 255, .72);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--mint);
+    }
+    h1 {
+      max-width: 640px;
+      margin: 24px 0 16px;
+      font-size: clamp(42px, 7vw, 76px);
+      line-height: 1.02;
+      letter-spacing: 0;
+    }
+    .hero-copy {
+      max-width: 560px;
+      margin: 0;
+      color: #42526a;
+      font-size: 18px;
+      line-height: 1.75;
+      font-weight: 600;
+    }
+    .hero-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      margin-top: 34px;
+    }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 48px;
+      padding: 0 18px;
+      border-radius: 12px;
+      font-weight: 850;
+      border: 1px solid transparent;
+    }
+    .btn-primary {
+      color: #fff;
+      background: var(--blue);
+      box-shadow: 0 12px 28px rgba(47, 115, 232, .28);
+    }
+    .btn-secondary {
+      color: var(--ink);
+      background: rgba(255,255,255,.76);
+      border-color: rgba(23,32,51,.10);
+    }
+
+    section {
+      padding: 72px 22px;
+    }
+    .section-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+    }
+    .section-title {
+      margin: 0 0 14px;
+      font-size: clamp(28px, 4vw, 42px);
+      line-height: 1.18;
+      letter-spacing: 0;
+    }
+    .section-desc {
+      max-width: 720px;
+      margin: 0;
+      color: var(--muted);
+      font-size: 16px;
+      line-height: 1.75;
+      font-weight: 600;
+    }
+
+    .features {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 14px;
+      margin-top: 30px;
+    }
+    .feature {
+      min-height: 180px;
+      padding: 20px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: 0 10px 30px rgba(23, 32, 51, .06);
+    }
+    .feature-icon {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      border-radius: 10px;
+      margin-bottom: 18px;
+      color: #fff;
+      font-weight: 900;
+      background: var(--blue);
+    }
+    .feature:nth-child(2) .feature-icon { background: var(--coral); }
+    .feature:nth-child(3) .feature-icon { background: var(--mint); }
+    .feature:nth-child(4) .feature-icon { background: #7c5cff; }
+    .feature h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+      letter-spacing: 0;
+    }
+    .feature p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      font-weight: 600;
+    }
+
+    .workflow {
+      background: #f8fafc;
+      border-block: 1px solid var(--line);
+    }
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 16px;
+      margin-top: 30px;
+    }
+    .step {
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 22px;
+    }
+    .step-num {
+      color: var(--coral);
+      font-weight: 950;
+      font-size: 13px;
+      margin-bottom: 12px;
+    }
+    .step h3 {
+      margin: 0 0 10px;
+      font-size: 18px;
+    }
+    .step p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+      line-height: 1.7;
+      font-weight: 600;
+    }
+
+    footer {
+      padding: 30px 22px 38px;
+      background: #111827;
+      color: rgba(255,255,255,.72);
+    }
+    .footer-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: flex;
+      justify-content: space-between;
+      gap: 18px;
+      flex-wrap: wrap;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+    .footer-brand {
+      color: #fff;
+      font-weight: 900;
+    }
+
+    @media (max-width: 860px) {
+      .nav-links { display: none; }
+      .hero { min-height: auto; }
+      .hero-inner { padding: 54px 18px 64px; }
+      .features, .steps { grid-template-columns: 1fr; }
+      section { padding: 54px 18px; }
+      h1 { font-size: 44px; }
+      .hero-copy { font-size: 16px; }
+    }
+  </style>
 </head>
 <body>
-  <!--
-    You can customize the "flutter_bootstrap.js" script.
-    This is useful to provide a custom configuration to the Flutter loader
-    or to give the user feedback during the initialization process.
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="#top" aria-label="装修不凡首页">
+        <img src="/assets/app-icon.png" alt="">
+        <span>装修不凡</span>
+      </a>
+      <div class="nav-links" aria-label="页面导航">
+        <a href="#features">功能</a>
+        <a href="#workflow">流程</a>
+        <a href="#contact">联系</a>
+        <a href="/admin/">管理后台</a>
+      </div>
+    </div>
+  </nav>
 
-    For more details:
-    * https://docs.flutter.dev/platform-integration/web/initialization
-  -->
-  <script src="flutter_bootstrap.js" async></script>
+  <main id="top">
+    <section class="hero">
+      <div class="hero-inner">
+        <div class="eyebrow">家庭装修项目管理工具</div>
+        <h1>装修不凡</h1>
+        <p class="hero-copy">
+          把装修档案、进度节点、材料清单、现场验收和沟通记录放在同一个地方，
+          让业主、设计师、项目经理和商家都能围绕真实进度协作。
+        </p>
+        <div class="hero-actions">
+          <a class="btn btn-primary" href="#features">查看核心功能</a>
+          <a class="btn btn-secondary" href="/admin/">进入管理后台</a>
+        </div>
+      </div>
+    </section>
+
+    <section id="features">
+      <div class="section-inner">
+        <h2 class="section-title">装修推进更清楚</h2>
+        <p class="section-desc">
+          面向真实装修场景，沉淀从开工准备到竣工验收的关键数据，减少信息散落和重复确认。
+        </p>
+        <div class="features">
+          <article class="feature">
+            <div class="feature-icon">档</div>
+            <h3>项目档案</h3>
+            <p>集中管理房屋信息、成员角色、装修方式和项目状态。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">进</div>
+            <h3>进度记录</h3>
+            <p>按阶段跟踪任务、节点、调整申请和项目动态。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">材</div>
+            <h3>材料管理</h3>
+            <p>记录材料清单、空间归属、采购状态和相关凭证。</p>
+          </article>
+          <article class="feature">
+            <div class="feature-icon">验</div>
+            <h3>验收协作</h3>
+            <p>围绕施工节点形成检查项、问题反馈和整改闭环。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+
+    <section id="workflow" class="workflow">
+      <div class="section-inner">
+        <h2 class="section-title">从计划到交付</h2>
+        <p class="section-desc">
+          用更结构化的方式连接装修过程里的参与者，让每一次变更、确认和交付都有记录可追溯。
+        </p>
+        <div class="steps">
+          <article class="step">
+            <div class="step-num">01 / 建立项目</div>
+            <h3>录入基础信息</h3>
+            <p>创建装修项目，确定角色、户型、面积、预算和装修方式。</p>
+          </article>
+          <article class="step">
+            <div class="step-num">02 / 推进过程</div>
+            <h3>同步节点动态</h3>
+            <p>记录设计、施工、材料和验收的关键进展，减少沟通遗漏。</p>
+          </article>
+          <article class="step">
+            <div class="step-num">03 / 完成交付</div>
+            <h3>沉淀项目资料</h3>
+            <p>保留合同、图纸、材料、现场图片和验收结果，后续维护也能查。</p>
+          </article>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer id="contact">
+    <div class="footer-inner">
+      <div>
+        <div class="footer-brand">装修不凡</div>
+        <div>让装修推进更清楚</div>
+      </div>
+      <div>
+        <span>© 2026 yinnkhome.com</span><br>
+        <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">粤ICP备2025480867号-2</a>
+        <span> · 公安联网备案信息待更新</span>
+      </div>
+    </div>
+  </footer>
 </body>
 </html>
