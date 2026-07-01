@@ -267,7 +267,7 @@ jobs:
 
             rollback() {
               exit_code=$?
-              if [ "$activated" = "true" ] && [ -d "$backup_dir" ]; then
+              if [ "$exit_code" -ne 0 ] && [ "$activated" = "true" ] && [ -d "$backup_dir" ]; then
                 echo "Deployment failed; rolling back to $backup_dir"
                 rm -rf "$APP_DIR"
                 mv "$backup_dir" "$APP_DIR"
@@ -282,7 +282,7 @@ jobs:
               fi
               exit "$exit_code"
             }
-            trap rollback ERR
+            trap rollback EXIT
 
             if [ ! -d "$staging_dir" ]; then
               echo "Missing uploaded staging directory: $staging_dir"
