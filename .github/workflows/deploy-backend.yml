@@ -1,5 +1,6 @@
 name: Deploy Backend
 
+# Backend deployment must never package or write frontend public assets.
 on:
   push:
     branches:

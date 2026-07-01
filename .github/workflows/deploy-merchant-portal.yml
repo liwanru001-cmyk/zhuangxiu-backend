@@ -1,6 +1,12 @@
 name: Deploy Merchant Portal
 
 on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/public/merchant/**'
+      - '.github/workflows/deploy-merchant-portal.yml'
   workflow_dispatch:
 
 jobs:
@@ -31,10 +37,7 @@ jobs:
 
           ssh_port="${SSH_PORT:-22}"
 
-          if [ -z "${MERCHANT_PUBLIC_DIR:-}" ]; then
-            echo "MERCHANT_PUBLIC_DIR secret is required for merchant portal deployment."
-            exit 1
-          fi
+          MERCHANT_PUBLIC_DIR="${MERCHANT_PUBLIC_DIR:-/usr/share/nginx/html}"
 
           if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
             echo "Refusing to deploy to stale or unrelated host: $SSH_HOST"
