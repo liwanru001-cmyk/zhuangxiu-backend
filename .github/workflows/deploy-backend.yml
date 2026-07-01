@@ -325,6 +325,42 @@ jobs:
                   cp -a "$APP_DIR/server/$keep_dir" "$staging_dir/$keep_dir"
                 fi
               done
+            fi
+
+            if [ -f .env ]; then
+              set -a
+              . ./.env
+              set +a
+            fi
+            smoke_port=3099
+            echo "Running backend smoke test on port $smoke_port before activation."
+            PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
+            smoke_pid=$!
+            sleep 5
+            if ! kill -0 "$smoke_pid" 2>/dev/null; then
+              echo "Smoke test process exited early."
+              echo "Smoke stdout:"
+              cat /tmp/yinnkhome-smoke-out.log || true
+              echo "Smoke stderr:"
+              cat /tmp/yinnkhome-smoke-err.log || true
+              wait "$smoke_pid" || true
+              exit 1
+            fi
+            if ! curl -fsS "http://127.0.0.1:${smoke_port}/health"; then
+              echo "Smoke health check failed."
+              echo "Smoke stdout:"
+              cat /tmp/yinnkhome-smoke-out.log || true
+              echo "Smoke stderr:"
+              cat /tmp/yinnkhome-smoke-err.log || true
+              kill "$smoke_pid" 2>/dev/null || true
+              wait "$smoke_pid" 2>/dev/null || true
+              exit 1
+            fi
+            kill "$smoke_pid" 2>/dev/null || true
+            wait "$smoke_pid" 2>/dev/null || true
+            echo "Smoke test passed."
+
+            if [ -d "$APP_DIR" ]; then
               mv "$APP_DIR" "$backup_dir"
             fi
 
