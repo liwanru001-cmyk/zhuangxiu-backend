@@ -541,6 +541,8 @@
     .product-list-view.hidden { display: none; }
     .product-editor-view { display: none; }
     .product-editor-view.active { display: block; }
+    .product-detail-view { display: none; }
+    .product-detail-view.active { display: block; }
     .product-card-grid {
       display: grid;
       grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
@@ -622,6 +624,71 @@
       height: 100%;
       object-fit: contain;
       background: #fff;
+    }
+    .product-detail-gallery {
+      height: 220px;
+      display: grid;
+      grid-auto-flow: column;
+      grid-auto-columns: minmax(260px, 100%);
+      gap: 12px;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scroll-snap-type: x mandatory;
+      padding-bottom: 4px;
+    }
+    .product-detail-image {
+      height: 220px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #f8fafc;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      scroll-snap-align: start;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 900;
+    }
+    .product-detail-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #fff;
+    }
+    .product-detail-card {
+      margin-top: 12px;
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      display: grid;
+      gap: 12px;
+    }
+    .product-detail-title {
+      margin: 0;
+      color: var(--ink);
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 900;
+    }
+    .product-detail-price {
+      color: var(--danger);
+      font-size: 18px;
+      font-weight: 900;
+    }
+    .product-detail-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.5;
+      font-weight: 700;
+    }
+    .product-detail-copy {
+      margin: 0;
+      color: var(--ink);
+      font-size: 13px;
+      line-height: 1.65;
+      font-weight: 600;
+      white-space: pre-wrap;
     }
 
     @media (max-width: 900px) {
@@ -833,6 +900,17 @@
             <div id="productMessage" class="message"></div>
           </div>
 
+          <div id="productDetailView" class="product-detail-view">
+            <div class="panel-toolbar">
+              <h2 id="productDetailTitle">产品详情</h2>
+              <div class="small-actions">
+                <button id="backToProductListFromDetailBtn" class="button button-secondary" type="button">返回产品列表</button>
+                <button id="editProductFromDetailBtn" class="button button-primary" type="button">编辑产品</button>
+              </div>
+            </div>
+            <div id="productDetailContent"></div>
+          </div>
+
           <div id="productEditorView" class="product-editor-view">
             <div class="panel-toolbar">
               <h2 id="productEditorTitle">新增产品信息</h2>
@@ -942,6 +1020,7 @@
     let merchantProducts = [];
     let editingCategoryId = null;
     let editingProductId = null;
+    let viewingProductId = null;
     let productImageUrls = [];
     let selectedRootCategoryId = 'all';
     let selectedChildCategoryId = 'all';
@@ -966,6 +1045,15 @@
       const el = $(id);
       el.textContent = text || '';
       el.className = `message ${type}`.trim();
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? '')
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
     }
 
     function displayImageUrl(url) {
@@ -1158,12 +1246,23 @@
 
     function showProductListView() {
       $('productEditorView').classList.remove('active');
+      $('productDetailView').classList.remove('active');
       $('productListView').classList.remove('hidden');
+      viewingProductId = null;
     }
 
     function showProductEditorView() {
       $('productListView').classList.add('hidden');
+      $('productDetailView').classList.remove('active');
       $('productEditorView').classList.add('active');
+    }
+
+    function showProductDetailView(product) {
+      viewingProductId = Number(product.id || 0);
+      $('productListView').classList.add('hidden');
+      $('productEditorView').classList.remove('active');
+      $('productDetailView').classList.add('active');
+      renderProductDetail(product);
     }
 
     function resetProductForm() {
@@ -1205,6 +1304,59 @@
       return product?.cover_url || images.find(Boolean) || '';
     }
 
+    function productImages(product) {
+      const images = Array.isArray(product?.image_urls) ? product.image_urls.filter(Boolean) : [];
+      const cover = product?.cover_url || '';
+      return images.length ? images : (cover ? [cover] : []);
+    }
+
+    function productDisplayCategory(product) {
+      if (product?.parent_category_name && product?.category_name) {
+        return `${product.parent_category_name} / ${product.category_name}`;
+      }
+      return product?.category_name || categoryName(product?.category_id) || '';
+    }
+
+    function productDisplaySummary(product) {
+      const summary = String(product?.summary || '').trim();
+      const description = String(product?.description || '').trim();
+      return summary || description || '产品详情可咨询商家';
+    }
+
+    function renderProductDetail(product) {
+      const images = productImages(product);
+      const title = product?.name || '产品详情';
+      const category = productDisplayCategory(product);
+      const summary = productDisplaySummary(product);
+      const description = String(product?.description || '').trim();
+      const hasExtraDescription = description && description !== summary;
+      $('productDetailTitle').textContent = title;
+      $('productDetailContent').innerHTML = `
+        <div class="product-detail-gallery">
+          ${images.length
+            ? images.map((url) => `
+              <div class="product-detail-image"><img src="${escapeHtml(displayImageUrl(url))}" alt=""></div>
+            `).join('')
+            : `<div class="product-detail-image">暂无图片</div>`}
+        </div>
+        <div class="product-detail-card">
+          <h3 class="product-detail-title">${escapeHtml(title)}</h3>
+          <div class="product-detail-price">${escapeHtml(product?.price_text || '价格可咨询')}</div>
+          ${category ? `<div><span class="status-pill">${escapeHtml(category)}</span></div>` : ''}
+          ${(product?.brand || product?.spec) ? `
+            <div class="product-detail-meta">
+              ${[
+                product?.brand ? `品牌：${escapeHtml(product.brand)}` : '',
+                product?.spec ? `规格：${escapeHtml(product.spec)}` : '',
+              ].filter(Boolean).join(' · ')}
+            </div>
+          ` : ''}
+          <p class="product-detail-copy">${escapeHtml(summary)}</p>
+          ${hasExtraDescription ? `<p class="product-detail-copy">${escapeHtml(description)}</p>` : ''}
+        </div>
+      `;
+    }
+
     function renderProducts() {
       renderProductImages();
       let visibleProducts = [...merchantProducts];
@@ -1239,6 +1391,7 @@
             <div class="small-actions" style="align-items:center; justify-content:space-between">
               <span class="status-pill">${product.status === 'active' ? '上架展示' : product.status}</span>
               <span class="small-actions">
+                <button class="text-button" type="button" data-action="viewProduct" data-id="${product.id}">详情</button>
                 <button class="text-button" type="button" data-action="editProduct" data-id="${product.id}">编辑</button>
                 <button class="text-button danger" type="button" data-action="deleteProduct" data-id="${product.id}">删除</button>
               </span>
@@ -1450,6 +1603,11 @@
       resetProductForm();
       showProductListView();
     });
+    $('backToProductListFromDetailBtn').addEventListener('click', showProductListView);
+    $('editProductFromDetailBtn').addEventListener('click', () => {
+      const item = merchantProducts.find((product) => Number(product.id) === Number(viewingProductId));
+      if (item) fillProductForm(item);
+    });
 
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => showPanel(tab.dataset.panel));
@@ -1625,6 +1783,9 @@
           productCategories = productCategories.filter((category) => Number(category.id) !== id);
           renderProductCategories();
           renderProducts();
+        } else if (action === 'viewProduct') {
+          const item = merchantProducts.find((product) => Number(product.id) === id);
+          if (item) showProductDetailView(item);
         } else if (action === 'editProduct') {
           const item = merchantProducts.find((product) => Number(product.id) === id);
           if (item) fillProductForm(item);
