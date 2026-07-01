@@ -123,6 +123,7 @@ jobs:
             exit 1
 
       - name: Upload backend over SSH
+        if: ${{ !contains(github.event.head_commit.message, 'recover backend only') }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -208,6 +209,7 @@ jobs:
           ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'" < /tmp/yinnkhome-backend.tar.gz
 
       - name: Deploy backend over SSH
+        if: ${{ !contains(github.event.head_commit.message, 'recover backend only') }}
         uses: appleboy/ssh-action@v1.0.3
         env:
           APP_DIR: ${{ secrets.APP_DIR }}
