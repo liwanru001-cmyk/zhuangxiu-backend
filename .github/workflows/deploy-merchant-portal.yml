@@ -1,10 +1,11 @@
-name: Deploy Merchant Portal
+name: Deploy Public Static Pages
 
 on:
   push:
     branches:
       - main
     paths:
+      - 'server/public/index.html'
       - 'server/public/merchant/**'
       - '.github/workflows/deploy-merchant-portal.yml'
   workflow_dispatch:
@@ -21,6 +22,7 @@ jobs:
       - name: Validate merchant portal artifact
         run: |
           set -euo pipefail
+          test -f server/public/index.html
           test -f server/public/merchant/index.html
           test ! -f server/public/index.html.tmp
 
@@ -85,9 +87,11 @@ jobs:
           )
 
           remote="${SSH_USER}@${SSH_HOST}"
-          remote_tmp="/tmp/yinnkhome-merchant-index-${GITHUB_RUN_ID}.html"
+          remote_home_tmp="/tmp/yinnkhome-home-index-${GITHUB_RUN_ID}.html"
+          remote_merchant_tmp="/tmp/yinnkhome-merchant-index-${GITHUB_RUN_ID}.html"
 
-          scp "${scp_opts[@]}" server/public/merchant/index.html "$remote:$remote_tmp"
+          scp "${scp_opts[@]}" server/public/index.html "$remote:$remote_home_tmp"
+          scp "${scp_opts[@]}" server/public/merchant/index.html "$remote:$remote_merchant_tmp"
           ssh "${ssh_opts[@]}" "$remote" \
             "set -euo pipefail
              runner=''
@@ -100,16 +104,25 @@ jobs:
                fi
              fi
              \$runner mkdir -p '$MERCHANT_PUBLIC_DIR/merchant'
-             cp '$remote_tmp' /tmp/yinnkhome-merchant-index-ready.html
+             cp '$remote_home_tmp' /tmp/yinnkhome-home-index-ready.html
+             cp '$remote_merchant_tmp' /tmp/yinnkhome-merchant-index-ready.html
+             \$runner cp /tmp/yinnkhome-home-index-ready.html '$MERCHANT_PUBLIC_DIR/index.html.tmp'
              \$runner cp /tmp/yinnkhome-merchant-index-ready.html '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp'
+             \$runner mv '$MERCHANT_PUBLIC_DIR/index.html.tmp' '$MERCHANT_PUBLIC_DIR/index.html'
              \$runner mv '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html'
-             rm -f '$remote_tmp'
+             rm -f '$remote_home_tmp'
+             rm -f '$remote_merchant_tmp'
+             rm -f /tmp/yinnkhome-home-index-ready.html
              rm -f /tmp/yinnkhome-merchant-index-ready.html
+             test -f '$MERCHANT_PUBLIC_DIR/index.html'
              test -f '$MERCHANT_PUBLIC_DIR/merchant/index.html'"
 
-      - name: Verify merchant portal URL
+      - name: Verify public static URLs
         run: |
           set -euo pipefail
-          tmp_file="$(mktemp)"
-          curl -fsS https://yinnkhome.com/merchant/ -o "$tmp_file"
-          grep -q '商家入口 - 装修不凡' "$tmp_file"
+          home_file="$(mktemp)"
+          merchant_file="$(mktemp)"
+          curl -fsS https://yinnkhome.com/ -o "$home_file"
+          curl -fsS https://yinnkhome.com/merchant/ -o "$merchant_file"
+          grep -q '商家登录' "$home_file"
+          grep -q '商家入口 - 装修不凡' "$merchant_file"
