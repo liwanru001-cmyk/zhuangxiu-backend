@@ -676,7 +676,7 @@
         <button id="productsTab" class="tab" type="button" data-panel="productsPanel">产品展示</button>
       </div>
 
-      <form id="profileForm" class="workspace-panel active">
+      <form id="profilePanel" class="workspace-panel active">
         <section class="section">
           <h2>基础信息</h2>
           <div class="form-grid">
@@ -1176,6 +1176,11 @@
       showProductEditorView();
     }
 
+    function productCoverUrl(product) {
+      const images = Array.isArray(product?.image_urls) ? product.image_urls : [];
+      return product?.cover_url || images.find(Boolean) || '';
+    }
+
     function renderProducts() {
       renderProductImages();
       let visibleProducts = [...merchantProducts];
@@ -1201,7 +1206,7 @@
       $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
       $('productList').innerHTML = visibleProducts.map((product) => `
         <div class="product-card">
-          <div class="product-thumb">${product.cover_url ? `<img src="${displayImageUrl(product.cover_url)}" alt="">` : '暂无图片'}</div>
+          <div class="product-thumb">${productCoverUrl(product) ? `<img src="${displayImageUrl(productCoverUrl(product))}" alt="">` : '暂无图片'}</div>
           <div class="product-card-body">
             <div class="list-item-title">${product.name}</div>
             <div class="list-item-meta">${categoryName(product.category_id) || '未分类'}</div>
@@ -1472,7 +1477,7 @@
     $('hours_start').addEventListener('change', updateBusinessHours);
     $('hours_end').addEventListener('change', updateBusinessHours);
 
-    $('profileForm').addEventListener('submit', async (event) => {
+    $('profilePanel').addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!token()) {
         setMessage('profileMessage', '请先登录商家账号后再保存资料。', 'error');
