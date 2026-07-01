@@ -37,7 +37,7 @@ jobs:
 
           ssh_port="${SSH_PORT:-22}"
 
-          MERCHANT_PUBLIC_DIR="${MERCHANT_PUBLIC_DIR:-/usr/share/nginx/html}"
+          MERCHANT_PUBLIC_DIR="/opt/yinnkhome-backend/server/public"
 
           if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
             echo "Refusing to deploy to stale or unrelated host: $SSH_HOST"
@@ -60,7 +60,8 @@ jobs:
           esac
 
           case "$MERCHANT_PUBLIC_DIR" in
-            /|/var|/var/www|/opt/yinnkhome-backend|/opt/yinnkhome-backend/*|*/server/public|*/server/public/*)
+            /opt/yinnkhome-backend/server/public) ;;
+            *)
               echo "Refusing dangerous MERCHANT_PUBLIC_DIR: $MERCHANT_PUBLIC_DIR"
               exit 1
               ;;
@@ -109,4 +110,4 @@ jobs:
       - name: Verify merchant portal URL
         run: |
           set -euo pipefail
-          curl -fsS https://yinnkhome.com/merchant/ >/dev/null
+          curl -fsS https://yinnkhome.com/merchant/ | grep -q '商家入口 - 装修不凡'
