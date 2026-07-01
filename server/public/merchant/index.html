@@ -926,6 +926,7 @@
     let productImageUrls = [];
     let selectedRootCategoryId = 'all';
     let selectedChildCategoryId = 'all';
+    let currentProfile = null;
 
     const $ = (id) => document.getElementById(id);
     const fields = [
@@ -948,6 +949,25 @@
       el.className = `message ${type}`.trim();
     }
 
+    function displayImageUrl(url) {
+      const raw = String(url || '').trim();
+      if (!raw) return '';
+      if (raw.startsWith('blob:') || raw.startsWith('data:')) return raw;
+      if (raw.startsWith('/')) return raw;
+      try {
+        const parsed = new URL(raw, window.location.origin);
+        if (
+          parsed.hostname === window.location.hostname ||
+          ['127.0.0.1', 'localhost', '115.29.194.46'].includes(parsed.hostname)
+        ) {
+          return `${window.location.origin}${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
+        return parsed.href;
+      } catch (_) {
+        return raw;
+      }
+    }
+
     function showPanel(panelId) {
       document.querySelectorAll('.workspace-panel').forEach((panel) => {
         panel.classList.toggle('active', panel.id === panelId);
@@ -955,6 +975,9 @@
       document.querySelectorAll('.tab').forEach((tab) => {
         tab.classList.toggle('active', tab.dataset.panel === panelId);
       });
+      if (panelId === 'profilePanel' && currentProfile) {
+        fillProfile(currentProfile);
+      }
     }
 
     function renderTimeOptions() {
@@ -1070,7 +1093,7 @@
       $('productImagePreview').innerHTML = productImageUrls.length
         ? productImageUrls.map((url, index) => `
           <div class="list-item">
-            <div class="product-thumb"><img src="${url}" alt=""></div>
+            <div class="product-thumb"><img src="${displayImageUrl(url)}" alt=""></div>
             <div class="small-actions">
               <button class="text-button" type="button" data-action="setCoverImage" data-index="${index}">${index === 0 ? '当前主图' : '设为主图'}</button>
               <button class="text-button danger" type="button" data-action="removeProductImage" data-index="${index}">删除</button>
@@ -1178,7 +1201,7 @@
       $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
       $('productList').innerHTML = visibleProducts.map((product) => `
         <div class="product-card">
-          <div class="product-thumb">${product.cover_url ? `<img src="${product.cover_url}" alt="">` : '暂无图片'}</div>
+          <div class="product-thumb">${product.cover_url ? `<img src="${displayImageUrl(product.cover_url)}" alt="">` : '暂无图片'}</div>
           <div class="product-card-body">
             <div class="list-item-title">${product.name}</div>
             <div class="list-item-meta">${categoryName(product.category_id) || '未分类'}</div>
@@ -1209,7 +1232,7 @@
     function setImagePreview(kind, url) {
       const preview = kind === 'logo' ? $('logoPreview') : $('coverPreview');
       const fallback = kind === 'logo' ? '建议上传方形 Logo' : '建议上传门店、展厅或产品陈列图';
-      preview.innerHTML = url ? `<img src="${url}" alt="">` : fallback;
+      preview.innerHTML = url ? `<img src="${displayImageUrl(url)}" alt="">` : fallback;
     }
 
     function setBusinessHours(value) {
@@ -1299,7 +1322,7 @@
       }
       status.textContent = '正在上传...';
       const url = await uploadImage(`/users/merchant-profile/image?type=${kind}`, file);
-      field.value = url;
+      field.value = displayImageUrl(url);
       setImagePreview(kind, url);
       status.textContent = '上传成功，保存资料后生效。';
     }
@@ -1327,6 +1350,7 @@
     async function loadProfile() {
       setMessage('profileMessage', '正在读取商家资料...');
       const profile = await api('/users/merchant-profile');
+      currentProfile = profile || {};
       fillProfile(profile);
       await loadProducts();
       setMessage('profileMessage', '资料已读取', 'ok');
@@ -1360,6 +1384,7 @@
         method: 'PUT',
         body: JSON.stringify(payload)
       });
+      currentProfile = { ...(currentProfile || {}), ...payload };
       setMessage('profileMessage', '商家资料已保存', 'ok');
     }
 
@@ -1428,7 +1453,7 @@
         $('productImageStatus').textContent = '正在上传...';
         for (const file of files) {
           if (!token()) throw new Error('请先登录商家账号后再上传图片');
-          productImageUrls.push(await uploadImage('/users/merchant-products/image', file));
+          productImageUrls.push(displayImageUrl(await uploadImage('/users/merchant-products/image', file)));
         }
         renderProductImages();
         $('productImageStatus').textContent = '上传成功，保存产品后生效。';
@@ -1605,6 +1630,7 @@
     $('logoutBtn').addEventListener('click', () => {
       localStorage.removeItem(TOKEN_KEY);
       localStorage.removeItem(USER_KEY);
+      currentProfile = null;
       fillProfile({});
       showWorkspace(false);
       setMessage('loginMessage', '已退出登录');
