@@ -323,7 +323,7 @@ async function listPublicProducts(req, res) {
 async function uploadProductImage(req, res) {
   if (!(await assertMerchant(req, res))) return;
   if (!req.file) return error(res, '请选择产品图片');
-  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/merchant-products/${req.file.filename}`;
+  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-products/${req.file.filename}`;
   return success(res, { url: imageUrl }, '图片上传成功');
 }
 

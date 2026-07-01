@@ -953,9 +953,14 @@
       const raw = String(url || '').trim();
       if (!raw) return '';
       if (raw.startsWith('blob:') || raw.startsWith('data:')) return raw;
+      if (raw.startsWith('/api/uploads/')) return raw;
+      if (raw.startsWith('/uploads/')) return `/api${raw}`;
       if (raw.startsWith('/')) return raw;
       try {
         const parsed = new URL(raw, window.location.origin);
+        if (parsed.pathname.startsWith('/uploads/')) {
+          return `${window.location.origin}/api${parsed.pathname}${parsed.search}${parsed.hash}`;
+        }
         if (
           parsed.hostname === window.location.hostname ||
           ['127.0.0.1', 'localhost', '115.29.194.46'].includes(parsed.hostname)

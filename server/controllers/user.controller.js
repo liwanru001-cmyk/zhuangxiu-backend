@@ -942,7 +942,7 @@ async function uploadMerchantProfileImage(req, res) {
   if (!roleRows.length && req.user.role !== 'merchant') {
     return error(res, '只有商家身份可以上传商家图片', 403);
   }
-  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/merchant-profiles/${req.file.filename}`;
+  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-profiles/${req.file.filename}`;
   return success(res, { url: imageUrl }, '图片上传成功');
 }
 
