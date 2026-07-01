@@ -334,16 +334,7 @@ jobs:
             . ./.env
             set +a
 
-            node scripts/run-migration.js migrations/20260628_owner_member_role.sql
-            node scripts/run-migration.js migrations/20260628_project_event_notifications.sql
-            node scripts/run-migration.js migrations/20260628_project_lifecycle_status.sql
-            node scripts/run-migration.js migrations/20260629_business_catalog_companies.sql
-            node scripts/run-migration.js migrations/20260629_professionals.sql
-            node scripts/run-migration.js migrations/20260629_company_members.sql
-            node scripts/run-migration.js migrations/20260629_consultation_targets.sql
-            node scripts/run-migration.js migrations/20260629_project_participants_ext.sql
-            node scripts/run-migration.js migrations/20260629_entity_relations.sql
-            node scripts/run-migration.js migrations/20260629_company_boundary_fields.sql
+            # Keep this deploy focused on the merchant profile/product chain.
             node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
             node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
 

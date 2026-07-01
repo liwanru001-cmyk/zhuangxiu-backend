@@ -83,10 +83,21 @@ jobs:
           scp "${ssh_opts[@]}" server/public/merchant/index.html "$remote:$remote_tmp"
           ssh "${ssh_opts[@]}" "$remote" \
             "set -euo pipefail
-             mkdir -p '$MERCHANT_PUBLIC_DIR/merchant'
-             cp '$remote_tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp'
-             mv '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html'
+             runner=''
+             if [ \"\$(id -u)\" -ne 0 ]; then
+               if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                 runner='sudo'
+               else
+                 echo 'Deployment user needs root or passwordless sudo to write merchant portal.'
+                 exit 1
+               fi
+             fi
+             \$runner mkdir -p '$MERCHANT_PUBLIC_DIR/merchant'
+             cp '$remote_tmp' /tmp/yinnkhome-merchant-index-ready.html
+             \$runner cp /tmp/yinnkhome-merchant-index-ready.html '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp'
+             \$runner mv '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html'
              rm -f '$remote_tmp'
+             rm -f /tmp/yinnkhome-merchant-index-ready.html
              test -f '$MERCHANT_PUBLIC_DIR/merchant/index.html'"
 
       - name: Verify merchant portal URL
