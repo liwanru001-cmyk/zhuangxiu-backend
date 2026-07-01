@@ -88,8 +88,11 @@ jobs:
             start_candidate() {
               candidate="$1"
               workdir="$(app_workdir "$candidate")" || return 1
+              candidate_port="$(app_port "$candidate")"
+              candidate_port="${candidate_port:-3001}"
               cd "$workdir"
-              pm2 startOrReload ecosystem.config.cjs --env production --update-env
+              pm2 delete yinnkhome-backend || true
+              PORT="$candidate_port" pm2 startOrReload ecosystem.config.cjs --env production --update-env
               sleep 3
               health_ok
             }
@@ -284,12 +287,23 @@ jobs:
                 echo "Deployment failed; rolling back to $backup_dir"
                 rm -rf "$APP_DIR"
                 mv "$backup_dir" "$APP_DIR"
+                if [ -f "$APP_DIR/.env" ]; then
+                  set -a
+                  . "$APP_DIR/.env"
+                  set +a
+                elif [ -f "$APP_DIR/server/.env" ]; then
+                  set -a
+                  . "$APP_DIR/server/.env"
+                  set +a
+                fi
                 if [ -f "$APP_DIR/ecosystem.config.cjs" ]; then
                   cd "$APP_DIR"
-                  pm2 startOrReload ecosystem.config.cjs --env production --update-env || true
+                  pm2 delete yinnkhome-backend || true
+                  PORT="${PORT:-3001}" pm2 startOrReload ecosystem.config.cjs --env production --update-env || true
                 elif [ -f "$APP_DIR/server/ecosystem.config.cjs" ]; then
                   cd "$APP_DIR/server"
-                  pm2 startOrReload ecosystem.config.cjs --env production --update-env || true
+                  pm2 delete yinnkhome-backend || true
+                  PORT="${PORT:-3001}" pm2 startOrReload ecosystem.config.cjs --env production --update-env || true
                 fi
                 pm2 save || true
               fi
@@ -384,6 +398,8 @@ jobs:
             node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
             node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
 
+            export PORT="${PORT:-3001}"
+            pm2 delete yinnkhome-backend || true
             pm2 startOrReload ecosystem.config.cjs --env production --update-env
             pm2 save
 
