@@ -657,7 +657,6 @@
             <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入账户密码">
           </div>
           <button id="loginBtn" class="button button-primary" type="submit">登录商家入口</button>
-          <button id="previewBtn" class="button button-secondary" type="button" style="width:100%; margin-top:10px">预览商家后台界面</button>
           <div id="loginMessage" class="message"></div>
         </form>
       </div>
@@ -1295,7 +1294,7 @@
       const status = kind === 'logo' ? $('logoStatus') : $('coverStatus');
       const field = kind === 'logo' ? $('logo_url') : $('cover_url');
       if (!token()) {
-        status.textContent = '当前为预览模式，已显示本地图片，登录后可上传保存。';
+        status.textContent = '请先登录商家账号后再上传图片。';
         return;
       }
       status.textContent = '正在上传...';
@@ -1364,52 +1363,6 @@
       setMessage('profileMessage', '商家资料已保存', 'ok');
     }
 
-    function previewWorkspace() {
-      fillProfile({
-        shop_name: '木序全屋定制',
-        logo_url: 'https://example.com/logo.png',
-        cover_url: 'https://example.com/showroom.jpg',
-        service_area: '杭州主城区及周边',
-        address: '杭州市滨江区江南大道 1888 号家居广场 3F',
-        contact_phone: '0571-88886666',
-        business_hours: '周一至周日 09:00-18:00',
-        category_group: '建材',
-        brand_intro: '主营全屋定制、柜体设计、板材选型和安装落地服务，支持上门测量与方案报价。',
-        after_sales_promise: '安装问题 48 小时内响应，五金件和柜门调试提供售后支持。',
-        license_url: '',
-        authorization_url: '',
-        categories: ['瓷砖地板', '灯具照明'],
-        consultation_enabled: true,
-        case_count: 0
-      });
-      productCategories = [
-        { id: 1, parent_id: null, name: '瓷砖', sort_order: 10, status: 'active' },
-        { id: 2, parent_id: 1, name: '客厅砖', sort_order: 10, status: 'active' },
-        { id: 3, parent_id: null, name: '灯具', sort_order: 20, status: 'active' }
-      ];
-      merchantProducts = [
-        {
-          id: 1,
-          category_id: 2,
-          name: '柔光瓷砖 750x1500',
-          cover_url: '',
-          image_urls: [],
-          summary: '适合客厅和餐厅的大规格柔光砖。',
-          description: '耐磨、防滑、易打理，到店可看实物色板。',
-          brand: '木序精选',
-          spec: '750x1500mm',
-          price_text: '到店咨询',
-          status: 'active',
-          sort_order: 10
-        }
-      ];
-      renderProductCategories();
-      renderProducts();
-      showWorkspace(true);
-      $('logoutBtn').style.display = 'none';
-      setMessage('profileMessage', '当前为页面设计预览，未连接服务器，保存不会生效。');
-    }
-
     $('loginForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       const phone = $('phone').value.trim();
@@ -1433,8 +1386,6 @@
         $('loginBtn').disabled = false;
       }
     });
-
-    $('previewBtn').addEventListener('click', previewWorkspace);
 
     $('openCategoryEditorBtn').addEventListener('click', startRootCategory);
     $('newProductBtn').addEventListener('click', () => {
@@ -1476,16 +1427,11 @@
       try {
         $('productImageStatus').textContent = '正在上传...';
         for (const file of files) {
-          if (!token()) {
-            productImageUrls.push(URL.createObjectURL(file));
-          } else {
-            productImageUrls.push(await uploadImage('/users/merchant-products/image', file));
-          }
+          if (!token()) throw new Error('请先登录商家账号后再上传图片');
+          productImageUrls.push(await uploadImage('/users/merchant-products/image', file));
         }
         renderProductImages();
-        $('productImageStatus').textContent = token()
-          ? '上传成功，保存产品后生效。'
-          : '当前为预览模式，图片仅本地显示。';
+        $('productImageStatus').textContent = '上传成功，保存产品后生效。';
       } catch (error) {
         $('productImageStatus').textContent = error.message;
       } finally {
@@ -1504,7 +1450,7 @@
     $('profileForm').addEventListener('submit', async (event) => {
       event.preventDefault();
       if (!token()) {
-        setMessage('profileMessage', '当前为页面设计预览，未连接服务器，保存不会生效。');
+        setMessage('profileMessage', '请先登录商家账号后再保存资料。', 'error');
         return;
       }
       $('saveBtn').disabled = true;
@@ -1529,13 +1475,7 @@
         return;
       }
       if (!token()) {
-        const item = { id: editingCategoryId || Date.now(), merchant_user_id: 0, ...body };
-        productCategories = editingCategoryId
-          ? productCategories.map((category) => Number(category.id) === Number(editingCategoryId) ? item : category)
-          : [...productCategories, item];
-        resetCategoryForm();
-        renderProductCategories();
-        setMessage('categoryMessage', '预览模式：分类已临时更新。', 'ok');
+        setMessage('categoryMessage', '请先登录商家账号后再保存分类。', 'error');
         return;
       }
       try {
@@ -1576,14 +1516,7 @@
         return;
       }
       if (!token()) {
-        const item = { id: editingProductId || Date.now(), merchant_user_id: 0, ...body };
-        merchantProducts = editingProductId
-          ? merchantProducts.map((product) => Number(product.id) === Number(editingProductId) ? item : product)
-          : [item, ...merchantProducts];
-        resetProductForm();
-        renderProducts();
-        showProductListView();
-        setMessage('productMessage', '预览模式：产品已临时更新。', 'ok');
+        setMessage('productMessage', '请先登录商家账号后再保存产品。', 'error');
         return;
       }
       try {
