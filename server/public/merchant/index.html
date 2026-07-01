@@ -546,6 +546,20 @@
       grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
       gap: 12px;
     }
+    .product-image-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, 130px);
+      gap: 12px;
+      align-items: start;
+    }
+    .product-image-item {
+      width: 130px;
+      display: grid;
+      gap: 8px;
+    }
+    .product-image-item .small-actions {
+      justify-content: center;
+    }
     .product-list-heading {
       display: flex;
       align-items: baseline;
@@ -863,7 +877,7 @@
               </div>
               <div class="field full">
                 <label>产品图片</label>
-                <div id="productImagePreview" class="product-card-grid"></div>
+                <div id="productImagePreview" class="product-image-grid"></div>
                 <div class="upload-actions" style="margin-top:10px">
                   <label class="button button-secondary" for="productImageFile">上传图片</label>
                   <span id="productImageStatus" class="upload-note">第一张会作为产品卡片主图</span>
@@ -1102,7 +1116,7 @@
     function renderProductImages() {
       $('productImagePreview').innerHTML = productImageUrls.length
         ? productImageUrls.map((url, index) => `
-          <div class="list-item">
+          <div class="product-image-item">
             <div class="product-thumb"><img src="${displayImageUrl(url)}" alt=""></div>
             <div class="small-actions">
               <button class="text-button" type="button" data-action="setCoverImage" data-index="${index}">${index === 0 ? '当前主图' : '设为主图'}</button>
