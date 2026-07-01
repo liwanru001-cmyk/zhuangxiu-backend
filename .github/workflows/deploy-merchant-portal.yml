@@ -110,4 +110,6 @@ jobs:
       - name: Verify merchant portal URL
         run: |
           set -euo pipefail
-          curl -fsS https://yinnkhome.com/merchant/ | grep -q '商家入口 - 装修不凡'
+          tmp_file="$(mktemp)"
+          curl -fsS https://yinnkhome.com/merchant/ -o "$tmp_file"
+          grep -q '商家入口 - 装修不凡' "$tmp_file"
