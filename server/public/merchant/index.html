@@ -1,0 +1,1697 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="装修不凡商家入口，用于电脑端维护商家资料、主营品类、服务能力和线下咨询信息。">
+  <link rel="icon" href="/favicon.png">
+  <title>商家入口 - 装修不凡</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #667085;
+      --line: #e8edf3;
+      --blue: #2f73e8;
+      --blue-dark: #1857c6;
+      --coral: #ff7a59;
+      --mint: #16a37b;
+      --paper: #fffdf8;
+      --soft: #f5f2ea;
+      --white: #ffffff;
+      --danger: #d92d20;
+      --shadow: 0 18px 48px rgba(30, 64, 120, .12);
+    }
+
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      color: var(--ink);
+      background:
+        linear-gradient(135deg, rgba(47, 115, 232, .10), rgba(255, 122, 89, .07) 48%, rgba(22, 163, 123, .10)),
+        var(--paper);
+      min-height: 100vh;
+    }
+    a { color: inherit; text-decoration: none; }
+    button, input, textarea { font: inherit; }
+
+    .nav {
+      position: sticky;
+      top: 0;
+      z-index: 5;
+      background: rgba(255, 253, 248, .88);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(232, 237, 243, .85);
+    }
+    .nav-inner {
+      max-width: 1120px;
+      height: 68px;
+      margin: 0 auto;
+      padding: 0 22px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 900;
+    }
+    .brand img {
+      width: 36px;
+      height: 36px;
+      border-radius: 10px;
+      box-shadow: 0 8px 20px rgba(47, 115, 232, .22);
+    }
+    .nav-actions {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      color: var(--muted);
+      font-size: 14px;
+      font-weight: 800;
+    }
+    .nav-actions a:hover, .nav-actions button:hover { color: var(--blue); }
+
+    .shell {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 34px 22px 60px;
+    }
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 380px;
+      gap: 24px;
+      align-items: stretch;
+    }
+    .intro, .panel, .section {
+      background: rgba(255, 255, 255, .82);
+      border: 1px solid rgba(232, 237, 243, .95);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+    .intro {
+      padding: 32px;
+      min-height: 280px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+    .eyebrow {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      color: var(--blue-dark);
+      background: rgba(47, 115, 232, .10);
+      font-size: 13px;
+      font-weight: 900;
+    }
+    .eyebrow::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--mint);
+    }
+    h1 {
+      margin: 22px 0 12px;
+      font-size: clamp(34px, 5vw, 54px);
+      line-height: 1.08;
+      letter-spacing: 0;
+    }
+    .intro p {
+      max-width: 620px;
+      margin: 0;
+      color: #42526a;
+      font-size: 17px;
+      line-height: 1.75;
+      font-weight: 650;
+    }
+    .tips {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 24px;
+    }
+    .tip {
+      padding: 12px;
+      background: rgba(245, 248, 255, .92);
+      border: 1px solid rgba(47, 115, 232, .10);
+      border-radius: 8px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 750;
+    }
+
+    .panel { padding: 22px; }
+    .panel h2, .section h2 {
+      margin: 0;
+      font-size: 22px;
+      letter-spacing: 0;
+    }
+    .panel-desc {
+      margin: 8px 0 20px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      font-weight: 650;
+    }
+    .field {
+      display: grid;
+      gap: 7px;
+      margin-bottom: 14px;
+    }
+    .field-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 10px;
+      align-items: end;
+    }
+    label {
+      color: #344054;
+      font-size: 13px;
+      font-weight: 850;
+    }
+    input, textarea, select {
+      width: 100%;
+      border: 1px solid #d9e1ec;
+      border-radius: 8px;
+      background: #fff;
+      color: var(--ink);
+      outline: none;
+      padding: 11px 12px;
+      transition: border-color .15s, box-shadow .15s;
+    }
+    textarea { min-height: 96px; resize: vertical; }
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--blue);
+      box-shadow: 0 0 0 3px rgba(47, 115, 232, .12);
+    }
+    .image-upload-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .upload-box {
+      border: 1px dashed #bfd0e6;
+      border-radius: 8px;
+      background: #f8fafc;
+      padding: 12px;
+      display: grid;
+      gap: 10px;
+    }
+    .upload-preview {
+      height: 150px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background:
+        linear-gradient(135deg, rgba(47, 115, 232, .08), rgba(22, 163, 123, .08)),
+        #fff;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .upload-preview.logo-preview {
+      width: 150px;
+      height: 150px;
+    }
+    .upload-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .file-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .upload-actions {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+    .upload-note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 650;
+    }
+    .hours-grid {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr 1fr;
+      gap: 10px;
+    }
+    .button {
+      min-height: 46px;
+      padding: 0 16px;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      cursor: pointer;
+      font-weight: 900;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .button-primary {
+      width: 100%;
+      color: #fff;
+      background: var(--blue);
+      box-shadow: 0 12px 28px rgba(47, 115, 232, .24);
+    }
+    .button-secondary {
+      color: var(--ink);
+      background: rgba(255,255,255,.78);
+      border-color: rgba(23,32,51,.10);
+    }
+    .button-ghost {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-weight: 850;
+      color: var(--muted);
+    }
+    .button:disabled {
+      cursor: not-allowed;
+      opacity: .58;
+      box-shadow: none;
+    }
+    .message {
+      min-height: 20px;
+      margin-top: 12px;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.5;
+      font-weight: 700;
+    }
+    .message.error { color: var(--danger); }
+    .message.ok { color: var(--mint); }
+
+    .workspace { display: none; }
+    .workspace-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 18px;
+      margin-bottom: 16px;
+    }
+    .workspace-title h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+    }
+    .workspace-title p {
+      margin: 0;
+      color: var(--muted);
+      font-weight: 650;
+      line-height: 1.65;
+    }
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 14px;
+    }
+    .section {
+      padding: 22px;
+      margin-top: 14px;
+    }
+    .section h2 { margin-bottom: 16px; }
+    .full { grid-column: 1 / -1; }
+    .chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .chip {
+      border: 1px solid #d9e1ec;
+      background: #fff;
+      color: #344054;
+      border-radius: 999px;
+      padding: 8px 12px;
+      cursor: pointer;
+      font-weight: 800;
+      font-size: 13px;
+    }
+    .chip.selected {
+      border-color: rgba(47, 115, 232, .35);
+      color: var(--blue-dark);
+      background: rgba(47, 115, 232, .10);
+    }
+    .chip-group {
+      margin-bottom: 14px;
+    }
+    .chip-group-title {
+      margin: 0 0 8px;
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .toggle-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 14px;
+      background: #f8fafc;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+    }
+    .toggle-row strong { display: block; margin-bottom: 4px; }
+    .toggle-row span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .switch {
+      width: 48px;
+      height: 28px;
+      appearance: none;
+      border: none;
+      border-radius: 999px;
+      background: #cfd8e3;
+      position: relative;
+      cursor: pointer;
+      flex: 0 0 auto;
+    }
+    .switch::after {
+      content: "";
+      position: absolute;
+      width: 22px;
+      height: 22px;
+      top: 3px;
+      left: 3px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 2px 8px rgba(23,32,51,.22);
+      transition: transform .18s;
+    }
+    .switch:checked { background: var(--blue); }
+    .switch:checked::after { transform: translateX(20px); }
+    .save-bar {
+      position: sticky;
+      bottom: 0;
+      display: flex;
+      justify-content: flex-end;
+      gap: 12px;
+      padding: 16px 0 0;
+      background: linear-gradient(to top, var(--paper), rgba(255,253,248,.72));
+    }
+    .tabs {
+      display: flex;
+      gap: 8px;
+      margin: 0 0 14px;
+      border-bottom: 1px solid var(--line);
+    }
+    .tab {
+      border: 0;
+      background: transparent;
+      padding: 12px 4px;
+      color: var(--muted);
+      cursor: pointer;
+      font-weight: 900;
+      border-bottom: 3px solid transparent;
+    }
+    .tab.active {
+      color: var(--blue-dark);
+      border-bottom-color: var(--blue);
+    }
+    .workspace-panel { display: none; }
+    .workspace-panel.active { display: block; }
+    .split-grid {
+      display: grid;
+      grid-template-columns: 300px minmax(0, 1fr);
+      gap: 14px;
+      align-items: start;
+    }
+    .list-stack {
+      display: grid;
+      gap: 10px;
+    }
+    .list-item {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 12px;
+      display: grid;
+      gap: 8px;
+    }
+    .list-item-head {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .list-item-title {
+      font-weight: 900;
+      color: var(--ink);
+    }
+    .list-item-meta {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      font-weight: 650;
+    }
+    .small-actions {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .text-button {
+      border: none;
+      background: transparent;
+      color: var(--blue-dark);
+      cursor: pointer;
+      padding: 0;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .text-button.danger { color: var(--danger); }
+    .panel-toolbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 14px;
+      flex-wrap: wrap;
+    }
+    .panel-toolbar h2 {
+      margin: 0;
+    }
+    .category-tabs {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 10px;
+    }
+    .category-tab {
+      border: 1px solid #d9e1ec;
+      background: #fff;
+      color: #344054;
+      border-radius: 999px;
+      padding: 9px 13px;
+      cursor: pointer;
+      font-weight: 850;
+      font-size: 13px;
+    }
+    .category-tab.active {
+      border-color: rgba(47, 115, 232, .38);
+      background: rgba(47, 115, 232, .10);
+      color: var(--blue-dark);
+    }
+    .category-modal {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 20;
+      background: rgba(23, 32, 51, .28);
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .category-modal.active { display: flex; }
+    .category-dialog {
+      width: min(520px, 100%);
+      margin-bottom: 14px;
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 24px 80px rgba(23, 32, 51, .18);
+    }
+    .category-editor-title {
+      margin: 0 0 12px;
+      color: var(--ink);
+      font-size: 22px;
+      font-weight: 900;
+    }
+    .product-list-view { display: block; }
+    .product-list-view.hidden { display: none; }
+    .product-editor-view { display: none; }
+    .product-editor-view.active { display: block; }
+    .product-card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 12px;
+    }
+    .product-list-heading {
+      display: flex;
+      align-items: baseline;
+      gap: 12px;
+      margin: 22px 0 14px;
+      flex-wrap: wrap;
+    }
+    .product-list-heading h3 {
+      margin: 0;
+      font-size: 20px;
+    }
+    .product-list-heading span {
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 650;
+    }
+    .product-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 16px;
+      display: grid;
+      grid-template-columns: 132px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .product-card-body {
+      min-width: 0;
+      display: grid;
+      gap: 8px;
+    }
+    .status-pill {
+      display: inline-flex;
+      width: fit-content;
+      align-items: center;
+      min-height: 30px;
+      padding: 0 12px;
+      border-radius: 999px;
+      color: var(--blue-dark);
+      border: 1px solid rgba(47, 115, 232, .38);
+      background: rgba(47, 115, 232, .08);
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .product-thumb {
+      height: 130px;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: #f8fafc;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .product-thumb img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+
+    @media (max-width: 900px) {
+      .hero { grid-template-columns: 1fr; }
+      .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid { grid-template-columns: 1fr; }
+      .product-card-grid { grid-template-columns: 1fr; }
+      .product-card { grid-template-columns: 1fr; }
+      .workspace-header { flex-direction: column; }
+      .nav-inner { padding: 0 16px; }
+      .shell { padding: 24px 16px 48px; }
+      .intro, .panel, .section { padding: 18px; }
+    }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/" aria-label="返回装修不凡首页">
+        <img src="/assets/app-icon.png" alt="">
+        <span>装修不凡</span>
+      </a>
+      <div class="nav-actions">
+        <a href="/">官网首页</a>
+        <button id="logoutBtn" class="button-ghost" type="button" style="display:none">退出登录</button>
+      </div>
+    </div>
+  </nav>
+
+  <main class="shell">
+    <section id="loginView" class="hero">
+      <div class="intro">
+        <div class="eyebrow">商家电脑端入口</div>
+        <h1>维护店铺资料，让业主更快找到你</h1>
+        <p>登录后可同步编辑 App 里的商家信息，包括门店资料、服务区域、主营品类、联系电话、营业时间和资质信息。这里只做展示和线索咨询，不接入线上下单。</p>
+        <div class="tips">
+          <div class="tip">建材、家居商家</div>
+          <div class="tip">展示产品和服务，引流到线下成交</div>
+          <div class="tip">不参与装修项目成员和施工权限</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2>商家登录</h2>
+        <p class="panel-desc">使用已审核账号的手机号和密码登录。</p>
+        <form id="loginForm">
+          <div class="field">
+            <label for="phone">手机号</label>
+            <input id="phone" name="phone" autocomplete="username" inputmode="numeric" maxlength="11" placeholder="请输入 11 位手机号">
+          </div>
+          <div class="field">
+            <label for="password">密码</label>
+            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入账户密码">
+          </div>
+          <button id="loginBtn" class="button button-primary" type="submit">登录商家入口</button>
+          <button id="previewBtn" class="button button-secondary" type="button" style="width:100%; margin-top:10px">预览商家后台界面</button>
+          <div id="loginMessage" class="message"></div>
+        </form>
+      </div>
+    </section>
+
+    <section id="workspaceView" class="workspace">
+      <div class="workspace-header">
+        <div class="workspace-title">
+          <h1>商家资料</h1>
+          <p>这些信息会同步到移动端商家资料，用于产品/服务展示和线下咨询。</p>
+        </div>
+        <button id="reloadBtn" class="button button-secondary" type="button">重新读取</button>
+      </div>
+
+      <div class="tabs" role="tablist">
+        <button id="profileTab" class="tab active" type="button" data-panel="profilePanel">商家资料</button>
+        <button id="productsTab" class="tab" type="button" data-panel="productsPanel">产品展示</button>
+      </div>
+
+      <form id="profileForm" class="workspace-panel active">
+        <section class="section">
+          <h2>基础信息</h2>
+          <div class="form-grid">
+            <div class="field">
+              <label for="shop_name">商家/门店名称</label>
+              <input id="shop_name" name="shop_name" maxlength="120" placeholder="例如：木序全屋定制">
+            </div>
+            <div class="field">
+              <label for="service_area">服务区域</label>
+              <input id="service_area" name="service_area" maxlength="80" placeholder="例如：杭州主城区">
+            </div>
+            <div class="field full">
+              <label for="brand_intro">店铺/品牌简介</label>
+              <textarea id="brand_intro" name="brand_intro" maxlength="500" placeholder="介绍主营产品、服务优势、适合哪些装修需求"></textarea>
+            </div>
+            <div class="full image-upload-grid">
+              <div class="upload-box">
+                <label>Logo 图片</label>
+                <div id="logoPreview" class="upload-preview logo-preview">建议上传方形 Logo</div>
+                <div class="upload-actions">
+                  <label class="button button-secondary" for="logoFile">上传 Logo</label>
+                  <span id="logoStatus" class="upload-note">支持 JPG、PNG、WebP</span>
+                </div>
+                <input id="logoFile" class="file-input" type="file" accept="image/*">
+                <input id="logo_url" name="logo_url" type="hidden">
+              </div>
+              <div class="upload-box">
+                <label>门店封面照片</label>
+                <div id="coverPreview" class="upload-preview">建议上传门店、展厅或产品陈列图</div>
+                <div class="upload-actions">
+                  <label class="button button-secondary" for="coverFile">上传封面</label>
+                  <span id="coverStatus" class="upload-note">用于商家展示页首屏</span>
+                </div>
+                <input id="coverFile" class="file-input" type="file" accept="image/*">
+                <input id="cover_url" name="cover_url" type="hidden">
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>线下联系信息</h2>
+          <div class="form-grid">
+            <div class="field full">
+              <label for="address">详细地址</label>
+              <div class="field-row">
+                <input id="address" name="address" maxlength="255" placeholder="门店、展厅或服务地址">
+                <button id="mapPlaceholderBtn" class="button button-secondary" type="button">地图定位</button>
+              </div>
+              <div class="upload-note">地图定位功能先占位，后续接入地图选点后可自动回填地址。</div>
+            </div>
+            <div class="field">
+              <label for="contact_phone">联系电话</label>
+              <input id="contact_phone" name="contact_phone" maxlength="40" placeholder="用于业主线下咨询">
+            </div>
+            <div class="field">
+              <label for="business_hours">营业时间</label>
+              <input id="business_hours" name="business_hours" type="hidden">
+              <div class="hours-grid">
+                <select id="hours_days" aria-label="营业日期">
+                  <option value="周一至周日">周一至周日</option>
+                  <option value="周一至周五">周一至周五</option>
+                  <option value="周六至周日">周六至周日</option>
+                  <option value="预约制">预约制</option>
+                </select>
+                <select id="hours_start" aria-label="开始时间"></select>
+                <select id="hours_end" aria-label="结束时间"></select>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="section">
+          <h2>主营品类</h2>
+          <div class="chip-group">
+            <div class="chip-group-title">主营大类</div>
+            <div id="categoryGroupChoices" class="chips"></div>
+          </div>
+          <div class="chip-group">
+            <div class="chip-group-title">具体产品类别</div>
+            <div id="categoryChoices" class="chips"></div>
+          </div>
+          <div id="categoryHint" class="upload-note"></div>
+        </section>
+
+        <section class="section">
+          <h2>商家可信信息</h2>
+          <div class="form-grid">
+            <div class="field full">
+              <label for="after_sales_promise">售后承诺</label>
+              <textarea id="after_sales_promise" name="after_sales_promise" maxlength="500" placeholder="例如：安装问题 48 小时响应，质保期内提供售后支持"></textarea>
+            </div>
+            <div class="field">
+              <label for="license_url">营业执照/资质图片链接</label>
+              <input id="license_url" name="license_url" maxlength="500" placeholder="https://...">
+            </div>
+            <div class="field">
+              <label for="authorization_url">品牌授权图片链接</label>
+              <input id="authorization_url" name="authorization_url" maxlength="500" placeholder="https://...">
+            </div>
+            <div class="full toggle-row">
+              <div>
+                <strong>开放站内咨询</strong>
+                <span>用于线索沟通和线下成交，不接入线上下单。</span>
+              </div>
+              <input id="consultation_enabled" class="switch" name="consultation_enabled" type="checkbox">
+            </div>
+          </div>
+        </section>
+
+        <div class="save-bar">
+          <button id="saveBtn" class="button button-primary" type="submit" style="width:auto; min-width:160px">保存商家资料</button>
+        </div>
+        <div id="profileMessage" class="message"></div>
+      </form>
+
+      <section id="productsPanel" class="workspace-panel">
+        <section class="section" style="margin-top:0">
+          <div class="panel-toolbar">
+            <h2>产品展示</h2>
+            <div class="small-actions">
+              <button id="openCategoryEditorBtn" class="button button-secondary" type="button">新增产品分类</button>
+              <button id="newProductBtn" class="button button-primary" type="button">新增产品信息</button>
+            </div>
+          </div>
+
+          <div id="productListView" class="product-list-view">
+            <div id="rootCategoryTabs" class="category-tabs"></div>
+            <div id="childCategoryTabs" class="category-tabs"></div>
+            <div class="product-list-heading">
+              <h3>已上传产品</h3>
+              <span id="productListSummary">按当前分类展示产品卡片。</span>
+            </div>
+            <div id="productList" class="product-card-grid"></div>
+            <div id="productMessage" class="message"></div>
+          </div>
+
+          <div id="productEditorView" class="product-editor-view">
+            <div class="panel-toolbar">
+              <h2 id="productEditorTitle">新增产品信息</h2>
+              <button id="backToProductListBtn" class="button button-secondary" type="button">返回产品列表</button>
+            </div>
+            <div class="form-grid">
+              <div class="field">
+                <label for="product_category_id">所属分类</label>
+                <select id="product_category_id"></select>
+              </div>
+              <div class="field">
+                <label for="product_status">展示状态</label>
+                <select id="product_status">
+                  <option value="active">上架展示</option>
+                  <option value="hidden">隐藏</option>
+                  <option value="draft">草稿</option>
+                </select>
+              </div>
+              <div class="field">
+                <label for="product_name">产品名称</label>
+                <input id="product_name" maxlength="120" placeholder="例如：柔光瓷砖 750x1500">
+              </div>
+              <div class="field">
+                <label for="product_price_text">价格说明</label>
+                <input id="product_price_text" maxlength="80" placeholder="例如：到店咨询 / ¥199/㎡ 起">
+              </div>
+              <div class="field">
+                <label for="product_brand">品牌</label>
+                <input id="product_brand" maxlength="120">
+              </div>
+              <div class="field">
+                <label for="product_spec">规格</label>
+                <input id="product_spec" maxlength="200">
+              </div>
+              <div class="field full">
+                <label for="product_summary">简介</label>
+                <textarea id="product_summary" maxlength="300" placeholder="一句话说明产品亮点"></textarea>
+              </div>
+              <div class="field full">
+                <label for="product_description">说明</label>
+                <textarea id="product_description" maxlength="3000" placeholder="材质、适用空间、风格、注意事项等"></textarea>
+              </div>
+              <div class="field full">
+                <label>产品图片</label>
+                <div id="productImagePreview" class="product-card-grid"></div>
+                <div class="upload-actions" style="margin-top:10px">
+                  <label class="button button-secondary" for="productImageFile">上传图片</label>
+                  <span id="productImageStatus" class="upload-note">第一张会作为产品卡片主图</span>
+                </div>
+                <input id="productImageFile" class="file-input" type="file" accept="image/*" multiple>
+              </div>
+            </div>
+            <div class="save-bar">
+              <button id="saveProductBtn" class="button button-primary" type="button" style="width:auto; min-width:160px">新增产品</button>
+              <button id="cancelProductEditBtn" class="button button-secondary" type="button" style="display:none">取消编辑</button>
+            </div>
+          </div>
+        </section>
+      </section>
+
+      <div id="categoryEditor" class="category-modal" role="dialog" aria-modal="true" aria-labelledby="categoryEditorTitle">
+        <div class="category-dialog">
+          <div id="categoryEditorTitle" class="category-editor-title">新增产品分类</div>
+          <p class="panel-desc">选择“新增一级分类”，或选择已有一级分类来创建二级分类。产品分类最多二级。</p>
+          <div class="form-grid">
+            <div class="field full">
+              <label for="category_parent_id">分类层级</label>
+              <select id="category_parent_id"></select>
+            </div>
+            <div class="field">
+              <label for="category_name">分类名称</label>
+              <input id="category_name" maxlength="80" placeholder="例如：客厅砖">
+            </div>
+            <div class="field">
+              <label for="category_sort_order">排序</label>
+              <input id="category_sort_order" type="number" value="0">
+            </div>
+          </div>
+          <div class="small-actions" style="justify-content:flex-end">
+            <button id="cancelCategoryEditBtn" class="button button-secondary" type="button">取消</button>
+            <button id="saveCategoryBtn" class="button button-primary" type="button">保存分类</button>
+          </div>
+          <div id="categoryMessage" class="message"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const TOKEN_KEY = 'merchantPortalToken';
+    const USER_KEY = 'merchantPortalUser';
+    const categoryGroups = {
+      '建材': ['瓷砖地板', '涂料墙面', '水电防水', '灯具照明', '智能家居'],
+      '家居': ['家具', '软装', '电器']
+    };
+    const timeOptions = [
+      '08:00', '08:30', '09:00', '09:30', '10:00', '10:30',
+      '11:00', '11:30', '12:00', '13:00', '13:30', '14:00',
+      '14:30', '15:00', '15:30', '16:00', '16:30', '17:00',
+      '17:30', '18:00', '18:30', '19:00', '19:30', '20:00',
+      '20:30', '21:00'
+    ];
+    let selectedCategories = new Set();
+    let selectedCategoryGroup = '建材';
+    let caseCount = 0;
+    let productCategories = [];
+    let merchantProducts = [];
+    let editingCategoryId = null;
+    let editingProductId = null;
+    let productImageUrls = [];
+    let selectedRootCategoryId = 'all';
+    let selectedChildCategoryId = 'all';
+
+    const $ = (id) => document.getElementById(id);
+    const fields = [
+      'shop_name', 'logo_url', 'cover_url', 'service_area', 'address',
+      'contact_phone', 'business_hours', 'brand_intro', 'after_sales_promise',
+      'license_url', 'authorization_url'
+    ];
+    const productFields = [
+      'product_name', 'product_price_text', 'product_brand', 'product_spec',
+      'product_summary', 'product_description', 'product_status'
+    ];
+
+    function token() {
+      return localStorage.getItem(TOKEN_KEY) || '';
+    }
+
+    function setMessage(id, text, type = '') {
+      const el = $(id);
+      el.textContent = text || '';
+      el.className = `message ${type}`.trim();
+    }
+
+    function showPanel(panelId) {
+      document.querySelectorAll('.workspace-panel').forEach((panel) => {
+        panel.classList.toggle('active', panel.id === panelId);
+      });
+      document.querySelectorAll('.tab').forEach((tab) => {
+        tab.classList.toggle('active', tab.dataset.panel === panelId);
+      });
+    }
+
+    function renderTimeOptions() {
+      const options = timeOptions.map((time) => `<option value="${time}">${time}</option>`).join('');
+      $('hours_start').innerHTML = options;
+      $('hours_end').innerHTML = options;
+      $('hours_start').value = '09:00';
+      $('hours_end').value = '18:00';
+    }
+
+    async function api(path, options = {}) {
+      const headers = { 'Content-Type': 'application/json', ...(options.headers || {}) };
+      if (token()) headers.Authorization = `Bearer ${token()}`;
+      const res = await fetch(`/api${path}`, { ...options, headers });
+      let json;
+      try {
+        json = await res.json();
+      } catch (_) {
+        throw new Error('服务器响应格式错误');
+      }
+      if (!res.ok || (json.code && json.code >= 400)) {
+        throw new Error(json.message || '请求失败');
+      }
+      return json.data;
+    }
+
+    async function uploadImage(path, file) {
+      const form = new FormData();
+      form.append('image', file);
+      const res = await fetch(`/api${path}`, {
+        method: 'POST',
+        headers: token() ? { Authorization: `Bearer ${token()}` } : {},
+        body: form
+      });
+      const json = await res.json().catch(() => null);
+      if (!res.ok || !json || (json.code && json.code >= 400)) {
+        throw new Error(json?.message || '图片上传失败');
+      }
+      return json.data.url;
+    }
+
+    function hasMerchantRole(user) {
+      const roles = Array.isArray(user?.roles) ? user.roles : [];
+      return user?.role === 'merchant' || roles.includes('merchant');
+    }
+
+    function renderChips() {
+      $('categoryGroupChoices').innerHTML = Object.keys(categoryGroups).map(value =>
+        `<button class="chip ${selectedCategoryGroup === value ? 'selected' : ''}" type="button" data-kind="categoryGroup" data-value="${value}">${value}</button>`
+      ).join('');
+      $('categoryChoices').innerHTML = categoryGroups[selectedCategoryGroup].map(value =>
+        `<button class="chip ${selectedCategories.has(value) ? 'selected' : ''}" type="button" data-kind="category" data-value="${value}">${value}</button>`
+      ).join('');
+      $('categoryHint').textContent = selectedCategoryGroup === '建材'
+        ? '建材商家会进入装修圈“选建材”区域。'
+        : '家居商家会进入装修圈“选家居”区域。';
+    }
+
+    function categoryName(categoryId) {
+      const category = productCategories.find((item) => Number(item.id) === Number(categoryId));
+      if (!category) return '';
+      if (!category.parent_id) return category.name;
+      const parent = productCategories.find((item) => Number(item.id) === Number(category.parent_id));
+      return parent ? `${parent.name} / ${category.name}` : category.name;
+    }
+
+    function renderProductCategories() {
+      const rootOptions = productCategories
+        .filter((item) => !item.parent_id && item.status !== 'hidden')
+        .map((item) => `<option value="${item.id}">${item.name}</option>`)
+        .join('');
+      $('category_parent_id').innerHTML = `<option value="">新增一级分类</option>${rootOptions}`;
+
+      const productOptions = productCategories
+        .filter((item) => item.status === 'active')
+        .map((item) => `<option value="${item.id}">${categoryName(item.id)}</option>`)
+        .join('');
+      $('product_category_id').innerHTML = `<option value="">未分类</option>${productOptions}`;
+
+      const roots = productCategories.filter((item) => !item.parent_id);
+      if (selectedRootCategoryId !== 'all' && !roots.some((item) => Number(item.id) === Number(selectedRootCategoryId))) {
+        selectedRootCategoryId = 'all';
+        selectedChildCategoryId = 'all';
+      }
+      const children = selectedRootCategoryId === 'all'
+        ? []
+        : productCategories.filter((item) => Number(item.parent_id) === Number(selectedRootCategoryId));
+      if (selectedChildCategoryId !== 'all' && !children.some((item) => Number(item.id) === Number(selectedChildCategoryId))) {
+        selectedChildCategoryId = 'all';
+      }
+
+      $('rootCategoryTabs').innerHTML = [
+        `<button class="category-tab ${selectedRootCategoryId === 'all' ? 'active' : ''}" type="button" data-action="selectRootCategory" data-id="all">全部</button>`,
+        ...roots.map((root) => `
+          <button class="category-tab ${Number(selectedRootCategoryId) === Number(root.id) ? 'active' : ''}" type="button" data-action="selectRootCategory" data-id="${root.id}">${root.name}</button>
+        `),
+      ].join('');
+
+      $('childCategoryTabs').innerHTML = selectedRootCategoryId === 'all'
+        ? '<span class="upload-note">选择一级分类后可查看二级分类。</span>'
+        : [
+            `<button class="category-tab ${selectedChildCategoryId === 'all' ? 'active' : ''}" type="button" data-action="selectChildCategory" data-id="all">全部</button>`,
+            ...children.map((child) => `
+              <button class="category-tab ${Number(selectedChildCategoryId) === Number(child.id) ? 'active' : ''}" type="button" data-action="selectChildCategory" data-id="${child.id}">${child.name}</button>
+            `),
+            `<button class="category-tab" type="button" data-action="addChildCategory" data-id="${selectedRootCategoryId}">+ 二级分类</button>`,
+          ].join('');
+
+      renderProducts();
+    }
+
+    function renderProductImages() {
+      $('productImagePreview').innerHTML = productImageUrls.length
+        ? productImageUrls.map((url, index) => `
+          <div class="list-item">
+            <div class="product-thumb"><img src="${url}" alt=""></div>
+            <div class="small-actions">
+              <button class="text-button" type="button" data-action="setCoverImage" data-index="${index}">${index === 0 ? '当前主图' : '设为主图'}</button>
+              <button class="text-button danger" type="button" data-action="removeProductImage" data-index="${index}">删除</button>
+            </div>
+          </div>
+        `).join('')
+        : '<div class="upload-note">还没有产品图片。</div>';
+    }
+
+    function resetCategoryForm() {
+      editingCategoryId = null;
+      $('category_parent_id').value = '';
+      $('category_name').value = '';
+      $('category_sort_order').value = '0';
+      $('saveCategoryBtn').textContent = '保存分类';
+      $('categoryEditorTitle').textContent = '新增产品分类';
+      setMessage('categoryMessage', '');
+      $('categoryEditor').classList.remove('active');
+    }
+
+    function startRootCategory() {
+      resetCategoryForm();
+      $('categoryEditor').classList.add('active');
+      $('category_name').focus();
+    }
+
+    function startChildCategory(parentId) {
+      editingCategoryId = null;
+      const parent = productCategories.find((item) => Number(item.id) === Number(parentId));
+      $('category_parent_id').value = parentId;
+      $('category_name').value = '';
+      $('category_sort_order').value = '0';
+      $('categoryEditorTitle').textContent = parent ? `新增二级分类：${parent.name}` : '新增二级分类';
+      $('saveCategoryBtn').textContent = '保存分类';
+      $('categoryEditor').classList.add('active');
+      $('category_name').focus();
+    }
+
+    function showProductListView() {
+      $('productEditorView').classList.remove('active');
+      $('productListView').classList.remove('hidden');
+    }
+
+    function showProductEditorView() {
+      $('productListView').classList.add('hidden');
+      $('productEditorView').classList.add('active');
+    }
+
+    function resetProductForm() {
+      editingProductId = null;
+      productImageUrls = [];
+      for (const field of productFields) {
+        $(field).value = field === 'product_status' ? 'active' : '';
+      }
+      $('product_category_id').value = '';
+      $('saveProductBtn').textContent = '新增产品';
+      $('productEditorTitle').textContent = '新增产品信息';
+      $('cancelProductEditBtn').style.display = 'none';
+      renderProductImages();
+    }
+
+    function fillProductForm(product) {
+      editingProductId = product.id;
+      $('product_category_id').value = product.category_id || '';
+      $('product_status').value = product.status || 'active';
+      $('product_name').value = product.name || '';
+      $('product_price_text').value = product.price_text || '';
+      $('product_brand').value = product.brand || '';
+      $('product_spec').value = product.spec || '';
+      $('product_summary').value = product.summary || '';
+      $('product_description').value = product.description || '';
+      productImageUrls = Array.isArray(product.image_urls) && product.image_urls.length
+        ? [...product.image_urls]
+        : (product.cover_url ? [product.cover_url] : []);
+      $('saveProductBtn').textContent = '保存产品';
+      $('productEditorTitle').textContent = '编辑产品信息';
+      $('cancelProductEditBtn').style.display = 'inline-flex';
+      renderProductImages();
+      showPanel('productsPanel');
+      showProductEditorView();
+    }
+
+    function renderProducts() {
+      renderProductImages();
+      let visibleProducts = [...merchantProducts];
+      if (selectedChildCategoryId !== 'all') {
+        visibleProducts = visibleProducts.filter((product) => Number(product.category_id) === Number(selectedChildCategoryId));
+      } else if (selectedRootCategoryId !== 'all') {
+        const childIds = productCategories
+          .filter((item) => Number(item.parent_id) === Number(selectedRootCategoryId))
+          .map((item) => Number(item.id));
+        visibleProducts = visibleProducts.filter((product) => {
+          const categoryId = Number(product.category_id || 0);
+          return categoryId === Number(selectedRootCategoryId) || childIds.includes(categoryId);
+        });
+      }
+      if (!visibleProducts.length) {
+        $('productListSummary').textContent = '当前分类下暂无产品。';
+        $('productList').innerHTML = '<div class="upload-note">当前分类下还没有产品。点击右上角“新增产品信息”开始添加。</div>';
+        return;
+      }
+      const currentCategory = selectedChildCategoryId !== 'all'
+        ? categoryName(selectedChildCategoryId)
+        : (selectedRootCategoryId !== 'all' ? categoryName(selectedRootCategoryId) : '全部产品');
+      $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
+      $('productList').innerHTML = visibleProducts.map((product) => `
+        <div class="product-card">
+          <div class="product-thumb">${product.cover_url ? `<img src="${product.cover_url}" alt="">` : '暂无图片'}</div>
+          <div class="product-card-body">
+            <div class="list-item-title">${product.name}</div>
+            <div class="list-item-meta">${categoryName(product.category_id) || '未分类'}</div>
+            <div class="list-item-title" style="color:var(--danger)">${product.price_text || '价格可咨询'}</div>
+            <div class="list-item-meta">${product.summary || product.description || '暂无简介'}</div>
+            <div class="small-actions" style="align-items:center; justify-content:space-between">
+              <span class="status-pill">${product.status === 'active' ? '上架展示' : product.status}</span>
+              <span class="small-actions">
+                <button class="text-button" type="button" data-action="editProduct" data-id="${product.id}">编辑</button>
+                <button class="text-button danger" type="button" data-action="deleteProduct" data-id="${product.id}">删除</button>
+              </span>
+            </div>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    function normalizeCategoryGroup(profile) {
+      const group = String(profile?.category_group || '').trim();
+      if (categoryGroups[group]) return group;
+      const categories = Array.isArray(profile?.categories) ? profile.categories : [];
+      for (const [name, values] of Object.entries(categoryGroups)) {
+        if (categories.some((item) => values.includes(item))) return name;
+      }
+      return '建材';
+    }
+
+    function setImagePreview(kind, url) {
+      const preview = kind === 'logo' ? $('logoPreview') : $('coverPreview');
+      const fallback = kind === 'logo' ? '建议上传方形 Logo' : '建议上传门店、展厅或产品陈列图';
+      preview.innerHTML = url ? `<img src="${url}" alt="">` : fallback;
+    }
+
+    function setBusinessHours(value) {
+      const raw = String(value || '').trim();
+      if (!raw) {
+        $('hours_days').value = '周一至周日';
+        $('hours_start').value = '09:00';
+        $('hours_end').value = '18:00';
+        $('business_hours').value = '周一至周日 09:00-18:00';
+        return;
+      }
+      const match = raw.match(/^(.*?)\s+(\d{2}:\d{2})-(\d{2}:\d{2})$/);
+      if (match) {
+        $('hours_days').value = [...$('hours_days').options].some((item) => item.value === match[1])
+          ? match[1]
+          : '周一至周日';
+        if (timeOptions.includes(match[2])) $('hours_start').value = match[2];
+        if (timeOptions.includes(match[3])) $('hours_end').value = match[3];
+      } else if ([...$('hours_days').options].some((item) => item.value === raw)) {
+        $('hours_days').value = raw;
+      }
+      updateBusinessHours();
+    }
+
+    function updateBusinessHours() {
+      const days = $('hours_days').value;
+      if (days === '预约制') {
+        $('business_hours').value = '预约制';
+        $('hours_start').disabled = true;
+        $('hours_end').disabled = true;
+        return;
+      }
+      $('hours_start').disabled = false;
+      $('hours_end').disabled = false;
+      $('business_hours').value = `${days} ${$('hours_start').value}-${$('hours_end').value}`;
+    }
+
+    function bindChipClicks() {
+      document.body.addEventListener('click', (event) => {
+        const button = event.target.closest('.chip');
+        if (!button) return;
+        const value = button.dataset.value;
+        if (button.dataset.kind === 'categoryGroup') {
+          selectedCategoryGroup = value;
+          const allowed = new Set(categoryGroups[selectedCategoryGroup]);
+          selectedCategories = new Set([...selectedCategories].filter((item) => allowed.has(item)));
+          renderChips();
+          return;
+        }
+        if (button.dataset.kind !== 'category') return;
+        if (selectedCategories.has(value)) selectedCategories.delete(value);
+        else selectedCategories.add(value);
+        renderChips();
+      });
+    }
+
+    function showWorkspace(show) {
+      $('loginView').style.display = show ? 'none' : 'grid';
+      $('workspaceView').style.display = show ? 'block' : 'none';
+      $('logoutBtn').style.display = show ? 'inline-flex' : 'none';
+    }
+
+    function fillProfile(profile) {
+      for (const field of fields) {
+        $(field).value = profile?.[field] || '';
+      }
+      setImagePreview('logo', $('logo_url').value);
+      setImagePreview('cover', $('cover_url').value);
+      setBusinessHours(profile?.business_hours || '');
+      caseCount = Number(profile?.case_count || 0);
+      selectedCategoryGroup = normalizeCategoryGroup(profile);
+      const allowedCategories = new Set(categoryGroups[selectedCategoryGroup]);
+      selectedCategories = new Set((Array.isArray(profile?.categories) ? profile.categories : []).filter((item) => allowedCategories.has(item)));
+      $('consultation_enabled').checked = profile?.consultation_enabled !== false && profile?.consultation_enabled !== 0;
+      renderChips();
+    }
+
+    async function uploadProfileImage(kind, file) {
+      if (!file) return;
+      const localUrl = URL.createObjectURL(file);
+      setImagePreview(kind, localUrl);
+      const status = kind === 'logo' ? $('logoStatus') : $('coverStatus');
+      const field = kind === 'logo' ? $('logo_url') : $('cover_url');
+      if (!token()) {
+        status.textContent = '当前为预览模式，已显示本地图片，登录后可上传保存。';
+        return;
+      }
+      status.textContent = '正在上传...';
+      const url = await uploadImage(`/users/merchant-profile/image?type=${kind}`, file);
+      field.value = url;
+      setImagePreview(kind, url);
+      status.textContent = '上传成功，保存资料后生效。';
+    }
+
+    async function loadProducts() {
+      if (!token()) return;
+      try {
+        const [categories, products] = await Promise.all([
+          api('/users/merchant-product-categories'),
+          api('/users/merchant-products')
+        ]);
+        productCategories = categories || [];
+        merchantProducts = products || [];
+        setMessage('productMessage', '');
+      } catch (error) {
+        productCategories = [];
+        merchantProducts = [];
+        setMessage('productMessage', `产品展示暂未读取：${error.message}`, 'error');
+      } finally {
+        renderProductCategories();
+        renderProducts();
+      }
+    }
+
+    async function loadProfile() {
+      setMessage('profileMessage', '正在读取商家资料...');
+      const profile = await api('/users/merchant-profile');
+      fillProfile(profile);
+      await loadProducts();
+      setMessage('profileMessage', '资料已读取', 'ok');
+    }
+
+    async function login(phone, password) {
+      const data = await api('/auth/login-password', {
+        method: 'POST',
+        body: JSON.stringify({ phone, password })
+      });
+      if (!hasMerchantRole(data.user)) {
+        throw new Error('当前账号不是商家身份，无法进入商家入口');
+      }
+      localStorage.setItem(TOKEN_KEY, data.token);
+      localStorage.setItem(USER_KEY, JSON.stringify(data.user));
+      showWorkspace(true);
+      await loadProfile();
+    }
+
+    async function saveProfile() {
+      const payload = {};
+      for (const field of fields) payload[field] = $(field).value.trim();
+      updateBusinessHours();
+      payload.business_hours = $('business_hours').value;
+      payload.category_group = selectedCategoryGroup;
+      payload.categories = Array.from(selectedCategories);
+      payload.case_count = caseCount;
+      payload.consultation_enabled = $('consultation_enabled').checked;
+      setMessage('profileMessage', '正在保存...');
+      await api('/users/merchant-profile', {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+      setMessage('profileMessage', '商家资料已保存', 'ok');
+    }
+
+    function previewWorkspace() {
+      fillProfile({
+        shop_name: '木序全屋定制',
+        logo_url: 'https://example.com/logo.png',
+        cover_url: 'https://example.com/showroom.jpg',
+        service_area: '杭州主城区及周边',
+        address: '杭州市滨江区江南大道 1888 号家居广场 3F',
+        contact_phone: '0571-88886666',
+        business_hours: '周一至周日 09:00-18:00',
+        category_group: '建材',
+        brand_intro: '主营全屋定制、柜体设计、板材选型和安装落地服务，支持上门测量与方案报价。',
+        after_sales_promise: '安装问题 48 小时内响应，五金件和柜门调试提供售后支持。',
+        license_url: '',
+        authorization_url: '',
+        categories: ['瓷砖地板', '灯具照明'],
+        consultation_enabled: true,
+        case_count: 0
+      });
+      productCategories = [
+        { id: 1, parent_id: null, name: '瓷砖', sort_order: 10, status: 'active' },
+        { id: 2, parent_id: 1, name: '客厅砖', sort_order: 10, status: 'active' },
+        { id: 3, parent_id: null, name: '灯具', sort_order: 20, status: 'active' }
+      ];
+      merchantProducts = [
+        {
+          id: 1,
+          category_id: 2,
+          name: '柔光瓷砖 750x1500',
+          cover_url: '',
+          image_urls: [],
+          summary: '适合客厅和餐厅的大规格柔光砖。',
+          description: '耐磨、防滑、易打理，到店可看实物色板。',
+          brand: '木序精选',
+          spec: '750x1500mm',
+          price_text: '到店咨询',
+          status: 'active',
+          sort_order: 10
+        }
+      ];
+      renderProductCategories();
+      renderProducts();
+      showWorkspace(true);
+      $('logoutBtn').style.display = 'none';
+      setMessage('profileMessage', '当前为页面设计预览，未连接服务器，保存不会生效。');
+    }
+
+    $('loginForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      const phone = $('phone').value.trim();
+      const password = $('password').value.trim();
+      if (!/^1[3-9]\d{9}$/.test(phone)) {
+        setMessage('loginMessage', '请输入正确的 11 位手机号', 'error');
+        return;
+      }
+      if (password.length < 6) {
+        setMessage('loginMessage', '请输入至少 6 位密码', 'error');
+        return;
+      }
+      $('loginBtn').disabled = true;
+      setMessage('loginMessage', '正在登录...');
+      try {
+        await login(phone, password);
+        setMessage('loginMessage', '');
+      } catch (error) {
+        setMessage('loginMessage', error.message, 'error');
+      } finally {
+        $('loginBtn').disabled = false;
+      }
+    });
+
+    $('previewBtn').addEventListener('click', previewWorkspace);
+
+    $('openCategoryEditorBtn').addEventListener('click', startRootCategory);
+    $('newProductBtn').addEventListener('click', () => {
+      resetProductForm();
+      showProductEditorView();
+    });
+    $('backToProductListBtn').addEventListener('click', () => {
+      resetProductForm();
+      showProductListView();
+    });
+
+    document.querySelectorAll('.tab').forEach((tab) => {
+      tab.addEventListener('click', () => showPanel(tab.dataset.panel));
+    });
+
+    $('logoFile').addEventListener('change', async (event) => {
+      try {
+        await uploadProfileImage('logo', event.target.files[0]);
+      } catch (error) {
+        $('logoStatus').textContent = error.message;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    $('coverFile').addEventListener('change', async (event) => {
+      try {
+        await uploadProfileImage('cover', event.target.files[0]);
+      } catch (error) {
+        $('coverStatus').textContent = error.message;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    $('productImageFile').addEventListener('change', async (event) => {
+      const files = Array.from(event.target.files || []);
+      if (!files.length) return;
+      try {
+        $('productImageStatus').textContent = '正在上传...';
+        for (const file of files) {
+          if (!token()) {
+            productImageUrls.push(URL.createObjectURL(file));
+          } else {
+            productImageUrls.push(await uploadImage('/users/merchant-products/image', file));
+          }
+        }
+        renderProductImages();
+        $('productImageStatus').textContent = token()
+          ? '上传成功，保存产品后生效。'
+          : '当前为预览模式，图片仅本地显示。';
+      } catch (error) {
+        $('productImageStatus').textContent = error.message;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    $('mapPlaceholderBtn').addEventListener('click', () => {
+      setMessage('profileMessage', '地图定位功能将在后续接入地图选点，现在请先手动填写详细地址。');
+    });
+
+    $('hours_days').addEventListener('change', updateBusinessHours);
+    $('hours_start').addEventListener('change', updateBusinessHours);
+    $('hours_end').addEventListener('change', updateBusinessHours);
+
+    $('profileForm').addEventListener('submit', async (event) => {
+      event.preventDefault();
+      if (!token()) {
+        setMessage('profileMessage', '当前为页面设计预览，未连接服务器，保存不会生效。');
+        return;
+      }
+      $('saveBtn').disabled = true;
+      try {
+        await saveProfile();
+      } catch (error) {
+        setMessage('profileMessage', error.message, 'error');
+      } finally {
+        $('saveBtn').disabled = false;
+      }
+    });
+
+    $('saveCategoryBtn').addEventListener('click', async () => {
+      const body = {
+        parent_id: $('category_parent_id').value || null,
+        name: $('category_name').value.trim(),
+        sort_order: Number($('category_sort_order').value || 0),
+        status: 'active'
+      };
+      if (!body.name) {
+        setMessage('categoryMessage', '请填写分类名称', 'error');
+        return;
+      }
+      if (!token()) {
+        const item = { id: editingCategoryId || Date.now(), merchant_user_id: 0, ...body };
+        productCategories = editingCategoryId
+          ? productCategories.map((category) => Number(category.id) === Number(editingCategoryId) ? item : category)
+          : [...productCategories, item];
+        resetCategoryForm();
+        renderProductCategories();
+        setMessage('categoryMessage', '预览模式：分类已临时更新。', 'ok');
+        return;
+      }
+      try {
+        const path = editingCategoryId
+          ? `/users/merchant-product-categories/${editingCategoryId}`
+          : '/users/merchant-product-categories';
+        const method = editingCategoryId ? 'PUT' : 'POST';
+        await api(path, { method, body: JSON.stringify(body) });
+        await loadProducts();
+        resetCategoryForm();
+        setMessage('categoryMessage', '分类已保存', 'ok');
+      } catch (error) {
+        setMessage('categoryMessage', error.message, 'error');
+      }
+    });
+
+    $('cancelCategoryEditBtn').addEventListener('click', resetCategoryForm);
+    $('categoryEditor').addEventListener('click', (event) => {
+      if (event.target === $('categoryEditor')) resetCategoryForm();
+    });
+
+    $('saveProductBtn').addEventListener('click', async () => {
+      const body = {
+        category_id: $('product_category_id').value || null,
+        name: $('product_name').value.trim(),
+        price_text: $('product_price_text').value.trim(),
+        brand: $('product_brand').value.trim(),
+        spec: $('product_spec').value.trim(),
+        summary: $('product_summary').value.trim(),
+        description: $('product_description').value.trim(),
+        status: $('product_status').value,
+        cover_url: productImageUrls[0] || '',
+        image_urls: productImageUrls,
+        sort_order: 0
+      };
+      if (!body.name) {
+        setMessage('productMessage', '请填写产品名称', 'error');
+        return;
+      }
+      if (!token()) {
+        const item = { id: editingProductId || Date.now(), merchant_user_id: 0, ...body };
+        merchantProducts = editingProductId
+          ? merchantProducts.map((product) => Number(product.id) === Number(editingProductId) ? item : product)
+          : [item, ...merchantProducts];
+        resetProductForm();
+        renderProducts();
+        showProductListView();
+        setMessage('productMessage', '预览模式：产品已临时更新。', 'ok');
+        return;
+      }
+      try {
+        const path = editingProductId
+          ? `/users/merchant-products/${editingProductId}`
+          : '/users/merchant-products';
+        const method = editingProductId ? 'PUT' : 'POST';
+        await api(path, { method, body: JSON.stringify(body) });
+        await loadProducts();
+        resetProductForm();
+        showProductListView();
+        setMessage('productMessage', '产品已保存', 'ok');
+      } catch (error) {
+        setMessage('productMessage', error.message, 'error');
+      }
+    });
+
+    $('cancelProductEditBtn').addEventListener('click', () => {
+      resetProductForm();
+      showProductListView();
+    });
+
+    document.body.addEventListener('click', async (event) => {
+      const button = event.target.closest('[data-action]');
+      if (!button) return;
+      const action = button.dataset.action;
+      const id = Number(button.dataset.id || 0);
+      try {
+        if (action === 'editCategory') {
+          const item = productCategories.find((category) => Number(category.id) === id);
+          if (!item) return;
+          editingCategoryId = id;
+          $('category_parent_id').value = item.parent_id || '';
+          $('category_name').value = item.name || '';
+          $('category_sort_order').value = item.sort_order || 0;
+          $('categoryEditorTitle').textContent = item.parent_id ? '编辑二级分类' : '编辑一级分类';
+          $('saveCategoryBtn').textContent = '保存分类';
+          $('categoryEditor').classList.add('active');
+          $('category_name').focus();
+        } else if (action === 'addChildCategory') {
+          startChildCategory(id);
+        } else if (action === 'selectRootCategory') {
+          selectedRootCategoryId = button.dataset.id;
+          selectedChildCategoryId = 'all';
+          renderProductCategories();
+        } else if (action === 'selectChildCategory') {
+          selectedChildCategoryId = button.dataset.id;
+          renderProductCategories();
+        } else if (action === 'deleteCategory') {
+          if (!confirm('确定删除这个分类吗？')) return;
+          if (token()) await api(`/users/merchant-product-categories/${id}`, { method: 'DELETE' });
+          productCategories = productCategories.filter((category) => Number(category.id) !== id);
+          renderProductCategories();
+          renderProducts();
+        } else if (action === 'editProduct') {
+          const item = merchantProducts.find((product) => Number(product.id) === id);
+          if (item) fillProductForm(item);
+        } else if (action === 'deleteProduct') {
+          if (!confirm('确定删除这个产品吗？')) return;
+          if (token()) await api(`/users/merchant-products/${id}`, { method: 'DELETE' });
+          merchantProducts = merchantProducts.filter((product) => Number(product.id) !== id);
+          renderProducts();
+        } else if (action === 'removeProductImage') {
+          productImageUrls.splice(Number(button.dataset.index), 1);
+          renderProductImages();
+        } else if (action === 'setCoverImage') {
+          const index = Number(button.dataset.index);
+          const [url] = productImageUrls.splice(index, 1);
+          productImageUrls.unshift(url);
+          renderProductImages();
+        }
+      } catch (error) {
+        setMessage('productMessage', error.message, 'error');
+        setMessage('categoryMessage', error.message, 'error');
+      }
+    });
+
+    $('reloadBtn').addEventListener('click', async () => {
+      try {
+        await loadProfile();
+      } catch (error) {
+        setMessage('profileMessage', error.message, 'error');
+      }
+    });
+
+    $('logoutBtn').addEventListener('click', () => {
+      localStorage.removeItem(TOKEN_KEY);
+      localStorage.removeItem(USER_KEY);
+      fillProfile({});
+      showWorkspace(false);
+      setMessage('loginMessage', '已退出登录');
+    });
+
+    renderTimeOptions();
+    updateBusinessHours();
+    renderChips();
+    resetProductForm();
+    renderProductCategories();
+    renderProducts();
+    bindChipClicks();
+    if (token()) {
+      showWorkspace(true);
+      loadProfile().catch((error) => {
+        localStorage.removeItem(TOKEN_KEY);
+        showWorkspace(false);
+        setMessage('loginMessage', error.message, 'error');
+      });
+    }
+  </script>
+</body>
+</html>
