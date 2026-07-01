@@ -18,31 +18,52 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Guard marketing homepage
-        run: |
-          set -euo pipefail
-
-          if grep -qE 'zhuangxiu_app|flutter_bootstrap\.js' server/public/index.html; then
-            echo "server/public/index.html points to the Flutter app entrypoint, not the marketing website."
-            exit 1
-          fi
-
-          if ! grep -q '粤ICP备2025480867号-2' server/public/index.html; then
-            echo "server/public/index.html is missing the required ICP footer."
-            exit 1
-          fi
-
-      - name: Upload checkout over SSH
+      - name: Upload backend over SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
           APP_DIR: ${{ secrets.APP_DIR }}
+          EXPECTED_SSH_HOST: 115.29.194.46
         run: |
           set -euo pipefail
 
+          APP_DIR="${APP_DIR:-/opt/yinnkhome-backend}"
           ssh_port="${SSH_PORT:-22}"
+
+          if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+            echo "Refusing to deploy to stale or unrelated host: $SSH_HOST"
+            exit 1
+          fi
+
+          if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+            if ! getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"; then
+              echo "SSH_HOST must be $EXPECTED_SSH_HOST or resolve to it; got $SSH_HOST"
+              exit 1
+            fi
+          fi
+
+          case "$APP_DIR" in
+            /opt/yinnkhome-backend) ;;
+            /*) ;;
+            *)
+              echo "APP_DIR must be an absolute path, got: $APP_DIR"
+              exit 1
+              ;;
+          esac
+
+          case "$APP_DIR" in
+            /|/var|/var/www|/var/www/*|*/server/public|*/server/public/*|*/public|*/public/*)
+              echo "Refusing dangerous APP_DIR: $APP_DIR"
+              exit 1
+              ;;
+          esac
+
+          if [ -d server/public ]; then
+            echo "server/public exists locally but will not be uploaded."
+          fi
+
           install -m 700 -d ~/.ssh
           printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
           chmod 600 ~/.ssh/deploy_key
@@ -57,24 +78,76 @@ jobs:
           remote="${SSH_USER}@${SSH_HOST}"
           staging_dir="${APP_DIR}.deploy-tmp"
 
-          ssh "${ssh_opts[@]}" "$remote" "rm -rf '$staging_dir' && mkdir -p '$staging_dir'"
-          tar --exclude='.git' -czf - . | ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'"
+          tar -C server -czf /tmp/yinnkhome-backend.tar.gz \
+            --exclude='./.env' \
+            --exclude='./node_modules' \
+            --exclude='./public' \
+            --exclude='./public_backup_*' \
+            --exclude='./uploads' \
+            --exclude='./logs' \
+            --exclude='./storage' \
+            app.js \
+            package.json \
+            package-lock.json \
+            ecosystem.config.cjs \
+            .env.example \
+            config \
+            controllers \
+            middleware \
+            migrations \
+            routes \
+            scripts \
+            services \
+            utils
 
-      - name: Deploy over SSH
+          ssh "${ssh_opts[@]}" "$remote" "rm -rf '$staging_dir' && mkdir -p '$staging_dir'"
+          ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'" < /tmp/yinnkhome-backend.tar.gz
+
+      - name: Deploy backend over SSH
         uses: appleboy/ssh-action@v1.0.3
         env:
           APP_DIR: ${{ secrets.APP_DIR }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          EXPECTED_SSH_HOST: 115.29.194.46
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR
+          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST
           script: |
             set -euo pipefail
 
+            APP_DIR="${APP_DIR:-/opt/yinnkhome-backend}"
+
+            if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+              echo "Refusing to deploy to stale or unrelated host: $SSH_HOST"
+              exit 1
+            fi
+
+            case "$APP_DIR" in
+              /opt/yinnkhome-backend) ;;
+              /*) ;;
+              *)
+                echo "APP_DIR must be an absolute path, got: $APP_DIR"
+                exit 1
+                ;;
+            esac
+
+            case "$APP_DIR" in
+              /|/var|/var/www|/var/www/*|*/server/public|*/server/public/*|*/public|*/public/*)
+                echo "Refusing dangerous APP_DIR: $APP_DIR"
+                exit 1
+                ;;
+            esac
+
             if ! command -v node >/dev/null 2>&1; then
               echo "Node.js is required on the server"
+              exit 1
+            fi
+
+            if ! command -v npm >/dev/null 2>&1; then
+              echo "npm is required on the server"
               exit 1
             fi
 
@@ -90,42 +163,40 @@ jobs:
               exit 1
             fi
 
-            if [ -d "$APP_DIR" ]; then
-              mkdir -p "$staging_dir/server"
-              if [ -f "$APP_DIR/server/.env" ]; then
-                cp -p "$APP_DIR/server/.env" "$staging_dir/server/.env"
-              fi
-              if [ -d "$APP_DIR/server/uploads" ]; then
-                rm -rf "$staging_dir/server/uploads"
-                cp -a "$APP_DIR/server/uploads" "$staging_dir/server/uploads"
-              fi
-              if [ -d "$APP_DIR/server/logs" ]; then
-                rm -rf "$staging_dir/server/logs"
-                cp -a "$APP_DIR/server/logs" "$staging_dir/server/logs"
-              fi
-              if [ -d "$APP_DIR/server/storage" ]; then
-                rm -rf "$staging_dir/server/storage"
-                cp -a "$APP_DIR/server/storage" "$staging_dir/server/storage"
-              fi
-
-              mv "$APP_DIR" "$backup_dir"
-              mv "$staging_dir" "$APP_DIR"
-              mkdir -p "$(dirname "$APP_DIR")"
-              echo "Activated uploaded checkout. Backup: $backup_dir"
-            else
-              mkdir -p "$(dirname "$APP_DIR")"
-              mv "$staging_dir" "$APP_DIR"
-              echo "Activated uploaded checkout."
+            if [ -d "$staging_dir/public" ] || find "$staging_dir" -maxdepth 1 -type d -name 'public_backup_*' | grep -q .; then
+              echo "Refusing deploy: staging directory contains frontend static files."
+              exit 1
             fi
 
+            cd "$staging_dir"
+            npm ci --omit=dev
+
+            if [ -d "$APP_DIR" ]; then
+              if [ -f "$APP_DIR/.env" ]; then
+                cp -p "$APP_DIR/.env" "$staging_dir/.env"
+              elif [ -f "$APP_DIR/server/.env" ]; then
+                cp -p "$APP_DIR/server/.env" "$staging_dir/.env"
+              fi
+              for keep_dir in uploads logs storage; do
+                if [ -d "$APP_DIR/$keep_dir" ]; then
+                  rm -rf "$staging_dir/$keep_dir"
+                  cp -a "$APP_DIR/$keep_dir" "$staging_dir/$keep_dir"
+                elif [ -d "$APP_DIR/server/$keep_dir" ]; then
+                  rm -rf "$staging_dir/$keep_dir"
+                  cp -a "$APP_DIR/server/$keep_dir" "$staging_dir/$keep_dir"
+                fi
+              done
+              mv "$APP_DIR" "$backup_dir"
+            fi
+
+            mkdir -p "$(dirname "$APP_DIR")"
+            mv "$staging_dir" "$APP_DIR"
             cd "$APP_DIR"
 
-            cd server
-            npm ci --omit=dev
-            mkdir -p uploads logs
+            mkdir -p uploads logs storage
 
             if [ ! -f .env ]; then
-              echo "Missing server/.env on deployment host. Create it from server/.env.example before deploying."
+              echo "Missing .env on deployment host. Create it from .env.example before deploying."
               exit 1
             fi
 
@@ -142,80 +213,12 @@ jobs:
             node scripts/run-migration.js migrations/20260629_consultation_targets.sql
             node scripts/run-migration.js migrations/20260629_project_participants_ext.sql
             node scripts/run-migration.js migrations/20260629_entity_relations.sql
+            node scripts/run-migration.js migrations/20260629_company_boundary_fields.sql
+            node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
+            node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
 
             pm2 startOrReload ecosystem.config.cjs --env production --update-env
             pm2 save
-
-            if command -v nginx >/dev/null 2>&1; then
-              nginx_placeholder_conf="$(grep -Rsl 'frontend not deployed' /etc/nginx /usr/local/nginx/conf 2>/dev/null | grep -v '\.bak\.' | head -n 1 || true)"
-              if [ -n "$nginx_placeholder_conf" ] && [ -f "$nginx_placeholder_conf" ]; then
-                nginx_runner=""
-                if [ "$(id -u)" -eq 0 ]; then
-                  nginx_runner=""
-                elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-                  nginx_runner="sudo"
-                else
-                  echo "Skipping nginx root patch: deployment user cannot write nginx config and has no passwordless sudo."
-                fi
-
-                if [ "$(id -u)" -eq 0 ] || [ -n "$nginx_runner" ]; then
-                  nginx_tmp="$(mktemp)"
-                  if cp "$nginx_placeholder_conf" "$nginx_tmp"; then
-                    node scripts/patch-nginx-root.js "$nginx_tmp"
-                    if ! cmp -s "$nginx_placeholder_conf" "$nginx_tmp"; then
-                      nginx_backup="${nginx_placeholder_conf}.bak.$(date +%Y%m%d_%H%M%S)"
-                      $nginx_runner cp -p "$nginx_placeholder_conf" "$nginx_backup"
-                      $nginx_runner cp "$nginx_tmp" "$nginx_placeholder_conf"
-                      if $nginx_runner nginx -t; then
-                        nginx_reloaded="false"
-                        if command -v systemctl >/dev/null 2>&1 && $nginx_runner systemctl reload nginx; then
-                          nginx_reloaded="true"
-                        fi
-                        if [ "$nginx_reloaded" != "true" ] && $nginx_runner nginx -s reload; then
-                          nginx_reloaded="true"
-                        fi
-                        if [ "$nginx_reloaded" != "true" ] && command -v pkill >/dev/null 2>&1 && $nginx_runner pkill -HUP nginx; then
-                          nginx_reloaded="true"
-                        fi
-                        if [ "$nginx_reloaded" != "true" ]; then
-                          echo "nginx config was patched, but nginx could not be reloaded automatically."
-                        fi
-                      else
-                        echo "nginx config test failed; restoring $nginx_backup"
-                        $nginx_runner cp -p "$nginx_backup" "$nginx_placeholder_conf"
-                        $nginx_runner nginx -t || true
-                      fi
-                    fi
-                    rm -f "$nginx_tmp"
-                  else
-                    echo "Skipping nginx root patch: cannot read $nginx_placeholder_conf."
-                  fi
-                fi
-              fi
-
-              nginx_runner=""
-              if [ "$(id -u)" -eq 0 ]; then
-                nginx_runner=""
-              elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-                nginx_runner="sudo"
-              fi
-
-              if [ "$(id -u)" -eq 0 ] || [ -n "$nginx_runner" ]; then
-                if $nginx_runner nginx -t; then
-                  if command -v systemctl >/dev/null 2>&1 && $nginx_runner systemctl reload nginx; then
-                    echo "nginx reloaded with systemctl."
-                  elif $nginx_runner nginx -s reload; then
-                    echo "nginx reloaded with nginx -s reload."
-                  else
-                    echo "nginx reload command failed; continuing deployment."
-                  fi
-                else
-                  echo "nginx config test failed; skipping reload."
-                fi
-              else
-                echo "Skipping nginx reload: deployment user has no root or passwordless sudo."
-              fi
-            fi
 
             for attempt in $(seq 1 30); do
               if curl -fsS "http://127.0.0.1:${PORT:-3001}/health"; then
