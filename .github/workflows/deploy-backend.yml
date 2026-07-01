@@ -341,17 +341,17 @@ jobs:
               done
 
               public_source=""
-              if [ -d "$APP_DIR/public" ]; then
-                public_source="$APP_DIR/public"
-              elif [ -d "$APP_DIR/server/public" ]; then
+              if [ -d "$APP_DIR/server/public" ]; then
                 public_source="$APP_DIR/server/public"
+              elif [ -d "$APP_DIR/public" ]; then
+                public_source="$APP_DIR/public"
               else
                 for candidate in $(ls -dt "${APP_DIR}".backup.* 2>/dev/null || true); do
-                  if [ -d "$candidate/public" ]; then
-                    public_source="$candidate/public"
-                    break
-                  elif [ -d "$candidate/server/public" ]; then
+                  if [ -d "$candidate/server/public" ]; then
                     public_source="$candidate/server/public"
+                    break
+                  elif [ -d "$candidate/public" ]; then
+                    public_source="$candidate/public"
                     break
                   fi
                 done
