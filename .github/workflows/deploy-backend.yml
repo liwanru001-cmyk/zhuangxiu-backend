@@ -7,6 +7,8 @@ on:
     paths:
       - 'server/**'
       - '.github/workflows/deploy-backend.yml'
+      - '!server/public/**'
+      - '!server/public_backup_*/**'
   workflow_dispatch:
 
 jobs:
