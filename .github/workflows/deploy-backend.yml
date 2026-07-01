@@ -361,6 +361,9 @@ jobs:
                 echo "Preserving existing server-side public directory from $public_source"
                 rm -rf "$staging_dir/public"
                 cp -a "$public_source" "$staging_dir/public"
+                rm -rf "$staging_dir/server/public"
+                mkdir -p "$staging_dir/server"
+                cp -a "$staging_dir/public" "$staging_dir/server/public"
               else
                 echo "No existing server-side public directory found to preserve."
               fi
