@@ -271,6 +271,16 @@ jobs:
             rollback() {
               exit_code=$?
               if [ "$exit_code" -ne 0 ] && [ "$activated" = "true" ] && [ -d "$backup_dir" ]; then
+                echo "Deployment failed; printing diagnostics before rollback."
+                pm2 status || true
+                if [ -f "$APP_DIR/logs/error.log" ]; then
+                  echo "Recent backend error log:"
+                  tail -n 120 "$APP_DIR/logs/error.log" || true
+                fi
+                if [ -f "$APP_DIR/logs/out.log" ]; then
+                  echo "Recent backend output log:"
+                  tail -n 80 "$APP_DIR/logs/out.log" || true
+                fi
                 echo "Deployment failed; rolling back to $backup_dir"
                 rm -rf "$APP_DIR"
                 mv "$backup_dir" "$APP_DIR"

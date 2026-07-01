@@ -76,11 +76,17 @@ jobs:
             -o StrictHostKeyChecking=accept-new
             -o ServerAliveInterval=15
           )
+          scp_opts=(
+            -i ~/.ssh/deploy_key
+            -P "$ssh_port"
+            -o StrictHostKeyChecking=accept-new
+            -o ServerAliveInterval=15
+          )
 
           remote="${SSH_USER}@${SSH_HOST}"
           remote_tmp="/tmp/yinnkhome-merchant-index-${GITHUB_RUN_ID}.html"
 
-          scp "${ssh_opts[@]}" server/public/merchant/index.html "$remote:$remote_tmp"
+          scp "${scp_opts[@]}" server/public/merchant/index.html "$remote:$remote_tmp"
           ssh "${ssh_opts[@]}" "$remote" \
             "set -euo pipefail
              runner=''
