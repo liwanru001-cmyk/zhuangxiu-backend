@@ -1,0 +1,92 @@
+name: Deploy Merchant Portal
+
+on:
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate merchant portal artifact
+        run: |
+          set -euo pipefail
+          test -f server/public/merchant/index.html
+          test ! -f server/public/index.html.tmp
+
+      - name: Upload merchant portal over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          MERCHANT_PUBLIC_DIR: ${{ secrets.MERCHANT_PUBLIC_DIR }}
+          EXPECTED_SSH_HOST: 115.29.194.46
+        run: |
+          set -euo pipefail
+
+          ssh_port="${SSH_PORT:-22}"
+
+          if [ -z "${MERCHANT_PUBLIC_DIR:-}" ]; then
+            echo "MERCHANT_PUBLIC_DIR secret is required for merchant portal deployment."
+            exit 1
+          fi
+
+          if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+            echo "Refusing to deploy to stale or unrelated host: $SSH_HOST"
+            exit 1
+          fi
+
+          if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+            if ! getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"; then
+              echo "SSH_HOST must be $EXPECTED_SSH_HOST or resolve to it; got $SSH_HOST"
+              exit 1
+            fi
+          fi
+
+          case "$MERCHANT_PUBLIC_DIR" in
+            /*) ;;
+            *)
+              echo "MERCHANT_PUBLIC_DIR must be an absolute path, got: $MERCHANT_PUBLIC_DIR"
+              exit 1
+              ;;
+          esac
+
+          case "$MERCHANT_PUBLIC_DIR" in
+            /|/var|/var/www|/opt/yinnkhome-backend|/opt/yinnkhome-backend/*|*/server/public|*/server/public/*)
+              echo "Refusing dangerous MERCHANT_PUBLIC_DIR: $MERCHANT_PUBLIC_DIR"
+              exit 1
+              ;;
+          esac
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh_opts=(
+            -i ~/.ssh/deploy_key
+            -p "$ssh_port"
+            -o StrictHostKeyChecking=accept-new
+            -o ServerAliveInterval=15
+          )
+
+          remote="${SSH_USER}@${SSH_HOST}"
+          remote_tmp="/tmp/yinnkhome-merchant-index-${GITHUB_RUN_ID}.html"
+
+          scp "${ssh_opts[@]}" server/public/merchant/index.html "$remote:$remote_tmp"
+          ssh "${ssh_opts[@]}" "$remote" \
+            "set -euo pipefail
+             mkdir -p '$MERCHANT_PUBLIC_DIR/merchant'
+             cp '$remote_tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp'
+             mv '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html'
+             rm -f '$remote_tmp'
+             test -f '$MERCHANT_PUBLIC_DIR/merchant/index.html'"
+
+      - name: Verify merchant portal URL
+        run: |
+          set -euo pipefail
+          curl -fsS https://yinnkhome.com/merchant/ >/dev/null
