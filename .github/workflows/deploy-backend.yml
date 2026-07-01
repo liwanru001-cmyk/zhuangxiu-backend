@@ -18,6 +18,110 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Recover backend if unhealthy
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          APP_DIR: ${{ secrets.APP_DIR }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: APP_DIR,SSH_HOST
+          script: |
+            set -euo pipefail
+
+            APP_DIR="${APP_DIR:-/opt/yinnkhome-backend}"
+            if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+              echo "Refusing recovery on stale or unrelated host: $SSH_HOST"
+              exit 1
+            fi
+
+            case "$APP_DIR" in
+              /opt/yinnkhome-backend) ;;
+              /*) ;;
+              *)
+                echo "APP_DIR must be an absolute path, got: $APP_DIR"
+                exit 1
+                ;;
+            esac
+
+            case "$APP_DIR" in
+              /|/var|/var/www|/var/www/*|*/server/public|*/server/public/*|*/public|*/public/*)
+                echo "Refusing dangerous APP_DIR: $APP_DIR"
+                exit 1
+                ;;
+            esac
+
+            app_workdir() {
+              if [ -f "$1/ecosystem.config.cjs" ]; then
+                printf '%s\n' "$1"
+              elif [ -f "$1/server/ecosystem.config.cjs" ]; then
+                printf '%s\n' "$1/server"
+              else
+                return 1
+              fi
+            }
+
+            app_port() {
+              candidate_env=""
+              if [ -f "$1/.env" ]; then
+                candidate_env="$1/.env"
+              elif [ -f "$1/server/.env" ]; then
+                candidate_env="$1/server/.env"
+              fi
+              if [ -n "$candidate_env" ]; then
+                awk -F= '/^PORT=/{print $2; exit}' "$candidate_env" | tr -d '"'\'"'"' ' || true
+              fi
+            }
+
+            health_ok() {
+              candidate_port="$(app_port "$APP_DIR")"
+              candidate_port="${candidate_port:-3001}"
+              curl -fsS "http://127.0.0.1:${candidate_port}/health" >/dev/null 2>&1
+            }
+
+            start_candidate() {
+              candidate="$1"
+              workdir="$(app_workdir "$candidate")" || return 1
+              cd "$workdir"
+              pm2 startOrReload ecosystem.config.cjs --env production --update-env
+              sleep 3
+              health_ok
+            }
+
+            if health_ok; then
+              echo "Backend is already healthy."
+              exit 0
+            fi
+
+            echo "Backend is unhealthy; trying backups."
+            failed_dir="${APP_DIR}.failed.$(date +%Y%m%d_%H%M%S)"
+            if [ -d "$APP_DIR" ]; then
+              mv "$APP_DIR" "$failed_dir"
+              echo "Moved unhealthy app to $failed_dir"
+            fi
+
+            for candidate in $(ls -dt "${APP_DIR}".backup.* 2>/dev/null || true); do
+              [ -d "$candidate" ] || continue
+              echo "Trying recovery candidate: $candidate"
+              rm -rf "$APP_DIR"
+              mv "$candidate" "$APP_DIR"
+              if start_candidate "$APP_DIR"; then
+                pm2 save
+                echo "Recovered backend from $candidate"
+                exit 0
+              fi
+              mv "$APP_DIR" "${candidate}.failed.$(date +%Y%m%d_%H%M%S)"
+            done
+
+            if [ -d "$failed_dir" ]; then
+              mv "$failed_dir" "$APP_DIR"
+            fi
+            echo "Backend recovery failed; no healthy backup found."
+            exit 1
+
       - name: Upload backend over SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -157,6 +261,26 @@ jobs:
 
             staging_dir="${APP_DIR}.deploy-tmp"
             backup_dir="${APP_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+            activated="false"
+
+            rollback() {
+              exit_code=$?
+              if [ "$activated" = "true" ] && [ -d "$backup_dir" ]; then
+                echo "Deployment failed; rolling back to $backup_dir"
+                rm -rf "$APP_DIR"
+                mv "$backup_dir" "$APP_DIR"
+                if [ -f "$APP_DIR/ecosystem.config.cjs" ]; then
+                  cd "$APP_DIR"
+                  pm2 startOrReload ecosystem.config.cjs --env production --update-env || true
+                elif [ -f "$APP_DIR/server/ecosystem.config.cjs" ]; then
+                  cd "$APP_DIR/server"
+                  pm2 startOrReload ecosystem.config.cjs --env production --update-env || true
+                fi
+                pm2 save || true
+              fi
+              exit "$exit_code"
+            }
+            trap rollback ERR
 
             if [ ! -d "$staging_dir" ]; then
               echo "Missing uploaded staging directory: $staging_dir"
@@ -191,6 +315,7 @@ jobs:
 
             mkdir -p "$(dirname "$APP_DIR")"
             mv "$staging_dir" "$APP_DIR"
+            activated="true"
             cd "$APP_DIR"
 
             mkdir -p uploads logs storage
