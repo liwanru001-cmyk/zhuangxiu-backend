@@ -65,8 +65,10 @@ async function getProfile(req, res) {
 
 async function getMerchantProfileData(userId) {
   const [rows] = await db.query(
-    `SELECT user_id, service_area, categories, service_types, case_count,
-            brand_intro, consultation_enabled, updated_at
+    `SELECT user_id, shop_name, logo_url, cover_url, service_area, address,
+            contact_phone, business_hours, category_group, categories, service_types, case_count,
+            brand_intro, after_sales_promise, license_url, authorization_url,
+            consultation_enabled, updated_at
      FROM merchant_profiles
      WHERE user_id = ?`,
     [userId]
@@ -94,6 +96,15 @@ async function upsertMerchantProfile(req, res) {
   }
 
   const serviceArea = String(req.body.service_area || '').trim().slice(0, 80);
+  const shopName = String(req.body.shop_name || '').trim().slice(0, 120);
+  const logoUrl = String(req.body.logo_url || '').trim().slice(0, 500);
+  const coverUrl = String(req.body.cover_url || '').trim().slice(0, 500);
+  const address = String(req.body.address || '').trim().slice(0, 255);
+  const contactPhone = String(req.body.contact_phone || '').trim().slice(0, 40);
+  const businessHours = String(req.body.business_hours || '').trim().slice(0, 120);
+  const categoryGroup = ['建材', '家居'].includes(String(req.body.category_group || '').trim())
+    ? String(req.body.category_group).trim()
+    : '';
   const categories = normalizeStringList(req.body.categories, 12);
   const serviceTypes = normalizeStringList(req.body.service_types, 12);
   const caseCount = Math.max(
@@ -101,6 +112,9 @@ async function upsertMerchantProfile(req, res) {
     Math.min(9999, parseInt(req.body.case_count) || 0)
   );
   const brandIntro = String(req.body.brand_intro || '').trim().slice(0, 500);
+  const afterSalesPromise = String(req.body.after_sales_promise || '').trim().slice(0, 500);
+  const licenseUrl = String(req.body.license_url || '').trim().slice(0, 500);
+  const authorizationUrl = String(req.body.authorization_url || '').trim().slice(0, 500);
   const consultationEnabled =
     req.body.consultation_enabled === undefined ||
     req.body.consultation_enabled === true ||
@@ -110,23 +124,45 @@ async function upsertMerchantProfile(req, res) {
 
   await db.query(
     `INSERT INTO merchant_profiles
-     (user_id, service_area, categories, service_types, case_count,
-      brand_intro, consultation_enabled)
-     VALUES (?, ?, ?, ?, ?, ?, ?)
+     (user_id, shop_name, logo_url, cover_url, service_area, address,
+      contact_phone, business_hours, category_group, categories, service_types, case_count,
+      brand_intro, after_sales_promise, license_url, authorization_url,
+      consultation_enabled)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
+       shop_name = VALUES(shop_name),
+       logo_url = VALUES(logo_url),
+       cover_url = VALUES(cover_url),
        service_area = VALUES(service_area),
+       address = VALUES(address),
+       contact_phone = VALUES(contact_phone),
+       business_hours = VALUES(business_hours),
+       category_group = VALUES(category_group),
        categories = VALUES(categories),
        service_types = VALUES(service_types),
        case_count = VALUES(case_count),
        brand_intro = VALUES(brand_intro),
+       after_sales_promise = VALUES(after_sales_promise),
+       license_url = VALUES(license_url),
+       authorization_url = VALUES(authorization_url),
        consultation_enabled = VALUES(consultation_enabled)`,
     [
       req.user.id,
+      shopName || null,
+      logoUrl || null,
+      coverUrl || null,
       serviceArea || null,
+      address || null,
+      contactPhone || null,
+      businessHours || null,
+      categoryGroup || null,
       JSON.stringify(categories),
       JSON.stringify(serviceTypes),
       caseCount,
       brandIntro || null,
+      afterSalesPromise || null,
+      licenseUrl || null,
+      authorizationUrl || null,
       consultationEnabled ? 1 : 0,
     ]
   );
@@ -137,11 +173,21 @@ async function upsertMerchantProfile(req, res) {
 function defaultMerchantProfile(userId) {
   return {
     user_id: userId,
+    shop_name: '',
+    logo_url: '',
+    cover_url: '',
     service_area: '',
+    address: '',
+    contact_phone: '',
+    business_hours: '',
+    category_group: '',
     categories: [],
     service_types: [],
     case_count: 0,
     brand_intro: '',
+    after_sales_promise: '',
+    license_url: '',
+    authorization_url: '',
     consultation_enabled: true,
   };
 }
@@ -887,6 +933,19 @@ async function uploadAvatar(req, res) {
   return success(res, { avatar: avatarUrl }, '头像上传成功');
 }
 
+async function uploadMerchantProfileImage(req, res) {
+  if (!req.file) return error(res, '请选择商家图片');
+  const [roleRows] = await db.query(
+    `SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'merchant' LIMIT 1`,
+    [req.user.id]
+  );
+  if (!roleRows.length && req.user.role !== 'merchant') {
+    return error(res, '只有商家身份可以上传商家图片', 403);
+  }
+  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/merchant-profiles/${req.file.filename}`;
+  return success(res, { url: imageUrl }, '图片上传成功');
+}
+
 async function changePassword(req, res) {
   const { current_password: currentPassword, new_password: newPassword } = req.body;
   if (String(newPassword || '').length < 6) return error(res, '新密码至少 6 位');
@@ -1081,6 +1140,7 @@ module.exports = {
   updateProfile,
   updateRole,
   uploadAvatar,
+  uploadMerchantProfileImage,
   changePassword,
   changePhone,
   deleteAccount,
