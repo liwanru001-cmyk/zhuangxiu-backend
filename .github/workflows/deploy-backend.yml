@@ -339,6 +339,31 @@ jobs:
                   cp -a "$APP_DIR/server/$keep_dir" "$staging_dir/$keep_dir"
                 fi
               done
+
+              public_source=""
+              if [ -d "$APP_DIR/public" ]; then
+                public_source="$APP_DIR/public"
+              elif [ -d "$APP_DIR/server/public" ]; then
+                public_source="$APP_DIR/server/public"
+              else
+                for candidate in $(ls -dt "${APP_DIR}".backup.* 2>/dev/null || true); do
+                  if [ -d "$candidate/public" ]; then
+                    public_source="$candidate/public"
+                    break
+                  elif [ -d "$candidate/server/public" ]; then
+                    public_source="$candidate/server/public"
+                    break
+                  fi
+                done
+              fi
+
+              if [ -n "$public_source" ]; then
+                echo "Preserving existing server-side public directory from $public_source"
+                rm -rf "$staging_dir/public"
+                cp -a "$public_source" "$staging_dir/public"
+              else
+                echo "No existing server-side public directory found to preserve."
+              fi
             fi
 
             if [ -f .env ]; then
