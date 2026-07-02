@@ -223,7 +223,7 @@ async function listPublicMerchants(req, res) {
   const productCoversByUserId = {};
   if (merchantUserIds.length > 0) {
     const [coverRows] = await db.query(
-      `SELECT merchant_user_id, cover_url
+      `SELECT merchant_user_id, name, spec, cover_url
        FROM merchant_products
        WHERE status = 'active'
          AND COALESCE(cover_url, '') <> ''
@@ -235,7 +235,11 @@ async function listPublicMerchants(req, res) {
       const userId = Number(row.merchant_user_id);
       if (!productCoversByUserId[userId]) productCoversByUserId[userId] = [];
       if (productCoversByUserId[userId].length < 3) {
-        productCoversByUserId[userId].push(normalizeUploadUrl(row.cover_url));
+        productCoversByUserId[userId].push({
+          cover_url: normalizeUploadUrl(row.cover_url),
+          name: row.name || '',
+          spec: row.spec || '',
+        });
       }
     }
   }
