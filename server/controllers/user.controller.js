@@ -219,6 +219,27 @@ async function listPublicMerchants(req, res) {
     [...params, pageSize, offset]
   );
 
+  const merchantUserIds = rows.map((row) => Number(row.user_id)).filter(Boolean);
+  const productCoversByUserId = {};
+  if (merchantUserIds.length > 0) {
+    const [coverRows] = await db.query(
+      `SELECT merchant_user_id, cover_url
+       FROM merchant_products
+       WHERE status = 'active'
+         AND COALESCE(cover_url, '') <> ''
+         AND merchant_user_id IN (?)
+       ORDER BY merchant_user_id ASC, sort_order ASC, id ASC`,
+      [merchantUserIds]
+    );
+    for (const row of coverRows) {
+      const userId = Number(row.merchant_user_id);
+      if (!productCoversByUserId[userId]) productCoversByUserId[userId] = [];
+      if (productCoversByUserId[userId].length < 3) {
+        productCoversByUserId[userId].push(normalizeUploadUrl(row.cover_url));
+      }
+    }
+  }
+
   return success(res, {
     items: rows.map((row) => ({
       user_id: Number(row.user_id),
@@ -240,6 +261,7 @@ async function listPublicMerchants(req, res) {
       after_sales_promise: row.after_sales_promise || '',
       consultation_enabled: Boolean(row.consultation_enabled),
       product_count: Number(row.product_count || 0),
+      product_covers: productCoversByUserId[Number(row.user_id)] || [],
       updated_at: row.updated_at,
     })),
     page,
