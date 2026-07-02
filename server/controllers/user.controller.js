@@ -86,6 +86,27 @@ async function getMerchantProfile(req, res) {
   return success(res, profile || defaultMerchantProfile(req.user.id));
 }
 
+function inferMerchantCategoryGroup(categories) {
+  const values = parseJsonArray(categories).map((item) => String(item || '').trim());
+  if (values.includes('建材')) return '建材';
+  if (values.includes('家居')) return '家居';
+  const materialCategories = ['瓷砖地板', '涂料墙面', '水电防水', '灯具照明', '智能家居'];
+  const homeCategories = ['家具', '软装', '电器'];
+  if (values.some((item) => materialCategories.includes(item))) return '建材';
+  if (values.some((item) => homeCategories.includes(item))) return '家居';
+  return '';
+}
+
+function categoryGroupFallbackSql(group) {
+  const materialCategories = ['建材', '瓷砖地板', '涂料墙面', '水电防水', '灯具照明', '智能家居'];
+  const homeCategories = ['家居', '家具', '软装', '电器'];
+  const values = group === '建材' ? materialCategories : homeCategories;
+  return {
+    sql: values.map(() => `JSON_SEARCH(mp.categories, 'one', ?) IS NOT NULL`).join(' OR '),
+    values,
+  };
+}
+
 async function listPublicMerchants(req, res) {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
@@ -100,8 +121,12 @@ async function listPublicMerchants(req, res) {
 
   const categoryGroup = String(req.query.category_group || '').trim();
   if (['建材', '家居'].includes(categoryGroup)) {
-    where += ' AND mp.category_group = ?';
-    params.push(categoryGroup);
+    const fallback = categoryGroupFallbackSql(categoryGroup);
+    where += ` AND (
+      mp.category_group = ?
+      OR (COALESCE(mp.category_group, '') = '' AND (${fallback.sql}))
+    )`;
+    params.push(categoryGroup, ...fallback.values);
   }
 
   const category = String(req.query.category || '').trim();
@@ -155,7 +180,7 @@ async function listPublicMerchants(req, res) {
       address: row.address || '',
       contact_phone: row.contact_phone || '',
       business_hours: row.business_hours || '',
-      category_group: row.category_group || '',
+      category_group: row.category_group || inferMerchantCategoryGroup(row.categories),
       categories: parseJsonArray(row.categories),
       service_types: parseJsonArray(row.service_types),
       case_count: Number(row.case_count || 0),
