@@ -640,11 +640,7 @@ app.put('/api/admin/companies/:id/status', adminAuth, async (req, res) => {
 // admin 商家管理列表
 app.get('/api/admin/merchants', adminAuth, async (req, res) => {
   const params = [];
-  let where = `(
-    u.role = 'merchant'
-    OR ur.user_id IS NOT NULL
-    OR mp.user_id IS NOT NULL
-  )`;
+  let where = `ur.role = 'merchant' AND ur.verified_applied_at IS NOT NULL`;
 
   if (req.query.keyword) {
     where += ` AND (
@@ -656,15 +652,11 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
   }
   if (req.query.status) {
     const status = String(req.query.status);
-    if (!['pending', 'approved', 'rejected', 'suspended', 'none'].includes(status)) {
+    if (!['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
       return error(res, '入驻商家状态不正确');
     }
-    if (status === 'none') {
-      where += ' AND ur.user_id IS NULL';
-    } else {
-      where += ' AND ur.verified_status = ?';
-      params.push(status);
-    }
+    where += ' AND ur.verified_status = ?';
+    params.push(status);
   }
   if (req.query.category_group) {
     const categoryGroup = String(req.query.category_group);
@@ -680,6 +672,7 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
   const [rows] = await db.query(
     `SELECT u.id AS user_id, u.phone, u.nickname, u.avatar, u.city, u.role AS user_role,
             ur.verified_status, ur.verified_at, ur.verified_until, ur.review_note,
+            ur.verified_applied_at,
             mp.shop_name, mp.logo_url, mp.cover_url, mp.service_area, mp.address,
             mp.contact_phone, mp.business_hours, mp.category_group, mp.categories,
             mp.brand_intro, mp.consultation_enabled, mp.updated_at AS profile_updated_at,
@@ -689,7 +682,7 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
               WHERE p.merchant_user_id = u.id AND p.status = 'active'
             ) AS product_count
      FROM users u
-     LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'merchant'
+     JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'merchant'
      LEFT JOIN merchant_profiles mp ON mp.user_id = u.id
      WHERE ${where}
      ORDER BY COALESCE(mp.updated_at, u.updated_at, u.created_at) DESC, u.id DESC
@@ -699,7 +692,7 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
   const [countRows] = await db.query(
     `SELECT COUNT(*) AS total
      FROM users u
-     LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'merchant'
+     JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'merchant'
      LEFT JOIN merchant_profiles mp ON mp.user_id = u.id
      WHERE ${where}`,
     params
@@ -716,6 +709,7 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
       verified_status: row.verified_status || 'none',
       verified_at: row.verified_at,
       verified_until: row.verified_until,
+      verified_applied_at: row.verified_applied_at,
       review_note: row.review_note || '',
       shop_name: row.shop_name || '',
       logo_url: row.logo_url || '',
@@ -950,12 +944,13 @@ app.put('/api/admin/merchants/:id/verified-status', adminAuth, async (req, res) 
 
   await db.query(
     `INSERT INTO user_roles
-     (user_id, role, is_default, verified_status, verified_at, verified_until, review_note)
-     VALUES (?, 'merchant', 0, ?, IF(? = 'approved', NOW(), NULL), ?, ?)
+     (user_id, role, is_default, verified_status, verified_at, verified_until, verified_applied_at, review_note)
+     VALUES (?, 'merchant', 0, ?, IF(? = 'approved', NOW(), NULL), ?, NOW(), ?)
      ON DUPLICATE KEY UPDATE
        verified_status = VALUES(verified_status),
        verified_at = IF(VALUES(verified_status) = 'approved', COALESCE(verified_at, NOW()), verified_at),
        verified_until = VALUES(verified_until),
+       verified_applied_at = COALESCE(verified_applied_at, NOW()),
        review_note = VALUES(review_note)`,
     [userId, status, status, verifiedUntil || null, reviewNote || null]
   );

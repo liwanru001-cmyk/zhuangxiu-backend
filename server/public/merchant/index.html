@@ -874,6 +874,7 @@
         </section>
 
         <div class="save-bar">
+          <button id="applyVerifiedMerchantBtn" class="button button-secondary" type="button" style="width:auto; min-width:160px">申请入驻</button>
           <button id="saveBtn" class="button button-primary" type="submit" style="width:auto; min-width:160px">保存商家资料</button>
         </div>
         <div id="profileMessage" class="message"></div>
@@ -1054,6 +1055,13 @@
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function formatTime(value) {
+      if (!value) return '';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleString('zh-CN', { hour12: false });
     }
 
     function displayImageUrl(url) {
@@ -1490,6 +1498,27 @@
       selectedCategories = new Set((Array.isArray(profile?.categories) ? profile.categories : []).filter((item) => allowedCategories.has(item)));
       $('consultation_enabled').checked = profile?.consultation_enabled !== false && profile?.consultation_enabled !== 0;
       renderChips();
+      updateVerifiedMerchantStatus(profile?.verified_merchant);
+    }
+
+    function verifiedMerchantLabel(status) {
+      return {
+        none: '未申请入驻',
+        pending: '入驻审核中',
+        approved: '已入驻',
+        rejected: '入驻申请未通过',
+        suspended: '入驻已暂停',
+      }[status] || '未申请入驻';
+    }
+
+    function updateVerifiedMerchantStatus(verifiedMerchant) {
+      const status = verifiedMerchant?.status || 'none';
+      const appliedAt = verifiedMerchant?.applied_at ? ` · 申请时间：${formatTime(verifiedMerchant.applied_at)}` : '';
+      const verifiedUntil = verifiedMerchant?.verified_until ? ` · 到期：${formatTime(verifiedMerchant.verified_until)}` : '';
+      const note = verifiedMerchant?.review_note ? ` · 备注：${verifiedMerchant.review_note}` : '';
+      const message = `当前入驻状态：${verifiedMerchantLabel(status)}${appliedAt}${verifiedUntil}${note}`;
+      setMessage('profileMessage', message, status === 'approved' ? 'ok' : '');
+      $('applyVerifiedMerchantBtn').textContent = status === 'none' ? '申请入驻' : '重新提交入驻申请';
     }
 
     async function uploadProfileImage(kind, file) {
@@ -1535,7 +1564,7 @@
       currentProfile = profile || {};
       fillProfile(profile);
       await loadProducts();
-      setMessage('profileMessage', '资料已读取', 'ok');
+      updateVerifiedMerchantStatus(currentProfile?.verified_merchant);
     }
 
     async function login(phone, password) {
@@ -1568,6 +1597,21 @@
       });
       currentProfile = { ...(currentProfile || {}), ...payload };
       setMessage('profileMessage', '商家资料已保存', 'ok');
+    }
+
+    async function applyVerifiedMerchant() {
+      await saveProfile();
+      setMessage('profileMessage', '正在提交入驻申请...');
+      const verifiedMerchant = await api('/users/verified-merchant/apply', {
+        method: 'POST',
+        body: JSON.stringify({})
+      });
+      currentProfile = {
+        ...(currentProfile || {}),
+        verified_merchant: verifiedMerchant,
+      };
+      updateVerifiedMerchantStatus(verifiedMerchant);
+      setMessage('profileMessage', '入驻申请已提交，请等待后台审核。', 'ok');
     }
 
     $('loginForm').addEventListener('submit', async (event) => {
@@ -1653,6 +1697,23 @@
 
     $('mapPlaceholderBtn').addEventListener('click', () => {
       setMessage('profileMessage', '地图定位功能将在后续接入地图选点，现在请先手动填写详细地址。');
+    });
+
+    $('applyVerifiedMerchantBtn').addEventListener('click', async () => {
+      if (!token()) {
+        setMessage('profileMessage', '请先登录商家账号后再申请入驻。', 'error');
+        return;
+      }
+      $('applyVerifiedMerchantBtn').disabled = true;
+      $('saveBtn').disabled = true;
+      try {
+        await applyVerifiedMerchant();
+      } catch (error) {
+        setMessage('profileMessage', error.message, 'error');
+      } finally {
+        $('applyVerifiedMerchantBtn').disabled = false;
+        $('saveBtn').disabled = false;
+      }
     });
 
     $('hours_days').addEventListener('change', updateBusinessHours);

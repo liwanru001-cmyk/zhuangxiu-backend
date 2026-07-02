@@ -5,7 +5,6 @@ const fs = require('fs/promises');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const {
-  hasActiveVerifiedMerchant,
   activeVerifiedMerchantExistsSql,
   activeVerifiedMerchantStateSql,
 } = require('../utils/verified-merchant');
@@ -88,7 +87,38 @@ async function getMerchantProfileData(userId) {
 
 async function getMerchantProfile(req, res) {
   const profile = await getMerchantProfileData(req.user.id);
-  return success(res, profile || defaultMerchantProfile(req.user.id));
+  const verifiedMerchant = await getVerifiedMerchantStatus(req.user.id);
+  return success(res, {
+    ...(profile || defaultMerchantProfile(req.user.id)),
+    verified_merchant: verifiedMerchant,
+  });
+}
+
+async function getVerifiedMerchantStatus(userId) {
+  const [rows] = await db.query(
+    `SELECT verified_status, verified_at, verified_until, verified_applied_at, review_note
+     FROM user_roles
+     WHERE user_id = ? AND role = 'merchant'
+     LIMIT 1`,
+    [userId]
+  );
+  const row = rows[0] || {};
+  return {
+    status: row.verified_status || 'none',
+    verified_at: row.verified_at || null,
+    verified_until: row.verified_until || null,
+    applied_at: row.verified_applied_at || null,
+    review_note: row.review_note || '',
+  };
+}
+
+async function hasMerchantIdentity(userId, fallbackRole) {
+  if (fallbackRole === 'merchant') return true;
+  const [rows] = await db.query(
+    `SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'merchant' LIMIT 1`,
+    [userId]
+  );
+  return rows.length > 0;
 }
 
 function inferMerchantCategoryGroup(categories) {
@@ -219,8 +249,8 @@ async function listPublicMerchants(req, res) {
 }
 
 async function upsertMerchantProfile(req, res) {
-  if (!(await hasActiveVerifiedMerchant(req.user.id))) {
-    return error(res, '未成为入驻商家，暂不能编辑商家资料', 403);
+  if (!(await hasMerchantIdentity(req.user.id, req.user.role))) {
+    return error(res, '只有商家身份可以编辑商家资料', 403);
   }
 
   const serviceArea = String(req.body.service_area || '').trim().slice(0, 80);
@@ -296,6 +326,29 @@ async function upsertMerchantProfile(req, res) {
   );
   const profile = await getMerchantProfileData(req.user.id);
   return success(res, profile, '商家资料已保存');
+}
+
+async function applyVerifiedMerchant(req, res) {
+  if (!(await hasMerchantIdentity(req.user.id, req.user.role))) {
+    return error(res, '只有商家身份可以申请入驻商家', 403);
+  }
+
+  const profile = await getMerchantProfileData(req.user.id);
+  if (!profile || !String(profile.shop_name || '').trim()) {
+    return error(res, '请先保存商家资料，再申请入驻商家');
+  }
+
+  await db.query(
+    `INSERT INTO user_roles
+     (user_id, role, is_default, verified_status, verified_applied_at)
+     VALUES (?, 'merchant', 0, 'pending', NOW())
+     ON DUPLICATE KEY UPDATE
+       verified_applied_at = COALESCE(verified_applied_at, NOW()),
+       verified_status = IF(verified_status = 'approved', verified_status, 'pending')`,
+    [req.user.id]
+  );
+
+  return success(res, await getVerifiedMerchantStatus(req.user.id), '入驻申请已提交，请等待后台审核');
 }
 
 function defaultMerchantProfile(userId) {
@@ -1068,8 +1121,8 @@ async function uploadAvatar(req, res) {
 
 async function uploadMerchantProfileImage(req, res) {
   if (!req.file) return error(res, '请选择商家图片');
-  if (!(await hasActiveVerifiedMerchant(req.user.id))) {
-    return error(res, '未成为入驻商家，暂不能上传商家图片', 403);
+  if (!(await hasMerchantIdentity(req.user.id, req.user.role))) {
+    return error(res, '只有商家身份可以上传商家图片', 403);
   }
   const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-profiles/${req.file.filename}`;
   return success(res, { url: imageUrl }, '图片上传成功');
@@ -1285,6 +1338,7 @@ module.exports = {
   getMerchantProfile,
   listPublicMerchants,
   upsertMerchantProfile,
+  applyVerifiedMerchant,
   createDesignerConsultation,
   getDesignerConsultations,
   getMyConsultations,
