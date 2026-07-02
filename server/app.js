@@ -422,6 +422,7 @@ app.get('/api/admin/features', adminAuth, (req, res) => {
 });
 
 const ADMIN_COMPANY_STATUSES = ['draft', 'active', 'suspended', 'deleted'];
+const ADMIN_COMPANY_VERIFICATION_STATUSES = ['unverified', 'pending', 'verified', 'rejected'];
 
 function adminCompanyStatusLabel(status) {
   return {
@@ -429,6 +430,15 @@ function adminCompanyStatusLabel(status) {
     active: '正常',
     suspended: '停用',
     deleted: '已删除',
+  }[status] || status || '-';
+}
+
+function adminCompanyVerificationLabel(status) {
+  return {
+    unverified: '未认证',
+    pending: '待审核',
+    verified: '已认证',
+    rejected: '已拒绝',
   }[status] || status || '-';
 }
 
@@ -467,6 +477,14 @@ app.get('/api/admin/companies', adminAuth, async (req, res) => {
     where += ' AND c.status = ?';
     params.push(status);
   }
+  if (req.query.verificationStatus) {
+    const verificationStatus = String(req.query.verificationStatus);
+    if (!ADMIN_COMPANY_VERIFICATION_STATUSES.includes(verificationStatus)) {
+      return error(res, '公司认证状态不正确');
+    }
+    where += ' AND c.verification_status = ?';
+    params.push(verificationStatus);
+  }
 
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
@@ -475,6 +493,7 @@ app.get('/api/admin/companies', adminAuth, async (req, res) => {
   const [rows] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
             c.city, c.address, c.contact_phone, c.status, c.source,
+            c.verification_status, c.license_url,
             c.legacy_merchant_user_id, c.created_at, c.updated_at,
             u.nickname AS owner_name, u.phone AS owner_phone,
             (
@@ -525,6 +544,9 @@ app.get('/api/admin/companies', adminAuth, async (req, res) => {
       contact_phone: row.contact_phone || '',
       status: row.status,
       status_label: adminCompanyStatusLabel(row.status),
+      verification_status: row.verification_status || 'unverified',
+      verification_status_label: adminCompanyVerificationLabel(row.verification_status || 'unverified'),
+      license_url: row.license_url || '',
       source: row.source,
       legacy_merchant_user_id: row.legacy_merchant_user_id,
       owner_name: row.owner_name || '',
@@ -549,6 +571,7 @@ app.get('/api/admin/companies/:id', adminAuth, async (req, res) => {
   const [[company]] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
             c.city, c.address, c.contact_phone, c.status, c.source,
+            c.verification_status, c.license_url,
             c.legacy_merchant_user_id, c.created_at, c.updated_at,
             u.nickname AS owner_name, u.phone AS owner_phone
      FROM companies c
@@ -604,6 +627,9 @@ app.get('/api/admin/companies/:id', adminAuth, async (req, res) => {
       city: company.city || '',
       address: company.address || '',
       contact_phone: company.contact_phone || '',
+      verification_status: company.verification_status || 'unverified',
+      verification_status_label: adminCompanyVerificationLabel(company.verification_status || 'unverified'),
+      license_url: company.license_url || '',
       owner_name: company.owner_name || '',
       owner_phone: company.owner_phone || '',
       status_label: adminCompanyStatusLabel(company.status),
@@ -635,6 +661,27 @@ app.put('/api/admin/companies/:id/status', adminAuth, async (req, res) => {
   );
   if (result.affectedRows === 0) return error(res, '公司不存在', 404);
   return success(res, { id: companyId, status, status_label: adminCompanyStatusLabel(status) });
+});
+
+// admin 更新公司认证状态
+app.put('/api/admin/companies/:id/verification-status', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  const verificationStatus = String(req.body?.verification_status || '');
+  if (!companyId) return error(res, '公司不存在', 404);
+  if (!ADMIN_COMPANY_VERIFICATION_STATUSES.includes(verificationStatus)) {
+    return error(res, '公司认证状态不正确');
+  }
+
+  const [result] = await db.query(
+    'UPDATE companies SET verification_status = ? WHERE id = ?',
+    [verificationStatus, companyId]
+  );
+  if (result.affectedRows === 0) return error(res, '公司不存在', 404);
+  return success(res, {
+    id: companyId,
+    verification_status: verificationStatus,
+    verification_status_label: adminCompanyVerificationLabel(verificationStatus),
+  });
 });
 
 // admin 商家管理列表

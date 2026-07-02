@@ -632,6 +632,13 @@ function renderCompanyTabContent() {
         <option value="suspended">停用</option>
         <option value="deleted">已删除</option>
       </select>
+      <select id="companyVerificationStatus" onchange="loadCompanies(1)">
+        <option value="">全部认证</option>
+        <option value="unverified">未认证</option>
+        <option value="pending">待审核</option>
+        <option value="verified">已认证</option>
+        <option value="rejected">已拒绝</option>
+      </select>
       <button class="primary-btn" onclick="loadCompanies(1)">查询</button>
     </div>
     <div class="card">
@@ -646,7 +653,7 @@ function renderCompanyTabContent() {
           <thead>
             <tr>
               <th>ID</th><th>公司</th><th>业务</th><th>负责人</th><th>城市/范围</th>
-              <th>成员/项目</th><th>状态</th><th>来源</th><th>更新时间</th><th>操作</th>
+              <th>成员/项目</th><th>状态</th><th>认证</th><th>来源</th><th>更新时间</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="company-body"></tbody>
@@ -713,19 +720,21 @@ async function loadCompanies(p) {
   page = Math.max(1, p || 1);
   const kw = document.getElementById('companySearch')?.value.trim() || '';
   const status = document.getElementById('companyStatus')?.value || '';
+  const verificationStatus = document.getElementById('companyVerificationStatus')?.value || '';
   const params = new URLSearchParams({ page, pageSize: 20 });
   if (kw) params.set('keyword', kw);
   if (status) params.set('status', status);
+  if (verificationStatus) params.set('verificationStatus', verificationStatus);
 
   const body = document.getElementById('company-body');
-  body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
   try {
     const j = await adminFetch(`/companies?${params}`);
     if (j.code !== 200) throw new Error(j.message || '加载失败');
     companies = j.data.companies || [];
     total = j.data.total || 0;
     body.innerHTML = companies.map(companyRow).join('') ||
-      '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">暂无公司</td></tr>';
+      '<tr><td colspan="11" style="text-align:center;color:#999;padding:32px;">暂无公司</td></tr>';
     const totalPages = Math.ceil(total / 20) || 1;
     document.getElementById('company-page-info').textContent = `共 ${total} 条 · ${page}/${totalPages}`;
     document.getElementById('company-btn-prev').disabled = page <= 1;
@@ -735,7 +744,7 @@ async function loadCompanies(p) {
       selectedCompanyId = null;
     }
   } catch (e) {
-    body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+    body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
   }
 }
 
@@ -861,11 +870,14 @@ function companyRow(item) {
       </td>
       <td class="muted">成员 ${item.member_count || 0}<br>项目 ${item.project_count || 0}</td>
       <td><span class="badge status-${esc(item.status)}">${companyStatusLabel(item.status)}</span></td>
+      <td><span class="badge ${companyVerificationClass(item.verification_status)}">${companyVerificationLabel(item.verification_status)}</span></td>
       <td><span class="badge">${companySourceLabel(item.source)}</span></td>
       <td>${fmtTime(item.updated_at || item.created_at)}</td>
       <td>
         <div class="row-actions">
           <button class="action-btn" onclick="loadCompanyDetail(${item.id})">详情</button>
+          ${item.verification_status !== 'verified' ? `<button class="success-btn" onclick="updateCompanyVerificationStatus(${item.id}, 'verified')">认证通过</button>` : ''}
+          ${item.verification_status !== 'rejected' ? `<button class="danger-btn" onclick="updateCompanyVerificationStatus(${item.id}, 'rejected')">拒绝认证</button>` : ''}
           ${item.status !== 'active' ? `<button class="success-btn" onclick="updateCompanyStatus(${item.id}, 'active')">${item.status === 'draft' ? '通过' : '启用'}</button>` : ''}
           ${item.status !== 'suspended' ? `<button class="danger-btn" onclick="updateCompanyStatus(${item.id}, 'suspended')">停用</button>` : ''}
         </div>
@@ -903,15 +915,21 @@ function companyDetailHtml(data) {
         </div>
         <div class="row-actions">
           ${company.status !== 'active' ? `<button class="success-btn" onclick="updateCompanyStatus(${company.id}, 'active')">${company.status === 'draft' ? '审核通过' : '启用'}</button>` : ''}
+          ${company.verification_status !== 'verified' ? `<button class="success-btn" onclick="updateCompanyVerificationStatus(${company.id}, 'verified')">认证通过</button>` : ''}
+          ${company.verification_status !== 'pending' ? `<button class="action-btn" onclick="updateCompanyVerificationStatus(${company.id}, 'pending')">设为待审</button>` : ''}
+          ${company.verification_status !== 'rejected' ? `<button class="danger-btn" onclick="updateCompanyVerificationStatus(${company.id}, 'rejected')">拒绝认证</button>` : ''}
+          ${company.verification_status !== 'unverified' ? `<button class="action-btn" onclick="updateCompanyVerificationStatus(${company.id}, 'unverified')">取消认证</button>` : ''}
           ${company.status !== 'suspended' ? `<button class="danger-btn" onclick="updateCompanyStatus(${company.id}, 'suspended')">停用</button>` : ''}
           ${company.status !== 'deleted' ? `<button class="danger-btn" onclick="updateCompanyStatus(${company.id}, 'deleted')">标记删除</button>` : ''}
         </div>
       </div>
       <div class="detail-grid">
         ${detailCell('状态', `<span class="badge status-${esc(company.status)}">${companyStatusLabel(company.status)}</span>`)}
+        ${detailCell('认证状态', `<span class="badge ${companyVerificationClass(company.verification_status)}">${companyVerificationLabel(company.verification_status)}</span>`)}
         ${detailCell('负责人', `${esc(company.owner_name) || '-'} ${company.owner_phone ? `· ${esc(company.owner_phone)}` : ''}`)}
         ${detailCell('城市 / 服务范围', `${esc(company.city) || '-'} / ${esc(company.service_area) || '-'}`)}
         ${detailCell('联系电话', esc(company.contact_phone) || '-')}
+        ${detailCell('营业执照', company.license_url ? `<a href="${esc(company.license_url)}" target="_blank" rel="noopener">查看</a>` : '-')}
         ${detailCell('地址', esc(company.address) || '-')}
         ${detailCell('来源', companySourceLabel(company.source))}
       </div>
@@ -998,6 +1016,23 @@ async function updateCompanyStatus(id, status) {
     if (selectedCompanyId) loadCompanyDetail(selectedCompanyId);
   } else {
     toast(j.message || '状态更新失败');
+  }
+}
+
+async function updateCompanyVerificationStatus(id, status) {
+  const label = companyVerificationLabel(status);
+  if (!confirm(`确认将公司认证状态改为“${label}”？`)) return;
+  const j = await adminFetch(`/companies/${id}/verification-status`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ verification_status: status }),
+  });
+  if (j.code === 200) {
+    toast('公司认证状态已更新');
+    await loadCompanies(page);
+    if (selectedCompanyId) loadCompanyDetail(selectedCompanyId);
+  } else {
+    toast(j.message || '认证状态更新失败');
   }
 }
 
@@ -2413,6 +2448,24 @@ function statusLabel(status) {
 
 function companyStatusLabel(status) {
   return { draft: '待审核', active: '正常', suspended: '停用', deleted: '已删除' }[status] || status || '-';
+}
+
+function companyVerificationLabel(status) {
+  return {
+    unverified: '未认证',
+    pending: '待审核',
+    verified: '已认证',
+    rejected: '已拒绝',
+  }[status] || status || '-';
+}
+
+function companyVerificationClass(status) {
+  return {
+    unverified: 'status-hidden',
+    pending: 'status-pending',
+    verified: 'status-approved',
+    rejected: 'status-rejected',
+  }[status] || 'status-hidden';
 }
 
 function verifiedMerchantLabel(status) {
