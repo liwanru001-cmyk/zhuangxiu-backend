@@ -90,15 +90,15 @@ test('public company search only queries active paid companies and never merchan
   assert.equal(queries.length, 1);
 });
 
-test('public company detail rejects companies outside active paid display window', async () => {
+test('public company detail only requires an active company', async () => {
   const queries = [];
   const dbMock = {
     async query(sql, params) {
       queries.push({ sql, params });
       assert.match(sql, /c\.status = 'active'/);
-      assert.match(sql, /c\.paid_display_status = 'active'/);
-      assert.match(sql, /c\.paid_display_starts_at IS NULL OR c\.paid_display_starts_at <= NOW\(\)/);
-      assert.match(sql, /c\.paid_display_ends_at IS NULL OR c\.paid_display_ends_at >= NOW\(\)/);
+      assert.doesNotMatch(sql, /c\.paid_display_status = 'active'/);
+      assert.doesNotMatch(sql, /paid_display_starts_at IS NULL/);
+      assert.doesNotMatch(sql, /paid_display_ends_at IS NULL/);
       assert.deepEqual(params, [99]);
       return [[]];
     },

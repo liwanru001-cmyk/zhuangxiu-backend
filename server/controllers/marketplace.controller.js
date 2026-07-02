@@ -917,7 +917,6 @@ async function listMarketplaceSearch(req, res) {
   let professionalSource = '';
 
   if (canShowCompanies) {
-    req.publicCompanySearch = true;
     companies = await listCompaniesFromNewTables(req, pageSpec);
     companySource = 'companies';
   }
@@ -1034,9 +1033,6 @@ async function getPublicCompany(req, res) {
        ON parent.id = bc.parent_id AND parent.status = 'active'
      WHERE c.id = ?
        AND c.status = 'active'
-       AND c.paid_display_status = 'active'
-       AND (c.paid_display_starts_at IS NULL OR c.paid_display_starts_at <= NOW())
-       AND (c.paid_display_ends_at IS NULL OR c.paid_display_ends_at >= NOW())
      GROUP BY c.id`,
     [id]
   );
