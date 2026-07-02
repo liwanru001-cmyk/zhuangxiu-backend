@@ -86,6 +86,91 @@ async function getMerchantProfile(req, res) {
   return success(res, profile || defaultMerchantProfile(req.user.id));
 }
 
+async function listPublicMerchants(req, res) {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+  const params = [];
+  let where = `
+    EXISTS (
+      SELECT 1 FROM user_roles ur
+      WHERE ur.user_id = u.id AND ur.role = 'merchant'
+    )
+  `;
+
+  const categoryGroup = String(req.query.category_group || '').trim();
+  if (['建材', '家居'].includes(categoryGroup)) {
+    where += ' AND mp.category_group = ?';
+    params.push(categoryGroup);
+  }
+
+  const category = String(req.query.category || '').trim();
+  if (category) {
+    where += ` AND JSON_SEARCH(mp.categories, 'one', ?) IS NOT NULL`;
+    params.push(category);
+  }
+
+  const keyword = String(req.query.keyword || '').trim();
+  if (keyword) {
+    where += ` AND (
+      mp.shop_name LIKE ?
+      OR mp.brand_intro LIKE ?
+      OR mp.service_area LIKE ?
+      OR CAST(mp.categories AS CHAR) LIKE ?
+      OR u.nickname LIKE ?
+    )`;
+    const like = `%${keyword}%`;
+    params.push(like, like, like, like, like);
+  }
+
+  const [rows] = await db.query(
+    `SELECT u.id AS user_id, u.nickname, u.avatar, u.city,
+            mp.shop_name, mp.logo_url, mp.cover_url, mp.service_area,
+            mp.address, mp.contact_phone, mp.business_hours, mp.category_group,
+            mp.categories, mp.service_types, mp.case_count, mp.brand_intro,
+            mp.after_sales_promise, mp.consultation_enabled, mp.updated_at,
+            (
+              SELECT COUNT(*)
+              FROM merchant_products p
+              WHERE p.merchant_user_id = mp.user_id AND p.status = 'active'
+            ) AS product_count
+     FROM merchant_profiles mp
+     JOIN users u ON u.id = mp.user_id
+     WHERE ${where}
+     ORDER BY mp.updated_at DESC, mp.user_id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+
+  return success(res, {
+    items: rows.map((row) => ({
+      user_id: Number(row.user_id),
+      nickname: row.nickname || '',
+      avatar: row.avatar || '',
+      city: row.city || '',
+      shop_name: row.shop_name || '',
+      logo_url: row.logo_url || '',
+      cover_url: row.cover_url || '',
+      service_area: row.service_area || '',
+      address: row.address || '',
+      contact_phone: row.contact_phone || '',
+      business_hours: row.business_hours || '',
+      category_group: row.category_group || '',
+      categories: parseJsonArray(row.categories),
+      service_types: parseJsonArray(row.service_types),
+      case_count: Number(row.case_count || 0),
+      brand_intro: row.brand_intro || '',
+      after_sales_promise: row.after_sales_promise || '',
+      consultation_enabled: Boolean(row.consultation_enabled),
+      product_count: Number(row.product_count || 0),
+      updated_at: row.updated_at,
+    })),
+    page,
+    pageSize,
+    hasMore: rows.length === pageSize,
+  });
+}
+
 async function upsertMerchantProfile(req, res) {
   const [roleRows] = await db.query(
     `SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'merchant' LIMIT 1`,
@@ -1154,6 +1239,7 @@ module.exports = {
   getProjectManagerProfile,
   upsertProjectManagerProfile,
   getMerchantProfile,
+  listPublicMerchants,
   upsertMerchantProfile,
   createDesignerConsultation,
   getDesignerConsultations,

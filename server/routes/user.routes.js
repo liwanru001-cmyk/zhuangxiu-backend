@@ -111,6 +111,7 @@ router.get('/designer-profile', asyncHandler(auth), asyncHandler(userController.
 router.put('/designer-profile', asyncHandler(auth), asyncHandler(userController.upsertDesignerProfile));
 router.get('/project-manager-profile', asyncHandler(auth), asyncHandler(userController.getProjectManagerProfile));
 router.put('/project-manager-profile', asyncHandler(auth), asyncHandler(userController.upsertProjectManagerProfile));
+router.get('/merchants', asyncHandler(userController.listPublicMerchants));
 router.get('/merchant-profile', asyncHandler(auth), asyncHandler(userController.getMerchantProfile));
 router.put('/merchant-profile', asyncHandler(auth), asyncHandler(userController.upsertMerchantProfile));
 router.post(
