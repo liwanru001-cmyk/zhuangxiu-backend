@@ -78,6 +78,16 @@ function mapCompanyRow(row) {
     city: row.city || '',
     address: row.address || '',
     contact_phone: row.contact_phone || '',
+    license_url: row.license_url || '',
+    verification_status: row.verification_status || 'unverified',
+    paid_display_status: row.paid_display_status || 'none',
+    paid_display_starts_at: row.paid_display_starts_at || null,
+    paid_display_ends_at: row.paid_display_ends_at || null,
+    rating_avg: row.rating_avg === null || row.rating_avg === undefined
+      ? 0
+      : Number(row.rating_avg),
+    review_count: Number(row.review_count || 0),
+    case_count: Number(row.case_count || 0),
     status: row.status || 'active',
     source: row.source || 'manual',
     legacy_merchant_user_id: row.legacy_merchant_user_id || null,
@@ -118,7 +128,15 @@ function mapCompanySearchItem(company) {
     serviceArea: company.service_area || '',
     intro: company.intro || '',
     businesses: company.businesses || [],
-    badges: ['公司'],
+    verificationStatus: company.verification_status || 'unverified',
+    paidDisplayStatus: company.paid_display_status || 'none',
+    ratingAvg: Number(company.rating_avg || 0),
+    reviewCount: Number(company.review_count || 0),
+    caseCount: Number(company.case_count || 0),
+    badges: [
+      '装修公司',
+      company.verification_status === 'verified' ? '已认证' : '',
+    ].filter(Boolean),
     detailPath: `/companies/${company.id}`,
   };
 }
@@ -157,6 +175,7 @@ function companyPayload(body = {}) {
     city: String(body.city || '').trim().slice(0, 50),
     address: String(body.address || '').trim().slice(0, 255),
     contact_phone: String(body.contact_phone || '').trim().slice(0, 30),
+    license_url: String(body.license_url || '').trim().slice(0, 500),
   };
 }
 
@@ -207,7 +226,7 @@ function mapCompanyMemberRow(row) {
     professionalId: row.professional_id || null,
     displayName: row.display_name || row.nickname || '团队成员',
     avatarUrl: row.avatar_url || row.avatar || '',
-    memberRole: row.member_role || 'merchant_staff',
+    memberRole: row.member_role || 'staff',
     title: row.title || '',
     status: row.status || 'active',
     professionalBusinesses: parseJsonArray(row.professional_businesses).filter(Boolean),
@@ -266,7 +285,7 @@ async function listCompanyMembersById(companyId, { limit = 100 } = {}) {
      WHERE cm.company_id = ? AND cm.status = 'active'
      GROUP BY cm.id
      ORDER BY FIELD(cm.member_role, 'owner', 'admin', 'designer', 'supervisor',
-                    'project_manager', 'customer_service', 'merchant_staff'),
+                    'project_manager', 'customer_service', 'staff'),
               cm.joined_at DESC, cm.id DESC
      LIMIT ?`,
     [companyId, limit]
@@ -307,6 +326,7 @@ async function listCompanyMembersForCompany(company, { limit = 100 } = {}) {
 }
 
 async function listCompaniesFromNewTables(req, pageSpec) {
+  const publicOnly = req.publicCompanySearch === true;
   const { filterSql, params: filterParams } = await resolveCatalogFilter(req.query);
   const params = [...filterParams];
   let where = `c.status = 'active'`;
@@ -320,6 +340,11 @@ async function listCompaniesFromNewTables(req, pageSpec) {
   `;
 
   if (filterSql) where += ` ${filterSql}`;
+  if (publicOnly) {
+    where += ` AND c.paid_display_status = 'active'
+      AND (c.paid_display_starts_at IS NULL OR c.paid_display_starts_at <= NOW())
+      AND (c.paid_display_ends_at IS NULL OR c.paid_display_ends_at >= NOW())`;
+  }
   if (req.query.city) {
     where += ` AND REPLACE(c.city, '市', '') = REPLACE(?, '市', '')`;
     params.push(String(req.query.city));
@@ -333,6 +358,9 @@ async function listCompaniesFromNewTables(req, pageSpec) {
   const [rows] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
             c.city, c.address, c.contact_phone, c.source, c.legacy_merchant_user_id,
+            c.license_url, c.verification_status, c.paid_display_status,
+            c.paid_display_starts_at, c.paid_display_ends_at,
+            c.rating_avg, c.review_count, c.case_count,
             c.created_at, c.updated_at, c.status,
             COALESCE(
               JSON_ARRAYAGG(
@@ -352,7 +380,8 @@ async function listCompaniesFromNewTables(req, pageSpec) {
      ${joins}
      WHERE ${where}
      GROUP BY c.id
-     ORDER BY c.updated_at DESC, c.id DESC
+     ORDER BY c.rating_avg DESC, c.review_count DESC, c.case_count DESC,
+              c.updated_at DESC, c.id DESC
      LIMIT ? OFFSET ?`,
     [...params, pageSpec.pageSize, pageSpec.offset]
   );
@@ -412,31 +441,6 @@ async function listProfessionalsFromNewTables(req, pageSpec) {
   return rows.map(mapProfessionalRow);
 }
 
-function legacyBusinessCodes(categories) {
-  const map = new Map([
-    ['整装公司', 'whole_renovation'],
-    ['设计师工作室', 'design_studio'],
-    ['监理服务', 'supervision_service'],
-    ['瓷砖地板', 'tile_floor'],
-    ['瓷砖', 'tile_floor'],
-    ['地板', 'tile_floor'],
-    ['涂料墙面', 'paint_wall'],
-    ['吊顶门窗', 'ceiling_door_window'],
-    ['门窗', 'ceiling_door_window'],
-    ['水电防水', 'water_electric_waterproof'],
-    ['全屋定制', 'whole_house_custom'],
-    ['灯具照明', 'lighting'],
-    ['灯具', 'lighting'],
-    ['智能家居', 'smart_home'],
-    ['家具', 'furniture'],
-    ['软装', 'soft_decoration'],
-    ['家电', 'appliance'],
-    ['电器', 'appliance'],
-    ['建材', 'tile_floor'],
-  ]);
-  return categories.map((item) => map.get(item) || '').filter(Boolean);
-}
-
 function businessPayload(item, isPrimary = 1) {
   if (!item) return null;
   return {
@@ -446,98 +450,6 @@ function businessPayload(item, isPrimary = 1) {
     parent_code: item.parent_code,
     parent_name: item.parent_name,
     is_primary: isPrimary,
-  };
-}
-
-async function listLegacyMerchantCompanies(req, pageSpec) {
-  const params = [];
-  let where = `EXISTS (
-    SELECT 1 FROM user_roles ur
-    WHERE ur.user_id = u.id AND ur.role = 'merchant'
-  )`;
-  if (req.query.city) {
-    where += ` AND REPLACE(u.city, '市', '') = REPLACE(?, '市', '')`;
-    params.push(String(req.query.city));
-  }
-  if (req.query.keyword) {
-    where += ` AND (u.nickname LIKE ? OR m.brand_intro LIKE ? OR m.service_area LIKE ?)`;
-    const keyword = `%${String(req.query.keyword).trim()}%`;
-    params.push(keyword, keyword, keyword);
-  }
-  const [rows] = await db.query(
-    `SELECT u.id AS user_id, u.nickname, u.avatar, u.city, m.service_area,
-            m.categories, m.service_types, m.case_count, m.brand_intro,
-            m.updated_at
-     FROM users u
-     JOIN merchant_profiles m ON m.user_id = u.id
-     WHERE ${where}
-     ORDER BY m.updated_at DESC, u.id DESC
-     LIMIT ? OFFSET ?`,
-    [...params, pageSpec.pageSize, pageSpec.offset]
-  );
-
-  const businessRows = await getBusinessCatalogFlat();
-  const byCode = new Map(businessRows.map((item) => [item.code, item]));
-  const parentCode = req.query.parent_code ? String(req.query.parent_code) : '';
-  const businessCode = req.query.business_code ? String(req.query.business_code) : '';
-
-  return rows
-    .map((row) => mapLegacyMerchantCompany(row, byCode))
-    .filter((company) => {
-      if (businessCode) {
-        return company.businesses.some((item) => item.code === businessCode);
-      }
-      if (parentCode) {
-        return company.businesses.some((item) => item.parent_code === parentCode);
-      }
-      return true;
-    });
-}
-
-function mapLegacyMerchantCompany(row, businessByCode) {
-  const categories = parseJsonArray(row.categories);
-  const codes = legacyBusinessCodes(categories);
-  let businesses = codes
-    .map((code) => businessByCode.get(code))
-    .filter(Boolean)
-    .map((item, index) => ({
-      id: item.id,
-      code: item.code,
-      name: item.name,
-      parent_code: item.parent_code,
-      parent_name: item.parent_name,
-      is_primary: index === 0 ? 1 : 0,
-    }));
-  if (businesses.length === 0) {
-    const fallback = businessByCode.get('tile_floor');
-    if (fallback) {
-      businesses = [{
-        id: fallback.id,
-        code: fallback.code,
-        name: fallback.name,
-        parent_code: fallback.parent_code,
-        parent_name: fallback.parent_name,
-        is_primary: 1,
-      }];
-    }
-  }
-  return {
-    id: -Number(row.user_id),
-    name: row.nickname || '商家公司',
-    logo_url: row.avatar || '',
-    intro: row.brand_intro || '商家资料待完善',
-    service_area: row.service_area || row.city || '全国',
-    city: row.city || '',
-    address: '',
-    contact_phone: '',
-    source: 'legacy_merchant_profile',
-    owner_user_id: row.user_id,
-    legacy_merchant_user_id: row.user_id,
-    businesses,
-    members: [],
-    case_count: Number(row.case_count) || 0,
-    service_types: parseJsonArray(row.service_types),
-    updated_at: row.updated_at,
   };
 }
 
@@ -655,6 +567,7 @@ async function getBusinessCatalogFlat() {
 
 async function listCompanies(req, res) {
   const pageSpec = normalizePage(req.query);
+  req.publicCompanySearch = true;
   const items = await listCompaniesFromNewTables(req, pageSpec);
   if (items.length > 0) {
     return success(res, {
@@ -665,12 +578,23 @@ async function listCompanies(req, res) {
     });
   }
 
-  const legacyItems = await listLegacyMerchantCompanies(req, pageSpec);
   return success(res, {
-    items: legacyItems,
+    items: [],
     page: pageSpec.page,
     pageSize: pageSpec.pageSize,
-    source: 'legacy_merchant_profiles',
+    source: 'companies',
+  });
+}
+
+async function searchPublicCompanies(req, res) {
+  const pageSpec = normalizePage(req.query);
+  req.publicCompanySearch = true;
+  const items = await listCompaniesFromNewTables(req, pageSpec);
+  return success(res, {
+    items,
+    page: pageSpec.page,
+    pageSize: pageSpec.pageSize,
+    source: 'companies_public',
   });
 }
 
@@ -678,6 +602,9 @@ async function listMyCompanies(req, res) {
   const [rows] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
             c.city, c.address, c.contact_phone, c.status, c.source,
+            c.license_url, c.verification_status, c.paid_display_status,
+            c.paid_display_starts_at, c.paid_display_ends_at,
+            c.rating_avg, c.review_count, c.case_count,
             c.legacy_merchant_user_id, c.created_at, c.updated_at,
             cm.member_role,
             COALESCE(
@@ -708,7 +635,7 @@ async function listMyCompanies(req, res) {
      GROUP BY c.id, cm.member_role
      ORDER BY FIELD(COALESCE(cm.member_role, 'owner'), 'owner', 'admin',
                     'designer', 'supervisor', 'project_manager',
-                    'customer_service', 'merchant_staff'),
+                    'customer_service', 'staff'),
               c.updated_at DESC, c.id DESC`,
     [req.user.id, req.user.id]
   );
@@ -717,9 +644,62 @@ async function listMyCompanies(req, res) {
     ...mapCompanyRow(row),
     memberRole: row.owner_user_id === req.user.id
       ? 'owner'
-      : row.member_role || 'merchant_staff',
+      : row.member_role || 'staff',
     canManage: row.owner_user_id === req.user.id ||
       ['owner', 'admin'].includes(row.member_role),
+  })));
+}
+
+async function listMyProjectCompanies(req, res) {
+  const [rows] = await db.query(
+    `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
+            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.license_url, c.verification_status, c.paid_display_status,
+            c.paid_display_starts_at, c.paid_display_ends_at,
+            c.rating_avg, c.review_count, c.case_count,
+            c.legacy_merchant_user_id, c.created_at, c.updated_at,
+            COALESCE(
+              JSON_ARRAYAGG(
+                CASE WHEN bc.id IS NULL THEN NULL ELSE JSON_OBJECT(
+                  'id', bc.id,
+                  'code', bc.code,
+                  'name', bc.name,
+                  'parent_code', parent.code,
+                  'parent_name', parent.name,
+                  'is_primary', cb.is_primary
+                ) END
+              ),
+              JSON_ARRAY()
+            ) AS businesses,
+            JSON_ARRAY() AS members,
+            MAX(p.updated_at) AS latest_project_updated_at
+     FROM renovation_projects p
+     LEFT JOIN project_members pm
+       ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
+     JOIN project_participants_ext ppe
+       ON ppe.project_id = p.id
+      AND ppe.participant_type = 'company'
+      AND ppe.status <> 'removed'
+     JOIN companies c
+       ON c.id = COALESCE(ppe.company_id, ppe.participant_id)
+      AND c.status <> 'deleted'
+     LEFT JOIN company_businesses cb
+       ON cb.company_id = c.id AND cb.status = 'active'
+     LEFT JOIN business_catalog bc
+       ON bc.id = cb.business_catalog_id AND bc.status = 'active'
+     LEFT JOIN business_catalog parent
+       ON parent.id = bc.parent_id AND parent.status = 'active'
+     WHERE COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       AND (p.user_id = ? OR pm.id IS NOT NULL)
+     GROUP BY c.id
+     ORDER BY latest_project_updated_at DESC, c.updated_at DESC, c.id DESC`,
+    [req.user.id, req.user.id]
+  );
+
+  return success(res, rows.map((row) => ({
+    ...mapCompanyRow(row),
+    memberRole: 'client',
+    canManage: false,
   })));
 }
 
@@ -738,8 +718,8 @@ async function createCompany(req, res) {
     const [result] = await conn.query(
       `INSERT INTO companies
        (owner_user_id, name, logo_url, intro, service_area, city, address,
-        contact_phone, status, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual')`,
+        contact_phone, license_url, status, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual')`,
       [
         req.user.id,
         payload.name,
@@ -749,6 +729,7 @@ async function createCompany(req, res) {
         payload.city,
         payload.address,
         payload.contact_phone,
+        payload.license_url,
       ]
     );
     companyId = result.insertId;
@@ -800,7 +781,7 @@ async function updateCompany(req, res) {
   await db.query(
     `UPDATE companies
      SET name = ?, logo_url = ?, intro = ?, service_area = ?, city = ?,
-         address = ?, contact_phone = ?
+         address = ?, contact_phone = ?, license_url = ?
      WHERE id = ? AND status <> 'deleted'`,
     [
       payload.name,
@@ -810,6 +791,7 @@ async function updateCompany(req, res) {
       payload.city,
       payload.address,
       payload.contact_phone,
+      payload.license_url,
       id,
     ]
   );
@@ -924,7 +906,6 @@ async function listMarketplaceSearch(req, res) {
       && (
         businessCode === 'design_studio'
         || businessCode === 'supervision_service'
-        || (!businessCode && parentCode === 'find_renovation')
         || (!businessCode && !parentCode)
       )
     );
@@ -936,12 +917,9 @@ async function listMarketplaceSearch(req, res) {
   let professionalSource = '';
 
   if (canShowCompanies) {
+    req.publicCompanySearch = true;
     companies = await listCompaniesFromNewTables(req, pageSpec);
     companySource = 'companies';
-    if (companies.length === 0) {
-      companies = await listLegacyMerchantCompanies(req, pageSpec);
-      companySource = 'legacy_merchant_profiles';
-    }
   }
 
   if (canShowProfessionals) {
@@ -983,6 +961,9 @@ async function getCompany(req, res) {
     const [rows] = await db.query(
       `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
               c.city, c.address, c.contact_phone, c.status, c.source,
+              c.license_url, c.verification_status, c.paid_display_status,
+              c.paid_display_starts_at, c.paid_display_ends_at,
+              c.rating_avg, c.review_count, c.case_count,
               c.legacy_merchant_user_id, c.created_at, c.updated_at,
               COALESCE(
                 JSON_ARRAYAGG(
@@ -1016,20 +997,52 @@ async function getCompany(req, res) {
     return success(res, company);
   }
 
-  const legacyUserId = Math.abs(id);
+  return error(res, '公司不存在', 404);
+}
+
+async function getPublicCompany(req, res) {
+  const id = Number(req.params.id);
+  if (!id || id < 0) return error(res, '公司不存在', 404);
+
   const [rows] = await db.query(
-    `SELECT u.id AS user_id, u.nickname, u.avatar, u.city, m.service_area,
-            m.categories, m.service_types, m.case_count, m.brand_intro,
-            m.updated_at
-     FROM users u
-     JOIN merchant_profiles m ON m.user_id = u.id
-     WHERE u.id = ?`,
-    [legacyUserId]
+    `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
+            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.license_url, c.verification_status, c.paid_display_status,
+            c.paid_display_starts_at, c.paid_display_ends_at,
+            c.rating_avg, c.review_count, c.case_count,
+            c.legacy_merchant_user_id, c.created_at, c.updated_at,
+            COALESCE(
+              JSON_ARRAYAGG(
+                CASE WHEN bc.id IS NULL THEN NULL ELSE JSON_OBJECT(
+                  'id', bc.id,
+                  'code', bc.code,
+                  'name', bc.name,
+                  'parent_code', parent.code,
+                  'parent_name', parent.name,
+                  'is_primary', cb.is_primary
+                ) END
+              ),
+              JSON_ARRAY()
+            ) AS businesses,
+            JSON_ARRAY() AS members
+     FROM companies c
+     LEFT JOIN company_businesses cb
+       ON cb.company_id = c.id AND cb.status = 'active'
+     LEFT JOIN business_catalog bc
+       ON bc.id = cb.business_catalog_id AND bc.status = 'active'
+     LEFT JOIN business_catalog parent
+       ON parent.id = bc.parent_id AND parent.status = 'active'
+     WHERE c.id = ?
+       AND c.status = 'active'
+       AND c.paid_display_status = 'active'
+       AND (c.paid_display_starts_at IS NULL OR c.paid_display_starts_at <= NOW())
+       AND (c.paid_display_ends_at IS NULL OR c.paid_display_ends_at >= NOW())
+     GROUP BY c.id`,
+    [id]
   );
   if (!rows[0]) return error(res, '公司不存在', 404);
-  const businessRows = await getBusinessCatalogFlat();
-  const byCode = new Map(businessRows.map((item) => [item.code, item]));
-  const company = mapLegacyMerchantCompany(rows[0], byCode);
+  const company = mapCompanyRow(rows[0]);
+  company.owner_user_id = rows[0].owner_user_id || null;
   company.members = await listCompanyMembersForCompany(company, { limit: 5 });
   return success(res, company);
 }
@@ -1051,29 +1064,7 @@ async function listCompanyMembers(req, res) {
     return success(res, members);
   }
 
-  const legacyUserId = Math.abs(id);
-  const [rows] = await db.query(
-    `SELECT u.id AS user_id, u.nickname, u.avatar
-     FROM users u
-     JOIN merchant_profiles m ON m.user_id = u.id
-     WHERE u.id = ?
-     LIMIT 1`,
-    [legacyUserId]
-  );
-  if (!rows[0]) return error(res, '公司不存在', 404);
-  return success(res, [{
-    memberId: 0,
-    companyId: id,
-    userId: rows[0].user_id,
-    professionalId: null,
-    displayName: rows[0].nickname || '公司负责人',
-    avatarUrl: rows[0].avatar || '',
-    memberRole: 'owner',
-    title: '公司负责人',
-    status: 'active',
-    professionalBusinesses: [],
-    joinedAt: null,
-  }]);
+  return error(res, '公司不存在', 404);
 }
 
 async function listCompanyProjects(req, res) {
@@ -1292,17 +1283,20 @@ const validCompanyMemberRoles = new Set([
   'designer',
   'supervisor',
   'project_manager',
-  'merchant_staff',
+  'staff',
   'customer_service',
 ]);
+
+function normalizeCompanyMemberRole(role) {
+  if (role === 'merchant_staff') return 'staff';
+  return validCompanyMemberRoles.has(role) ? role : 'staff';
+}
 
 async function addCompanyMember(req, res) {
   const companyId = Number(req.params.id);
   const userId = Number(req.body.user_id);
   const professionalId = Number(req.body.professional_id || 0) || null;
-  const memberRole = validCompanyMemberRoles.has(req.body.member_role)
-    ? req.body.member_role
-    : 'merchant_staff';
+  const memberRole = normalizeCompanyMemberRole(req.body.member_role);
   const title = String(req.body.title || '').trim().slice(0, 80);
 
   if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
@@ -1347,9 +1341,9 @@ async function updateCompanyMember(req, res) {
   const companyId = Number(req.params.id);
   const memberId = Number(req.params.memberId);
   const professionalId = Number(req.body.professional_id || 0) || null;
-  const memberRole = validCompanyMemberRoles.has(req.body.member_role)
-    ? req.body.member_role
-    : null;
+  const memberRole = req.body.member_role === undefined
+    ? null
+    : normalizeCompanyMemberRole(req.body.member_role);
   const title = String(req.body.title || '').trim().slice(0, 80);
 
   if (!companyId || !memberId) return error(res, '成员不存在', 404);
@@ -1519,13 +1513,16 @@ async function getProfessional(req, res) {
 module.exports = {
   listBusinessCatalog,
   listMarketplaceSearch,
+  searchPublicCompanies,
   listCompanies,
   listMyCompanies,
+  listMyProjectCompanies,
   createCompany,
   updateCompany,
   listCompanyBusinesses,
   updateCompanyBusinesses,
   getCompany,
+  getPublicCompany,
   listProfessionals,
   getProfessional,
   listCompanyMembers,
