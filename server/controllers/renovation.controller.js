@@ -2864,7 +2864,7 @@ async function getProjectCheckIns(req, res) {
   const mediaMap = new Map();
   for (const item of media) {
     if (item.media_url && String(item.media_url).startsWith('/uploads/')) {
-      item.media_url = `${host}${item.media_url}`;
+      item.media_url = `${host}/api${item.media_url}`;
     }
     if (!mediaMap.has(item.checkin_id)) mediaMap.set(item.checkin_id, []);
     mediaMap.get(item.checkin_id).push(item);
@@ -2970,7 +2970,7 @@ async function createProjectCheckIn(req, res) {
         files.flatMap((file) => [
           result.insertId,
           file.mimetype.startsWith('video/') ? 'video' : 'image',
-          `${host}/uploads/check-ins/${file.filename}`,
+          `${host}/api/uploads/check-ins/${file.filename}`,
         ])
       );
     }
