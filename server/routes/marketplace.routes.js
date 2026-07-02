@@ -64,6 +64,7 @@ router.get('/companies/:id/projects', asyncHandler(auth), asyncHandler(controlle
 router.post('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.attachCompanyProject));
 router.put('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(controller.updateCompanyProject));
 router.delete('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(controller.detachCompanyProject));
+router.get('/companies/:id/member-candidates', asyncHandler(auth), asyncHandler(controller.searchCompanyMemberCandidates));
 router.get('/companies/:id/members', asyncHandler(controller.listCompanyMembers));
 router.post('/companies/:id/members', asyncHandler(auth), asyncHandler(controller.addCompanyMember));
 router.put('/companies/:id/members/:memberId', asyncHandler(auth), asyncHandler(controller.updateCompanyMember));

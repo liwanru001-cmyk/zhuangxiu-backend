@@ -234,6 +234,28 @@ function mapCompanyMemberRow(row) {
   };
 }
 
+function maskPhone(phone) {
+  const value = String(phone || '').trim();
+  if (value.length < 7) return value;
+  return `${value.slice(0, 3)}****${value.slice(-4)}`;
+}
+
+function mapCompanyMemberCandidateRow(row) {
+  return {
+    userId: Number(row.user_id || 0),
+    nickname: row.nickname || '用户',
+    avatarUrl: row.avatar || '',
+    city: row.city || '',
+    phoneMasked: maskPhone(row.phone),
+    existingMember: Boolean(row.member_id),
+    memberId: row.member_id || null,
+    memberRole: row.member_role || '',
+    professionalId: row.professional_id || null,
+    professionalName: row.professional_name || '',
+    professionalAvatarUrl: row.professional_avatar_url || '',
+  };
+}
+
 function mapCompanyProjectRow(row) {
   return {
     projectId: row.project_id,
@@ -1069,6 +1091,49 @@ async function listCompanyMembers(req, res) {
   return error(res, '公司不存在', 404);
 }
 
+async function searchCompanyMemberCandidates(req, res) {
+  const companyId = Number(req.params.id);
+  const phone = String(req.query.phone || req.query.keyword || '').trim();
+
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+  if (!(await canManageCompany(companyId, req.user.id))) {
+    return error(res, '无权限管理该公司', 403);
+  }
+  if (!/^1[3-9]\d{9}$/.test(phone)) {
+    return error(res, '请输入完整手机号');
+  }
+
+  const [rows] = await db.query(
+    `SELECT u.id AS user_id, u.phone, u.nickname, u.avatar, u.city,
+            cm.id AS member_id, cm.member_role,
+            prof.id AS professional_id,
+            prof.display_name AS professional_name,
+            prof.avatar_url AS professional_avatar_url
+     FROM users u
+     LEFT JOIN company_members cm
+       ON cm.company_id = ? AND cm.user_id = u.id AND cm.status = 'active'
+     LEFT JOIN professionals prof
+       ON prof.user_id = u.id AND prof.status <> 'deleted'
+     WHERE u.phone = ?
+     ORDER BY
+       CASE WHEN cm.id IS NULL THEN 1 ELSE 0 END ASC,
+       prof.id DESC
+     LIMIT 5`,
+    [companyId, phone]
+  );
+
+  const byUser = new Map();
+  for (const row of rows) {
+    const candidate = mapCompanyMemberCandidateRow(row);
+    const existing = byUser.get(candidate.userId);
+    if (!existing || (!existing.professionalId && candidate.professionalId)) {
+      byUser.set(candidate.userId, candidate);
+    }
+  }
+
+  return success(res, [...byUser.values()]);
+}
+
 async function listCompanyProjects(req, res) {
   const companyId = Number(req.params.id);
   if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
@@ -1529,6 +1594,7 @@ module.exports = {
   listProfessionals,
   getProfessional,
   listCompanyMembers,
+  searchCompanyMemberCandidates,
   listCompanyProjects,
   attachCompanyProject,
   updateCompanyProject,
