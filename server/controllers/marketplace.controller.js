@@ -797,6 +797,12 @@ async function updateCompany(req, res) {
   return getCompany(req, res);
 }
 
+async function uploadCompanyImage(req, res) {
+  if (!req.file) return error(res, '请选择公司图片');
+  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/company-profiles/${req.file.filename}`;
+  return success(res, { url: imageUrl }, '图片上传成功');
+}
+
 async function listCompanyBusinesses(req, res) {
   const id = Number(req.params.id);
   if (!id || id < 0) return error(res, '公司不存在', 404);
@@ -1515,6 +1521,7 @@ module.exports = {
   listMyProjectCompanies,
   createCompany,
   updateCompany,
+  uploadCompanyImage,
   listCompanyBusinesses,
   updateCompanyBusinesses,
   getCompany,
