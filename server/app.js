@@ -637,6 +637,106 @@ app.put('/api/admin/companies/:id/status', adminAuth, async (req, res) => {
   return success(res, { id: companyId, status, status_label: adminCompanyStatusLabel(status) });
 });
 
+// admin 商家管理列表
+app.get('/api/admin/merchants', adminAuth, async (req, res) => {
+  const params = [];
+  let where = `(
+    u.role = 'merchant'
+    OR ur.user_id IS NOT NULL
+    OR mp.user_id IS NOT NULL
+  )`;
+
+  if (req.query.keyword) {
+    where += ` AND (
+      u.nickname LIKE ? OR u.phone LIKE ? OR mp.shop_name LIKE ?
+      OR mp.contact_phone LIKE ? OR mp.brand_intro LIKE ?
+    )`;
+    const kw = `%${req.query.keyword}%`;
+    params.push(kw, kw, kw, kw, kw);
+  }
+  if (req.query.status) {
+    const status = String(req.query.status);
+    if (!['pending', 'approved', 'rejected', 'suspended', 'none'].includes(status)) {
+      return error(res, '商家权限状态不正确');
+    }
+    if (status === 'none') {
+      where += ' AND ur.user_id IS NULL';
+    } else {
+      where += ' AND ur.permission_status = ?';
+      params.push(status);
+    }
+  }
+  if (req.query.category_group) {
+    const categoryGroup = String(req.query.category_group);
+    if (!['建材', '家居'].includes(categoryGroup)) return error(res, '商家分类不正确');
+    where += ' AND mp.category_group = ?';
+    params.push(categoryGroup);
+  }
+
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+
+  const [rows] = await db.query(
+    `SELECT u.id AS user_id, u.phone, u.nickname, u.avatar, u.city, u.role AS user_role,
+            ur.permission_status, ur.approved_at, ur.paid_until, ur.review_note,
+            mp.shop_name, mp.logo_url, mp.cover_url, mp.service_area, mp.address,
+            mp.contact_phone, mp.business_hours, mp.category_group, mp.categories,
+            mp.brand_intro, mp.consultation_enabled, mp.updated_at AS profile_updated_at,
+            (
+              SELECT COUNT(*)
+              FROM merchant_products p
+              WHERE p.merchant_user_id = u.id AND p.status = 'active'
+            ) AS product_count
+     FROM users u
+     LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'merchant'
+     LEFT JOIN merchant_profiles mp ON mp.user_id = u.id
+     WHERE ${where}
+     ORDER BY COALESCE(mp.updated_at, u.updated_at, u.created_at) DESC, u.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM users u
+     LEFT JOIN user_roles ur ON ur.user_id = u.id AND ur.role = 'merchant'
+     LEFT JOIN merchant_profiles mp ON mp.user_id = u.id
+     WHERE ${where}`,
+    params
+  );
+
+  return success(res, {
+    merchants: rows.map((row) => ({
+      user_id: Number(row.user_id),
+      phone: row.phone || '',
+      nickname: row.nickname || '',
+      avatar: row.avatar || '',
+      city: row.city || '',
+      user_role: row.user_role || '',
+      permission_status: row.permission_status || 'none',
+      approved_at: row.approved_at,
+      paid_until: row.paid_until,
+      review_note: row.review_note || '',
+      shop_name: row.shop_name || '',
+      logo_url: row.logo_url || '',
+      cover_url: row.cover_url || '',
+      service_area: row.service_area || '',
+      address: row.address || '',
+      contact_phone: row.contact_phone || '',
+      business_hours: row.business_hours || '',
+      category_group: row.category_group || '',
+      categories: parseAdminJsonList(row.categories),
+      brand_intro: row.brand_intro || '',
+      consultation_enabled: Boolean(row.consultation_enabled),
+      product_count: Number(row.product_count) || 0,
+      profile_updated_at: row.profile_updated_at,
+    })),
+    total: countRows[0].total,
+    page,
+    pageSize,
+  });
+});
+
 app.get('/api/admin/progress-item-library', adminAuth, async (req, res) => {
   const [templates] = await db.query(
     `SELECT item.id, item.template_key, item.stage_id, item.parent_template_key,

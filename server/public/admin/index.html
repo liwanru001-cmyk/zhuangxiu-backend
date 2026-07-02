@@ -51,6 +51,9 @@
   .toolbar input, .toolbar select { padding: 10px 12px; border: 1px solid #e4e7ec; border-radius: 10px; background: #fff; outline: none; }
   .toolbar input { width: 230px; }
   .toolbar input:focus, .toolbar select:focus { border-color: #4f6ef7; box-shadow: 0 0 0 3px rgba(79,110,247,.1); }
+  .tabs { display: inline-flex; gap: 4px; padding: 4px; background: #edf0f3; border-radius: 12px; margin-bottom: 14px; }
+  .tabs button { border: 0; background: transparent; color: #344054; padding: 9px 14px; border-radius: 9px; font-weight: 700; }
+  .tabs button.active { background: #fff; color: #111827; box-shadow: 0 1px 2px rgba(16,24,40,.08); }
 
   .card { background: #fff; border: 1px solid #edf0f3; border-radius: 16px; overflow: hidden; }
   .card-title { padding: 16px 18px; border-bottom: 1px solid #edf0f3; display: flex; align-items: center; justify-content: space-between; }
@@ -279,6 +282,8 @@ let selectedProgressStageId = 1;
 let selectedProgressItemKey = '';
 let companies = [];
 let selectedCompanyId = null;
+let companyTab = 'companies';
+let merchants = [];
 
 document.getElementById('u-pass').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
@@ -363,7 +368,10 @@ function switchMenu(key) {
 function refreshCurrent() {
   if (activeMenu === 'overview') renderOverview();
   else if (activeMenu === 'users') loadUsers(page);
-  else if (activeMenu === 'companies') loadCompanies(page);
+  else if (activeMenu === 'companies') {
+    if (companyTab === 'merchants') loadMerchants(page);
+    else loadCompanies(page);
+  }
   else if (activeMenu === 'shares') loadShares(page);
   else if (activeMenu === 'projectTips') loadProjectTips();
   else if (activeMenu === 'supportFeedback') {
@@ -587,6 +595,34 @@ async function saveUser() {
 function renderCompanies() {
   selectedCompanyId = null;
   document.getElementById('page-content').innerHTML = `
+    ${companyTabsHtml()}
+    <div id="company-tab-content"></div>
+  `;
+  renderCompanyTabContent();
+}
+
+function companyTabsHtml() {
+  return `
+    <div class="tabs">
+      <button class="${companyTab === 'companies' ? 'active' : ''}" onclick="switchCompanyTab('companies')">公司管理</button>
+      <button class="${companyTab === 'merchants' ? 'active' : ''}" onclick="switchCompanyTab('merchants')">商家管理</button>
+    </div>
+  `;
+}
+
+function switchCompanyTab(tab) {
+  companyTab = tab;
+  page = 1;
+  selectedCompanyId = null;
+  renderCompanies();
+}
+
+function renderCompanyTabContent() {
+  if (companyTab === 'merchants') {
+    renderMerchantManagement();
+    return;
+  }
+  document.getElementById('company-tab-content').innerHTML = `
     <div class="toolbar">
       <input id="companySearch" placeholder="搜索公司/负责人/手机号" onkeydown="if(event.key==='Enter')loadCompanies(1)">
       <select id="companyStatus" onchange="loadCompanies(1)">
@@ -627,6 +663,53 @@ function renderCompanies() {
   loadCompanies(1);
 }
 
+function renderMerchantManagement() {
+  document.getElementById('company-tab-content').innerHTML = `
+    <div class="toolbar">
+      <input id="merchantSearch" placeholder="搜索商家/用户/手机号" onkeydown="if(event.key==='Enter')loadMerchants(1)">
+      <select id="merchantPermissionStatus" onchange="loadMerchants(1)">
+        <option value="">全部权限</option>
+        <option value="none">未申请</option>
+        <option value="pending">待审核</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已拒绝</option>
+        <option value="suspended">已暂停</option>
+      </select>
+      <select id="merchantCategoryGroup" onchange="loadMerchants(1)">
+        <option value="">全部分类</option>
+        <option value="建材">建材</option>
+        <option value="家居">家居</option>
+      </select>
+      <button class="primary-btn" onclick="loadMerchants(1)">查询</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>商家管理</h3>
+          <p>审核商家展示权限，控制是否出现在 App 找商家。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>用户</th><th>店铺</th><th>分类</th><th>联系信息</th><th>商品</th>
+              <th>权限</th><th>到期时间</th><th>更新时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="merchant-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="merchant-page-info"></span>
+        <button id="merchant-btn-prev" onclick="loadMerchants(page-1)">‹ 上一页</button>
+        <button id="merchant-btn-next" onclick="loadMerchants(page+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+  loadMerchants(1);
+}
+
 async function loadCompanies(p) {
   page = Math.max(1, p || 1);
   const kw = document.getElementById('companySearch')?.value.trim() || '';
@@ -654,6 +737,100 @@ async function loadCompanies(p) {
     }
   } catch (e) {
     body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+async function loadMerchants(p) {
+  page = Math.max(1, p || 1);
+  const kw = document.getElementById('merchantSearch')?.value.trim() || '';
+  const status = document.getElementById('merchantPermissionStatus')?.value || '';
+  const categoryGroup = document.getElementById('merchantCategoryGroup')?.value || '';
+  const params = new URLSearchParams({ page, pageSize: 20 });
+  if (kw) params.set('keyword', kw);
+  if (status) params.set('status', status);
+  if (categoryGroup) params.set('category_group', categoryGroup);
+
+  const body = document.getElementById('merchant-body');
+  body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/merchants?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    merchants = j.data.merchants || [];
+    total = j.data.total || 0;
+    body.innerHTML = merchants.map(merchantRow).join('') ||
+      '<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">暂无商家</td></tr>';
+    const totalPages = Math.ceil(total / 20) || 1;
+    document.getElementById('merchant-page-info').textContent = `共 ${total} 条 · ${page}/${totalPages}`;
+    document.getElementById('merchant-btn-prev').disabled = page <= 1;
+    document.getElementById('merchant-btn-next').disabled = page >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function merchantRow(item) {
+  const logo = item.logo_url
+    ? `<img class="logo-thumb" src="${esc(item.logo_url)}" alt="logo">`
+    : `<span class="logo-thumb">${esc((item.shop_name || item.nickname || '商').slice(0, 1))}</span>`;
+  const categories = item.categories || [];
+  return `
+    <tr>
+      <td>
+        <div>${esc(item.nickname) || '-'}</div>
+        <div class="muted mono">ID ${item.user_id} · ${esc(item.phone) || '-'}</div>
+      </td>
+      <td>
+        <div style="display:flex;align-items:center;gap:10px;">
+          ${logo}
+          <div>
+            <div class="share-title">${esc(item.shop_name) || '<span class="muted">未填写店铺名</span>'}</div>
+            <div class="muted">${esc(item.brand_intro) || '-'}</div>
+          </div>
+        </div>
+      </td>
+      <td>
+        ${item.category_group ? `<span class="badge">${esc(item.category_group)}</span>` : '<span class="muted">未设置</span>'}
+        <div>${categories.length ? categories.map(c => `<span class="badge">${esc(c)}</span>`).join('') : ''}</div>
+      </td>
+      <td>
+        <div>${esc(item.contact_phone) || '-'}</div>
+        <div class="muted">${esc(item.city || item.service_area) || '-'}</div>
+      </td>
+      <td class="muted">${item.product_count || 0}</td>
+      <td><span class="badge status-${merchantPermissionBadge(item.permission_status)}">${merchantPermissionLabel(item.permission_status)}</span></td>
+      <td>${item.paid_until ? fmtTime(item.paid_until) : '<span class="muted">长期</span>'}</td>
+      <td>${fmtTime(item.profile_updated_at)}</td>
+      <td>
+        <div class="row-actions">
+          ${item.permission_status !== 'approved' ? `<button class="success-btn" onclick="updateMerchantPermission(${item.user_id}, 'approved')">通过</button>` : ''}
+          ${item.permission_status !== 'pending' ? `<button class="action-btn" onclick="updateMerchantPermission(${item.user_id}, 'pending')">待审</button>` : ''}
+          ${item.permission_status !== 'rejected' ? `<button class="danger-btn" onclick="updateMerchantPermission(${item.user_id}, 'rejected')">拒绝</button>` : ''}
+          ${item.permission_status !== 'suspended' ? `<button class="danger-btn" onclick="updateMerchantPermission(${item.user_id}, 'suspended')">暂停</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+async function updateMerchantPermission(userId, status) {
+  const label = merchantPermissionLabel(status);
+  let paidUntil = null;
+  if (status === 'approved') {
+    const value = prompt('商家权限到期时间，可留空表示长期有效。格式：YYYY-MM-DD HH:mm:ss', '');
+    if (value === null) return;
+    paidUntil = value.trim();
+  }
+  if (!confirm(`确认将商家权限改为“${label}”？`)) return;
+  const j = await adminFetch(`/users/${userId}/merchant-permission`, {
+    method: 'PUT',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ status, paid_until: paidUntil || null }),
+  });
+  if (j.code === 200) {
+    toast('商家权限已更新');
+    await loadMerchants(page);
+  } else {
+    toast(j.message || '商家权限更新失败');
   }
 }
 
@@ -2237,6 +2414,26 @@ function statusLabel(status) {
 
 function companyStatusLabel(status) {
   return { draft: '待审核', active: '正常', suspended: '停用', deleted: '已删除' }[status] || status || '-';
+}
+
+function merchantPermissionLabel(status) {
+  return {
+    none: '未申请',
+    pending: '待审核',
+    approved: '已通过',
+    rejected: '已拒绝',
+    suspended: '已暂停',
+  }[status] || status || '-';
+}
+
+function merchantPermissionBadge(status) {
+  return {
+    none: 'hidden',
+    pending: 'pending',
+    approved: 'approved',
+    rejected: 'rejected',
+    suspended: 'suspended',
+  }[status] || 'hidden';
 }
 
 function companySourceLabel(source) {

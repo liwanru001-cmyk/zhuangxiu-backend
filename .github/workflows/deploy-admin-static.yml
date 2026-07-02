@@ -1,0 +1,150 @@
+name: Deploy Admin Static Page
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/public/admin/**'
+      - '.github/workflows/deploy-admin-static.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate admin artifact
+        run: |
+          set -euo pipefail
+          test -f server/public/admin/index.html
+          test ! -f server/public/admin/index.html.tmp
+
+      - name: Wait for backend deploy on same commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+
+          found_backend_run="false"
+          for attempt in $(seq 1 90); do
+            response="$(curl -fsS \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/deploy-backend.yml/runs?head_sha=$SHA&event=push&per_page=1")"
+            read -r count status conclusion url < <(python3 -c 'import json, sys; data=json.load(sys.stdin); runs=data.get("workflow_runs") or []; print("0 none none none" if not runs else "%s %s %s %s" % (len(runs), runs[0].get("status") or "none", runs[0].get("conclusion") or "none", runs[0].get("html_url") or "none"))' <<< "$response")
+
+            if [ "$count" = "0" ]; then
+              if [ "$attempt" -ge 5 ]; then
+                echo "No backend deploy run found for this commit; continuing with admin-only deploy."
+                exit 0
+              fi
+              sleep 2
+              continue
+            fi
+
+            found_backend_run="true"
+            echo "Backend deploy run: $status / $conclusion - $url"
+            if [ "$status" = "completed" ]; then
+              if [ "$conclusion" = "success" ]; then
+                exit 0
+              fi
+              echo "Backend deploy did not succeed; refusing to publish admin page."
+              exit 1
+            fi
+            sleep 5
+          done
+
+          if [ "$found_backend_run" = "true" ]; then
+            echo "Timed out waiting for backend deploy on same commit."
+            exit 1
+          fi
+
+      - name: Upload admin page over SSH
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          EXPECTED_SSH_HOST: 115.29.194.46
+        run: |
+          set -euo pipefail
+
+          ssh_port="${SSH_PORT:-22}"
+          ADMIN_PUBLIC_DIR="/opt/yinnkhome-backend/server/public/admin"
+
+          if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+            echo "Refusing to deploy to stale or unrelated host: $SSH_HOST"
+            exit 1
+          fi
+
+          if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+            if ! getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"; then
+              echo "SSH_HOST must be $EXPECTED_SSH_HOST or resolve to it; got $SSH_HOST"
+              exit 1
+            fi
+          fi
+
+          case "$ADMIN_PUBLIC_DIR" in
+            /opt/yinnkhome-backend/server/public/admin) ;;
+            *)
+              echo "Refusing dangerous ADMIN_PUBLIC_DIR: $ADMIN_PUBLIC_DIR"
+              exit 1
+              ;;
+          esac
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+          ssh_opts=(
+            -i ~/.ssh/deploy_key
+            -p "$ssh_port"
+            -o StrictHostKeyChecking=accept-new
+            -o ServerAliveInterval=15
+          )
+          scp_opts=(
+            -i ~/.ssh/deploy_key
+            -P "$ssh_port"
+            -o StrictHostKeyChecking=accept-new
+            -o ServerAliveInterval=15
+          )
+
+          remote="${SSH_USER}@${SSH_HOST}"
+          remote_admin_tmp="/tmp/yinnkhome-admin-index-${GITHUB_RUN_ID}.html"
+
+          scp "${scp_opts[@]}" server/public/admin/index.html "$remote:$remote_admin_tmp"
+          ssh "${ssh_opts[@]}" "$remote" \
+            "set -euo pipefail
+             runner=''
+             if [ \"\$(id -u)\" -ne 0 ]; then
+               if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                 runner='sudo'
+               else
+                 echo 'Deployment user needs root or passwordless sudo to write admin page.'
+                 exit 1
+               fi
+             fi
+             \$runner mkdir -p '$ADMIN_PUBLIC_DIR'
+             cp '$remote_admin_tmp' /tmp/yinnkhome-admin-index-ready.html
+             \$runner cp /tmp/yinnkhome-admin-index-ready.html '$ADMIN_PUBLIC_DIR/index.html.tmp'
+             \$runner mv '$ADMIN_PUBLIC_DIR/index.html.tmp' '$ADMIN_PUBLIC_DIR/index.html'
+             rm -f '$remote_admin_tmp'
+             rm -f /tmp/yinnkhome-admin-index-ready.html
+             test -f '$ADMIN_PUBLIC_DIR/index.html'"
+
+      - name: Verify admin static URL
+        run: |
+          set -euo pipefail
+          admin_file="$(mktemp)"
+          curl -fsS https://yinnkhome.com/admin/ -o "$admin_file"
+          grep -q '商家管理' "$admin_file"
