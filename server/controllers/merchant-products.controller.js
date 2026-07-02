@@ -1,5 +1,9 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
+const {
+  hasActiveMerchantPermission,
+  activeMerchantPermissionExistsSql,
+} = require('../utils/merchant-permission');
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -29,12 +33,8 @@ function normalizeImageUrls(value) {
 }
 
 async function assertMerchant(req, res) {
-  const [rows] = await db.query(
-    `SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'merchant' LIMIT 1`,
-    [req.user.id]
-  );
-  if (!rows.length && req.user.role !== 'merchant') {
-    error(res, '只有商家身份可以管理产品展示', 403);
+  if (!(await hasActiveMerchantPermission(req.user.id))) {
+    error(res, '商家权限未审核通过，暂不能管理产品展示', 403);
     return false;
   }
   return true;
@@ -309,7 +309,15 @@ async function listPublicProducts(req, res) {
   const merchantUserId = Number(req.params.userId);
   if (!merchantUserId) return error(res, '商家不存在', 404);
   const [profileRows] = await db.query(
-    `SELECT user_id FROM merchant_profiles WHERE user_id = ? LIMIT 1`,
+    `SELECT mp.user_id
+     FROM merchant_profiles mp
+     WHERE mp.user_id = ?
+       AND EXISTS (
+         SELECT 1 FROM user_roles ur
+         WHERE ur.user_id = mp.user_id
+           AND ${activeMerchantPermissionExistsSql('ur')}
+       )
+     LIMIT 1`,
     [merchantUserId]
   );
   if (!profileRows.length) return error(res, '商家不存在', 404);

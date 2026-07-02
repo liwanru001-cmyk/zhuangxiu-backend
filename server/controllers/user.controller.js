@@ -4,6 +4,11 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs/promises');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const {
+  hasActiveMerchantPermission,
+  activeMerchantPermissionExistsSql,
+  activeMerchantPermissionStateSql,
+} = require('../utils/merchant-permission');
 
 const profileSelect = `
   SELECT u.id, u.phone, u.nickname, u.avatar, u.bio, u.city, u.role,
@@ -130,7 +135,8 @@ async function listPublicMerchants(req, res) {
   let where = `
     EXISTS (
       SELECT 1 FROM user_roles ur
-      WHERE ur.user_id = u.id AND ur.role = 'merchant'
+      WHERE ur.user_id = u.id
+        AND ${activeMerchantPermissionExistsSql('ur')}
     )
   `;
 
@@ -177,6 +183,7 @@ async function listPublicMerchants(req, res) {
      FROM merchant_profiles mp
      JOIN users u ON u.id = mp.user_id
      WHERE ${where}
+       AND COALESCE(mp.shop_name, '') <> ''
      ORDER BY mp.updated_at DESC, mp.user_id DESC
      LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
@@ -212,12 +219,8 @@ async function listPublicMerchants(req, res) {
 }
 
 async function upsertMerchantProfile(req, res) {
-  const [roleRows] = await db.query(
-    `SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'merchant' LIMIT 1`,
-    [req.user.id]
-  );
-  if (!roleRows.length && req.user.role !== 'merchant') {
-    return error(res, '只有商家身份可以编辑商家资料', 403);
+  if (!(await hasActiveMerchantPermission(req.user.id))) {
+    return error(res, '商家权限未审核通过，暂不能编辑商家资料', 403);
   }
 
   const serviceArea = String(req.body.service_area || '').trim().slice(0, 80);
@@ -592,7 +595,9 @@ async function createDesignerConsultation(req, res) {
      WHERE u.id = ?
        AND EXISTS (
          SELECT 1 FROM user_roles ur
-         WHERE ur.user_id = u.id AND ur.role = ?
+         WHERE ur.user_id = u.id
+           AND ur.role = ?
+           ${targetRole === 'merchant' ? `AND ${activeMerchantPermissionStateSql('ur')}` : ''}
        )`,
     [targetId, targetRole]
   );
@@ -634,13 +639,16 @@ async function getDesignerConsultations(req, res) {
   const [roleRows] = await db.query(
     `SELECT 1 FROM user_roles
      WHERE user_id = ?
-       AND role IN ('designer', 'project_manager', 'project_supervisor', 'merchant')
+       AND (
+         role IN ('designer', 'project_manager', 'project_supervisor')
+         OR (${activeMerchantPermissionExistsSql('user_roles')})
+       )
      LIMIT 1`,
     [req.user.id]
   );
   if (
     !roleRows.length &&
-    !['designer', 'project_manager', 'project_supervisor', 'merchant'].includes(req.user.role)
+    !['designer', 'project_manager', 'project_supervisor'].includes(req.user.role)
   ) {
     return error(res, '当前身份不能查看咨询线索', 403);
   }
@@ -1060,12 +1068,8 @@ async function uploadAvatar(req, res) {
 
 async function uploadMerchantProfileImage(req, res) {
   if (!req.file) return error(res, '请选择商家图片');
-  const [roleRows] = await db.query(
-    `SELECT 1 FROM user_roles WHERE user_id = ? AND role = 'merchant' LIMIT 1`,
-    [req.user.id]
-  );
-  if (!roleRows.length && req.user.role !== 'merchant') {
-    return error(res, '只有商家身份可以上传商家图片', 403);
+  if (!(await hasActiveMerchantPermission(req.user.id))) {
+    return error(res, '商家权限未审核通过，暂不能上传商家图片', 403);
   }
   const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-profiles/${req.file.filename}`;
   return success(res, { url: imageUrl }, '图片上传成功');

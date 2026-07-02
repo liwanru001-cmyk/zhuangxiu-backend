@@ -376,6 +376,12 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
     `SELECT id, phone, nickname, avatar, bio, city, role, admin_status,
             (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
              WHERE ur.user_id = users.id) AS roles,
+            (SELECT ur.permission_status FROM user_roles ur
+             WHERE ur.user_id = users.id AND ur.role = 'merchant'
+             LIMIT 1) AS merchant_permission_status,
+            (SELECT ur.paid_until FROM user_roles ur
+             WHERE ur.user_id = users.id AND ur.role = 'merchant'
+             LIMIT 1) AS merchant_paid_until,
             followers_count, following_count,
             likes_received, created_at, updated_at
      FROM users WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -822,6 +828,44 @@ app.put('/api/admin/users/:id/review', adminAuth, async (req, res) => {
   );
   if (result.affectedRows === 0) return error(res, '用户不存在', 404);
   return success(res, { id: userId, admin_status: adminStatus });
+});
+
+// admin 审核商家权限
+app.put('/api/admin/users/:id/merchant-permission', adminAuth, async (req, res) => {
+  const userId = Number(req.params.id);
+  const status = String(req.body?.status || '').trim();
+  if (!['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
+    return error(res, '商家权限状态不正确');
+  }
+
+  const paidUntil = req.body?.paid_until
+    ? String(req.body.paid_until).trim().slice(0, 19)
+    : null;
+  const reviewNote = req.body?.review_note
+    ? String(req.body.review_note).trim().slice(0, 255)
+    : null;
+
+  const [userRows] = await db.query('SELECT id FROM users WHERE id = ? LIMIT 1', [userId]);
+  if (!userRows.length) return error(res, '用户不存在', 404);
+
+  await db.query(
+    `INSERT INTO user_roles
+     (user_id, role, is_default, permission_status, approved_at, paid_until, review_note)
+     VALUES (?, 'merchant', 0, ?, IF(? = 'approved', NOW(), NULL), ?, ?)
+     ON DUPLICATE KEY UPDATE
+       permission_status = VALUES(permission_status),
+       approved_at = IF(VALUES(permission_status) = 'approved', COALESCE(approved_at, NOW()), approved_at),
+       paid_until = VALUES(paid_until),
+       review_note = VALUES(review_note)`,
+    [userId, status, status, paidUntil || null, reviewNote || null]
+  );
+
+  return success(res, {
+    id: userId,
+    role: 'merchant',
+    permission_status: status,
+    paid_until: paidUntil,
+  });
 });
 
 const PUBLIC_SHARE_SOURCE_TYPES = [

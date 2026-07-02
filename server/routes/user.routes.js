@@ -3,6 +3,7 @@ const router = express.Router();
 const userController = require('../controllers/user.controller');
 const merchantProductsController = require('../controllers/merchant-products.controller');
 const auth = require('../middleware/auth');
+const requireActiveMerchantPermission = require('../middleware/merchant-permission');
 const asyncHandler = require('../utils/async-handler');
 const {
   ensureUploadDir,
@@ -117,6 +118,7 @@ router.put('/merchant-profile', asyncHandler(auth), asyncHandler(userController.
 router.post(
   '/merchant-profile/image',
   asyncHandler(auth),
+  asyncHandler(requireActiveMerchantPermission),
   merchantProfileImageUpload.single('image'),
   setUploadedFilePermissions,
   asyncHandler(userController.uploadMerchantProfileImage)
@@ -132,6 +134,7 @@ router.delete('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchan
 router.post(
   '/merchant-products/image',
   asyncHandler(auth),
+  asyncHandler(requireActiveMerchantPermission),
   merchantProductImageUpload.single('image'),
   setUploadedFilePermissions,
   asyncHandler(merchantProductsController.uploadProductImage)

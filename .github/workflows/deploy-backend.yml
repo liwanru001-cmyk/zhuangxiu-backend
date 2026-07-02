@@ -425,6 +425,7 @@ jobs:
             # Keep this deploy focused on the merchant profile/product chain.
             node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
             node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
+            node scripts/run-migration.js migrations/20260702_merchant_permission_review.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true
