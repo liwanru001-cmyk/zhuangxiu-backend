@@ -18,10 +18,10 @@ function mockResponse() {
 
 function loadController(dbMock) {
   const dbPath = require.resolve('../config/db');
-  const permissionPath = require.resolve('../utils/merchant-permission');
+  const verifiedMerchantPath = require.resolve('../utils/verified-merchant');
   const controllerPath = require.resolve('../controllers/merchant-products.controller');
   delete require.cache[dbPath];
-  delete require.cache[permissionPath];
+  delete require.cache[verifiedMerchantPath];
   delete require.cache[controllerPath];
   require.cache[dbPath] = {
     id: dbPath,
@@ -85,7 +85,7 @@ test('merchant product create requires category owned by the merchant', async ()
   assert.equal(res.payload.message, '产品分类不存在');
 });
 
-test('merchant product management requires approved merchant permission', async () => {
+test('merchant product management requires approved verified merchant status', async () => {
   const dbMock = {
     async query(sql) {
       if (/FROM user_roles/.test(sql)) return [[]];
@@ -101,7 +101,7 @@ test('merchant product management requires approved merchant permission', async 
   }, res);
 
   assert.equal(res.statusCode, 403);
-  assert.equal(res.payload.message, '商家权限未审核通过，暂不能管理产品展示');
+  assert.equal(res.payload.message, '未成为入驻商家，暂不能管理产品展示');
 });
 
 test('public merchant products only return active categories and active products', async () => {

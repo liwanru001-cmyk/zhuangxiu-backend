@@ -1,9 +1,9 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
 const {
-  hasActiveMerchantPermission,
-  activeMerchantPermissionExistsSql,
-} = require('../utils/merchant-permission');
+  hasActiveVerifiedMerchant,
+  activeVerifiedMerchantExistsSql,
+} = require('../utils/verified-merchant');
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -33,8 +33,8 @@ function normalizeImageUrls(value) {
 }
 
 async function assertMerchant(req, res) {
-  if (!(await hasActiveMerchantPermission(req.user.id))) {
-    error(res, '商家权限未审核通过，暂不能管理产品展示', 403);
+  if (!(await hasActiveVerifiedMerchant(req.user.id))) {
+    error(res, '未成为入驻商家，暂不能管理产品展示', 403);
     return false;
   }
   return true;
@@ -315,7 +315,7 @@ async function listPublicProducts(req, res) {
        AND EXISTS (
          SELECT 1 FROM user_roles ur
          WHERE ur.user_id = mp.user_id
-           AND ${activeMerchantPermissionExistsSql('ur')}
+           AND ${activeVerifiedMerchantExistsSql('ur')}
        )
      LIMIT 1`,
     [merchantUserId]

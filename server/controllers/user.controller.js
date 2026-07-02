@@ -5,10 +5,10 @@ const fs = require('fs/promises');
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const {
-  hasActiveMerchantPermission,
-  activeMerchantPermissionExistsSql,
-  activeMerchantPermissionStateSql,
-} = require('../utils/merchant-permission');
+  hasActiveVerifiedMerchant,
+  activeVerifiedMerchantExistsSql,
+  activeVerifiedMerchantStateSql,
+} = require('../utils/verified-merchant');
 
 const profileSelect = `
   SELECT u.id, u.phone, u.nickname, u.avatar, u.bio, u.city, u.role,
@@ -136,7 +136,7 @@ async function listPublicMerchants(req, res) {
     EXISTS (
       SELECT 1 FROM user_roles ur
       WHERE ur.user_id = u.id
-        AND ${activeMerchantPermissionExistsSql('ur')}
+        AND ${activeVerifiedMerchantExistsSql('ur')}
     )
   `;
 
@@ -219,8 +219,8 @@ async function listPublicMerchants(req, res) {
 }
 
 async function upsertMerchantProfile(req, res) {
-  if (!(await hasActiveMerchantPermission(req.user.id))) {
-    return error(res, '商家权限未审核通过，暂不能编辑商家资料', 403);
+  if (!(await hasActiveVerifiedMerchant(req.user.id))) {
+    return error(res, '未成为入驻商家，暂不能编辑商家资料', 403);
   }
 
   const serviceArea = String(req.body.service_area || '').trim().slice(0, 80);
@@ -597,7 +597,7 @@ async function createDesignerConsultation(req, res) {
          SELECT 1 FROM user_roles ur
          WHERE ur.user_id = u.id
            AND ur.role = ?
-           ${targetRole === 'merchant' ? `AND ${activeMerchantPermissionStateSql('ur')}` : ''}
+           ${targetRole === 'merchant' ? `AND ${activeVerifiedMerchantStateSql('ur')}` : ''}
        )`,
     [targetId, targetRole]
   );
@@ -641,7 +641,7 @@ async function getDesignerConsultations(req, res) {
      WHERE user_id = ?
        AND (
          role IN ('designer', 'project_manager', 'project_supervisor')
-         OR (${activeMerchantPermissionExistsSql('user_roles')})
+         OR (${activeVerifiedMerchantExistsSql('user_roles')})
        )
      LIMIT 1`,
     [req.user.id]
@@ -1068,8 +1068,8 @@ async function uploadAvatar(req, res) {
 
 async function uploadMerchantProfileImage(req, res) {
   if (!req.file) return error(res, '请选择商家图片');
-  if (!(await hasActiveMerchantPermission(req.user.id))) {
-    return error(res, '商家权限未审核通过，暂不能上传商家图片', 403);
+  if (!(await hasActiveVerifiedMerchant(req.user.id))) {
+    return error(res, '未成为入驻商家，暂不能上传商家图片', 403);
   }
   const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-profiles/${req.file.filename}`;
   return success(res, { url: imageUrl }, '图片上传成功');

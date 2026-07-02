@@ -376,12 +376,12 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
     `SELECT id, phone, nickname, avatar, bio, city, role, admin_status,
             (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
              WHERE ur.user_id = users.id) AS roles,
-            (SELECT ur.permission_status FROM user_roles ur
+            (SELECT ur.verified_status FROM user_roles ur
              WHERE ur.user_id = users.id AND ur.role = 'merchant'
-             LIMIT 1) AS merchant_permission_status,
-            (SELECT ur.paid_until FROM user_roles ur
+             LIMIT 1) AS verified_merchant_status,
+            (SELECT ur.verified_until FROM user_roles ur
              WHERE ur.user_id = users.id AND ur.role = 'merchant'
-             LIMIT 1) AS merchant_paid_until,
+             LIMIT 1) AS verified_merchant_until,
             followers_count, following_count,
             likes_received, created_at, updated_at
      FROM users WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
@@ -657,12 +657,12 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
   if (req.query.status) {
     const status = String(req.query.status);
     if (!['pending', 'approved', 'rejected', 'suspended', 'none'].includes(status)) {
-      return error(res, '商家权限状态不正确');
+      return error(res, '入驻商家状态不正确');
     }
     if (status === 'none') {
       where += ' AND ur.user_id IS NULL';
     } else {
-      where += ' AND ur.permission_status = ?';
+      where += ' AND ur.verified_status = ?';
       params.push(status);
     }
   }
@@ -679,7 +679,7 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
 
   const [rows] = await db.query(
     `SELECT u.id AS user_id, u.phone, u.nickname, u.avatar, u.city, u.role AS user_role,
-            ur.permission_status, ur.approved_at, ur.paid_until, ur.review_note,
+            ur.verified_status, ur.verified_at, ur.verified_until, ur.review_note,
             mp.shop_name, mp.logo_url, mp.cover_url, mp.service_area, mp.address,
             mp.contact_phone, mp.business_hours, mp.category_group, mp.categories,
             mp.brand_intro, mp.consultation_enabled, mp.updated_at AS profile_updated_at,
@@ -713,9 +713,9 @@ app.get('/api/admin/merchants', adminAuth, async (req, res) => {
       avatar: row.avatar || '',
       city: row.city || '',
       user_role: row.user_role || '',
-      permission_status: row.permission_status || 'none',
-      approved_at: row.approved_at,
-      paid_until: row.paid_until,
+      verified_status: row.verified_status || 'none',
+      verified_at: row.verified_at,
+      verified_until: row.verified_until,
       review_note: row.review_note || '',
       shop_name: row.shop_name || '',
       logo_url: row.logo_url || '',
@@ -930,16 +930,16 @@ app.put('/api/admin/users/:id/review', adminAuth, async (req, res) => {
   return success(res, { id: userId, admin_status: adminStatus });
 });
 
-// admin 审核商家权限
-app.put('/api/admin/users/:id/merchant-permission', adminAuth, async (req, res) => {
+// admin 审核入驻商家状态
+app.put('/api/admin/merchants/:id/verified-status', adminAuth, async (req, res) => {
   const userId = Number(req.params.id);
   const status = String(req.body?.status || '').trim();
   if (!['pending', 'approved', 'rejected', 'suspended'].includes(status)) {
-    return error(res, '商家权限状态不正确');
+    return error(res, '入驻商家状态不正确');
   }
 
-  const paidUntil = req.body?.paid_until
-    ? String(req.body.paid_until).trim().slice(0, 19)
+  const verifiedUntil = req.body?.verified_until
+    ? String(req.body.verified_until).trim().slice(0, 19)
     : null;
   const reviewNote = req.body?.review_note
     ? String(req.body.review_note).trim().slice(0, 255)
@@ -950,21 +950,21 @@ app.put('/api/admin/users/:id/merchant-permission', adminAuth, async (req, res) 
 
   await db.query(
     `INSERT INTO user_roles
-     (user_id, role, is_default, permission_status, approved_at, paid_until, review_note)
+     (user_id, role, is_default, verified_status, verified_at, verified_until, review_note)
      VALUES (?, 'merchant', 0, ?, IF(? = 'approved', NOW(), NULL), ?, ?)
      ON DUPLICATE KEY UPDATE
-       permission_status = VALUES(permission_status),
-       approved_at = IF(VALUES(permission_status) = 'approved', COALESCE(approved_at, NOW()), approved_at),
-       paid_until = VALUES(paid_until),
+       verified_status = VALUES(verified_status),
+       verified_at = IF(VALUES(verified_status) = 'approved', COALESCE(verified_at, NOW()), verified_at),
+       verified_until = VALUES(verified_until),
        review_note = VALUES(review_note)`,
-    [userId, status, status, paidUntil || null, reviewNote || null]
+    [userId, status, status, verifiedUntil || null, reviewNote || null]
   );
 
   return success(res, {
     id: userId,
     role: 'merchant',
-    permission_status: status,
-    paid_until: paidUntil,
+    verified_status: status,
+    verified_until: verifiedUntil,
   });
 });
 

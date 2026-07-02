@@ -667,8 +667,8 @@ function renderMerchantManagement() {
   document.getElementById('company-tab-content').innerHTML = `
     <div class="toolbar">
       <input id="merchantSearch" placeholder="搜索商家/用户/手机号" onkeydown="if(event.key==='Enter')loadMerchants(1)">
-      <select id="merchantPermissionStatus" onchange="loadMerchants(1)">
-        <option value="">全部权限</option>
+      <select id="verifiedMerchantStatus" onchange="loadMerchants(1)">
+        <option value="">全部入驻状态</option>
         <option value="none">未申请</option>
         <option value="pending">待审核</option>
         <option value="approved">已通过</option>
@@ -686,7 +686,7 @@ function renderMerchantManagement() {
       <div class="card-title">
         <div>
           <h3>商家管理</h3>
-          <p>审核商家展示权限，控制是否出现在 App 找商家。</p>
+          <p>审核入驻商家状态，控制是否出现在 App 找商家。</p>
         </div>
       </div>
       <div class="table-wrap">
@@ -694,7 +694,7 @@ function renderMerchantManagement() {
           <thead>
             <tr>
               <th>用户</th><th>店铺</th><th>分类</th><th>联系信息</th><th>商品</th>
-              <th>权限</th><th>到期时间</th><th>更新时间</th><th>操作</th>
+              <th>入驻状态</th><th>到期时间</th><th>更新时间</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="merchant-body"></tbody>
@@ -743,7 +743,7 @@ async function loadCompanies(p) {
 async function loadMerchants(p) {
   page = Math.max(1, p || 1);
   const kw = document.getElementById('merchantSearch')?.value.trim() || '';
-  const status = document.getElementById('merchantPermissionStatus')?.value || '';
+  const status = document.getElementById('verifiedMerchantStatus')?.value || '';
   const categoryGroup = document.getElementById('merchantCategoryGroup')?.value || '';
   const params = new URLSearchParams({ page, pageSize: 20 });
   if (kw) params.set('keyword', kw);
@@ -797,40 +797,40 @@ function merchantRow(item) {
         <div class="muted">${esc(item.city || item.service_area) || '-'}</div>
       </td>
       <td class="muted">${item.product_count || 0}</td>
-      <td><span class="badge status-${merchantPermissionBadge(item.permission_status)}">${merchantPermissionLabel(item.permission_status)}</span></td>
-      <td>${item.paid_until ? fmtTime(item.paid_until) : '<span class="muted">长期</span>'}</td>
+      <td><span class="badge status-${verifiedMerchantBadge(item.verified_status)}">${verifiedMerchantLabel(item.verified_status)}</span></td>
+      <td>${item.verified_until ? fmtTime(item.verified_until) : '<span class="muted">长期</span>'}</td>
       <td>${fmtTime(item.profile_updated_at)}</td>
       <td>
         <div class="row-actions">
-          ${item.permission_status !== 'approved' ? `<button class="success-btn" onclick="updateMerchantPermission(${item.user_id}, 'approved')">通过</button>` : ''}
-          ${item.permission_status !== 'pending' ? `<button class="action-btn" onclick="updateMerchantPermission(${item.user_id}, 'pending')">待审</button>` : ''}
-          ${item.permission_status !== 'rejected' ? `<button class="danger-btn" onclick="updateMerchantPermission(${item.user_id}, 'rejected')">拒绝</button>` : ''}
-          ${item.permission_status !== 'suspended' ? `<button class="danger-btn" onclick="updateMerchantPermission(${item.user_id}, 'suspended')">暂停</button>` : ''}
+          ${item.verified_status !== 'approved' ? `<button class="success-btn" onclick="updateVerifiedMerchantStatus(${item.user_id}, 'approved')">通过</button>` : ''}
+          ${item.verified_status !== 'pending' ? `<button class="action-btn" onclick="updateVerifiedMerchantStatus(${item.user_id}, 'pending')">待审</button>` : ''}
+          ${item.verified_status !== 'rejected' ? `<button class="danger-btn" onclick="updateVerifiedMerchantStatus(${item.user_id}, 'rejected')">拒绝</button>` : ''}
+          ${item.verified_status !== 'suspended' ? `<button class="danger-btn" onclick="updateVerifiedMerchantStatus(${item.user_id}, 'suspended')">暂停</button>` : ''}
         </div>
       </td>
     </tr>
   `;
 }
 
-async function updateMerchantPermission(userId, status) {
-  const label = merchantPermissionLabel(status);
-  let paidUntil = null;
+async function updateVerifiedMerchantStatus(userId, status) {
+  const label = verifiedMerchantLabel(status);
+  let verifiedUntil = null;
   if (status === 'approved') {
-    const value = prompt('商家权限到期时间，可留空表示长期有效。格式：YYYY-MM-DD HH:mm:ss', '');
+    const value = prompt('入驻商家到期时间，可留空表示长期有效。格式：YYYY-MM-DD HH:mm:ss', '');
     if (value === null) return;
-    paidUntil = value.trim();
+    verifiedUntil = value.trim();
   }
-  if (!confirm(`确认将商家权限改为“${label}”？`)) return;
-  const j = await adminFetch(`/users/${userId}/merchant-permission`, {
+  if (!confirm(`确认将入驻状态改为“${label}”？`)) return;
+  const j = await adminFetch(`/merchants/${userId}/verified-status`, {
     method: 'PUT',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ status, paid_until: paidUntil || null }),
+    body: JSON.stringify({ status, verified_until: verifiedUntil || null }),
   });
   if (j.code === 200) {
-    toast('商家权限已更新');
+    toast('入驻状态已更新');
     await loadMerchants(page);
   } else {
-    toast(j.message || '商家权限更新失败');
+    toast(j.message || '入驻状态更新失败');
   }
 }
 
@@ -2416,7 +2416,7 @@ function companyStatusLabel(status) {
   return { draft: '待审核', active: '正常', suspended: '停用', deleted: '已删除' }[status] || status || '-';
 }
 
-function merchantPermissionLabel(status) {
+function verifiedMerchantLabel(status) {
   return {
     none: '未申请',
     pending: '待审核',
@@ -2426,7 +2426,7 @@ function merchantPermissionLabel(status) {
   }[status] || status || '-';
 }
 
-function merchantPermissionBadge(status) {
+function verifiedMerchantBadge(status) {
   return {
     none: 'hidden',
     pending: 'pending',
