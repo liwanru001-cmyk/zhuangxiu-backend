@@ -30,15 +30,16 @@ function loadController(controllerPath, dbMock) {
   return require(controllerPath);
 }
 
-test('public company search only queries active paid companies and never merchant profiles', async () => {
+test('public company search only queries verified companies and never merchant profiles', async () => {
   const queries = [];
   const dbMock = {
     async query(sql, params) {
       queries.push({ sql, params });
       assert.match(sql, /c\.status = 'active'/);
-      assert.match(sql, /c\.paid_display_status = 'active'/);
-      assert.match(sql, /paid_display_starts_at IS NULL/);
-      assert.match(sql, /paid_display_ends_at IS NULL/);
+      assert.match(sql, /c\.verification_status = 'verified'/);
+      assert.doesNotMatch(sql, /c\.paid_display_status = 'active'/);
+      assert.doesNotMatch(sql, /paid_display_starts_at IS NULL/);
+      assert.doesNotMatch(sql, /paid_display_ends_at IS NULL/);
       assert.doesNotMatch(sql, /merchant_profiles/);
       return [[{
         id: 7,
@@ -54,7 +55,7 @@ test('public company search only queries active paid companies and never merchan
         legacy_merchant_user_id: null,
         license_url: 'https://example.com/license.png',
         verification_status: 'verified',
-        paid_display_status: 'active',
+        paid_display_status: 'none',
         paid_display_starts_at: null,
         paid_display_ends_at: null,
         rating_avg: '4.80',
@@ -85,17 +86,18 @@ test('public company search only queries active paid companies and never merchan
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.source, 'companies_public');
   assert.equal(res.payload.data.items.length, 1);
-  assert.equal(res.payload.data.items[0].paid_display_status, 'active');
+  assert.equal(res.payload.data.items[0].paid_display_status, 'none');
   assert.equal(res.payload.data.items[0].verification_status, 'verified');
   assert.equal(queries.length, 1);
 });
 
-test('public company detail only requires an active company', async () => {
+test('public company detail requires an active verified company', async () => {
   const queries = [];
   const dbMock = {
     async query(sql, params) {
       queries.push({ sql, params });
       assert.match(sql, /c\.status = 'active'/);
+      assert.match(sql, /c\.verification_status = 'verified'/);
       assert.doesNotMatch(sql, /c\.paid_display_status = 'active'/);
       assert.doesNotMatch(sql, /paid_display_starts_at IS NULL/);
       assert.doesNotMatch(sql, /paid_display_ends_at IS NULL/);

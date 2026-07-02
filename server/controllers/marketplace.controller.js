@@ -341,9 +341,7 @@ async function listCompaniesFromNewTables(req, pageSpec) {
 
   if (filterSql) where += ` ${filterSql}`;
   if (publicOnly) {
-    where += ` AND c.paid_display_status = 'active'
-      AND (c.paid_display_starts_at IS NULL OR c.paid_display_starts_at <= NOW())
-      AND (c.paid_display_ends_at IS NULL OR c.paid_display_ends_at >= NOW())`;
+    where += ` AND c.verification_status = 'verified'`;
   }
   if (req.query.city) {
     where += ` AND REPLACE(c.city, '市', '') = REPLACE(?, '市', '')`;
@@ -917,6 +915,7 @@ async function listMarketplaceSearch(req, res) {
   let professionalSource = '';
 
   if (canShowCompanies) {
+    req.publicCompanySearch = true;
     companies = await listCompaniesFromNewTables(req, pageSpec);
     companySource = 'companies';
   }
@@ -1033,6 +1032,7 @@ async function getPublicCompany(req, res) {
        ON parent.id = bc.parent_id AND parent.status = 'active'
      WHERE c.id = ?
        AND c.status = 'active'
+       AND c.verification_status = 'verified'
      GROUP BY c.id`,
     [id]
   );
