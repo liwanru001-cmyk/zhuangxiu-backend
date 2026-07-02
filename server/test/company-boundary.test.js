@@ -115,6 +115,54 @@ test('public company detail requires an active verified company', async () => {
   assert.equal(queries.length, 1);
 });
 
+test('public company case shares require verified company and approved project cases', async () => {
+  const queries = [];
+  const dbMock = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      if (queries.length === 1) {
+        assert.match(sql, /status = 'active'/);
+        assert.match(sql, /verification_status = 'verified'/);
+        assert.deepEqual(params, [9]);
+        return [[{ id: 9 }]];
+      }
+      assert.match(sql, /project_participants_ext ppe/);
+      assert.match(sql, /company_members cm/);
+      assert.match(sql, /share\.status = 1/);
+      assert.deepEqual(params, [9, 9, 9]);
+      return [[{
+        id: 3,
+        project_id: 11,
+        project_name: '旧房翻新',
+        designer_id: 21,
+        owner_id: 42,
+        title: '小户型改造',
+        style: '现代简约',
+        summary: '客厅和厨房重新规划',
+        highlights: '动线更顺',
+        image_urls: JSON.stringify(['/api/uploads/case-1.jpg']),
+        visible_fields: JSON.stringify({ area: true }),
+        designer_name: '设计师A',
+        owner_name: '业主B',
+        reviewed_at: null,
+        created_at: null,
+        updated_at: null,
+      }]];
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.listPublicCompanyCaseShares({ params: { id: '9' } }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.length, 1);
+  assert.equal(res.payload.data[0].project_name, '旧房翻新');
+  assert.deepEqual(res.payload.data[0].image_urls, ['/api/uploads/case-1.jpg']);
+  assert.deepEqual(res.payload.data[0].visible_fields, { area: true });
+  assert.equal(queries.length, 2);
+});
+
 test('my companies can include an owner company that is not publicly displayed', async () => {
   const queries = [];
   const dbMock = {
@@ -200,6 +248,7 @@ test('my project companies come from project participants and are read only', as
         businesses: JSON.stringify([]),
         members: JSON.stringify([]),
         latest_project_updated_at: null,
+        project_names: '旧房翻新||客厅改造',
       }]];
     },
   };
@@ -211,6 +260,7 @@ test('my project companies come from project participants and are read only', as
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.length, 1);
   assert.equal(res.payload.data[0].name, '项目合作装修公司');
+  assert.deepEqual(res.payload.data[0].project_names, ['旧房翻新', '客厅改造']);
   assert.equal(res.payload.data[0].memberRole, 'client');
   assert.equal(res.payload.data[0].canManage, false);
   assert.equal(queries.length, 1);

@@ -12,6 +12,19 @@ function parseJsonArray(value) {
   }
 }
 
+function parseJsonObject(value) {
+  if (value && typeof value === 'object' && !Array.isArray(value)) return value;
+  if (typeof value !== 'string' || !value) return {};
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed
+      : {};
+  } catch (_) {
+    return {};
+  }
+}
+
 function normalizePage(query) {
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(query.pageSize, 10) || 20));
@@ -69,6 +82,13 @@ async function resolveCatalogFilter(query) {
 }
 
 function mapCompanyRow(row) {
+  const projectNames = Array.isArray(row.project_names)
+    ? row.project_names
+    : String(row.project_names || '')
+      .split('||')
+      .map((item) => item.trim())
+      .filter(Boolean);
+  const uniqueProjectNames = [...new Set(projectNames)];
   return {
     id: row.id,
     name: row.name,
@@ -93,6 +113,7 @@ function mapCompanyRow(row) {
     legacy_merchant_user_id: row.legacy_merchant_user_id || null,
     businesses: parseJsonArray(row.businesses).filter(Boolean),
     members: parseJsonArray(row.members).filter(Boolean),
+    project_names: uniqueProjectNames,
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
@@ -272,6 +293,27 @@ function mapCompanyProjectRow(row) {
     responsibleAvatarUrl: row.responsible_avatar || '',
     joinedAt: row.joined_at || null,
     updatedAt: row.updated_at || null,
+  };
+}
+
+function mapCompanyCaseShareRow(row) {
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    project_name: row.project_name || '装修项目',
+    designer_id: row.designer_id,
+    owner_id: row.owner_id,
+    title: row.title || '项目案例',
+    style: row.style || '',
+    summary: row.summary || '',
+    highlights: row.highlights || '',
+    image_urls: parseJsonArray(row.image_urls).filter(Boolean),
+    visible_fields: parseJsonObject(row.visible_fields),
+    designer_name: row.designer_name || '设计师',
+    owner_name: row.owner_name || '业主',
+    reviewed_at: row.reviewed_at || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
   };
 }
 
@@ -673,7 +715,7 @@ async function listMyCompanies(req, res) {
 async function listMyProjectCompanies(req, res) {
   const [rows] = await db.query(
     `WITH accessible_projects AS (
-       SELECT p.id, p.updated_at
+       SELECT p.id, p.project_name, p.updated_at
        FROM renovation_projects p
        LEFT JOIN project_members pm
          ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
@@ -681,22 +723,28 @@ async function listMyProjectCompanies(req, res) {
          AND (p.user_id = ? OR pm.id IS NOT NULL)
      ),
      linked_companies AS (
-       SELECT company_id, MAX(latest_project_updated_at) AS latest_project_updated_at
+       SELECT company_id,
+              MAX(project_updated_at) AS latest_project_updated_at,
+              GROUP_CONCAT(
+                project_name ORDER BY project_updated_at DESC
+                SEPARATOR '||'
+              ) AS project_names
        FROM (
          SELECT COALESCE(ppe.company_id, ppe.participant_id) AS company_id,
-                MAX(ap.updated_at) AS latest_project_updated_at
+                COALESCE(NULLIF(ap.project_name, ''), '装修项目') AS project_name,
+                ap.updated_at AS project_updated_at
          FROM accessible_projects ap
          JOIN project_participants_ext ppe
            ON ppe.project_id = ap.id
           AND ppe.participant_type = 'company'
           AND ppe.status <> 'removed'
          WHERE COALESCE(ppe.company_id, ppe.participant_id) IS NOT NULL
-         GROUP BY COALESCE(ppe.company_id, ppe.participant_id)
 
          UNION ALL
 
          SELECT cm.company_id AS company_id,
-                MAX(ap.updated_at) AS latest_project_updated_at
+                COALESCE(NULLIF(ap.project_name, ''), '装修项目') AS project_name,
+                ap.updated_at AS project_updated_at
          FROM accessible_projects ap
          JOIN project_members project_pm
            ON project_pm.project_id = ap.id
@@ -705,7 +753,6 @@ async function listMyProjectCompanies(req, res) {
          JOIN company_members cm
            ON cm.user_id = project_pm.user_id
           AND cm.status = 'active'
-         GROUP BY cm.company_id
        ) sources
        WHERE company_id IS NOT NULL
        GROUP BY company_id
@@ -730,7 +777,8 @@ async function listMyProjectCompanies(req, res) {
               JSON_ARRAY()
             ) AS businesses,
             JSON_ARRAY() AS members,
-            linked.latest_project_updated_at
+            linked.latest_project_updated_at,
+            linked.project_names
      FROM linked_companies linked
      JOIN companies c
        ON c.id = linked.company_id AND c.status <> 'deleted'
@@ -1098,6 +1146,64 @@ async function getPublicCompany(req, res) {
   company.owner_user_id = rows[0].owner_user_id || null;
   company.members = await listCompanyMembersForCompany(company, { limit: 5 });
   return success(res, company);
+}
+
+async function listPublicCompanyCaseShares(req, res) {
+  const companyId = Number(req.params.id);
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+
+  const [companyRows] = await db.query(
+    `SELECT id FROM companies
+     WHERE id = ? AND status = 'active' AND verification_status = 'verified'
+     LIMIT 1`,
+    [companyId]
+  );
+  if (!companyRows[0]) return error(res, '公司不存在', 404);
+
+  const [rows] = await db.query(
+    `WITH company_projects AS (
+       SELECT DISTINCT ppe.project_id
+       FROM project_participants_ext ppe
+       JOIN renovation_projects p
+         ON p.id = ppe.project_id
+        AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       WHERE ppe.status <> 'removed'
+         AND (
+           ppe.company_id = ?
+           OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+         )
+
+       UNION
+
+       SELECT DISTINCT pm.project_id
+       FROM company_members cm
+       JOIN project_members pm
+         ON pm.user_id = cm.user_id AND pm.status = 1
+       JOIN renovation_projects p
+         ON p.id = pm.project_id
+        AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       WHERE cm.company_id = ? AND cm.status = 'active'
+     )
+     SELECT share.id, share.project_id, p.project_name,
+            share.designer_id, share.owner_id, share.title, share.style,
+            share.summary, share.highlights, share.image_urls,
+            share.visible_fields, share.reviewed_at, share.created_at,
+            share.updated_at,
+            designer.nickname AS designer_name,
+            owner.nickname AS owner_name
+     FROM project_case_shares share
+     JOIN company_projects cp ON cp.project_id = share.project_id
+     JOIN renovation_projects p ON p.id = share.project_id
+     JOIN users designer ON designer.id = share.designer_id
+     JOIN users owner ON owner.id = share.owner_id
+     WHERE share.status = 1
+     ORDER BY COALESCE(share.reviewed_at, share.updated_at) DESC,
+              share.id DESC
+     LIMIT 12`,
+    [companyId, companyId, companyId]
+  );
+
+  return success(res, rows.map(mapCompanyCaseShareRow));
 }
 
 async function listCompanyMembers(req, res) {
@@ -1620,6 +1726,7 @@ module.exports = {
   updateCompanyBusinesses,
   getCompany,
   getPublicCompany,
+  listPublicCompanyCaseShares,
   listProfessionals,
   getProfessional,
   listCompanyMembers,

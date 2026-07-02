@@ -60,6 +60,7 @@ router.post('/companies', asyncHandler(auth), asyncHandler(controller.createComp
 router.get('/companies/search', asyncHandler(controller.searchPublicCompanies));
 router.get('/companies', asyncHandler(controller.listCompanies));
 router.get('/companies/:id/public', asyncHandler(controller.getPublicCompany));
+router.get('/companies/:id/case-shares', asyncHandler(controller.listPublicCompanyCaseShares));
 router.get('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.listCompanyProjects));
 router.post('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.attachCompanyProject));
 router.put('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(controller.updateCompanyProject));
