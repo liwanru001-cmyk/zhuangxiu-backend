@@ -61,6 +61,21 @@ const NOTE_MEDIA_LIMITS = {
   maxTotalBytes: 20 * 1024 * 1024,
 };
 
+function normalizeUploadUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/api/uploads/')) return raw;
+  if (raw.startsWith('/uploads/')) return `/api${raw}`;
+  try {
+    const url = new URL(raw);
+    if (url.pathname.startsWith('/api/uploads/')) return `https://yinnkhome.com${url.pathname}`;
+    if (url.pathname.startsWith('/uploads/')) return `https://yinnkhome.com/api${url.pathname}`;
+    return raw;
+  } catch (_) {
+    return raw;
+  }
+}
+
 async function removeUploadedNoteFiles(files) {
   if (!files?.length) return;
   const fs = require('fs/promises');
@@ -151,8 +166,12 @@ async function list(req, res) {
       'SELECT url FROM note_images WHERE note_id = ? ORDER BY sort_order ASC LIMIT 3',
       [note.id]
     );
-    note.cover_image = images[0]?.url || '';
-    note.images = images;
+    note.author_avatar = normalizeUploadUrl(note.author_avatar);
+    note.cover_image = normalizeUploadUrl(images[0]?.url);
+    note.images = images.map((image) => ({
+      ...image,
+      url: normalizeUploadUrl(image.url),
+    }));
     const [topComments] = await db.query(
       `SELECT c.content, c.likes_count, u.nickname
        FROM comments c
@@ -247,7 +266,11 @@ async function detail(req, res) {
     'SELECT id, url, sort_order FROM note_images WHERE note_id = ? ORDER BY sort_order ASC',
     [id]
   );
-  note.images = images;
+  note.author_avatar = normalizeUploadUrl(note.author_avatar);
+  note.images = images.map((image) => ({
+    ...image,
+    url: normalizeUploadUrl(image.url),
+  }));
 
   // 视频
   const [videos] = await db.query(
@@ -281,13 +304,12 @@ async function uploadMedia(req, res) {
   const path = require('path');
   const images = [];
   const videos = [];
-  const host = `${req.protocol}://${req.get('host')}`;
   let totalBytes = 0;
   for (const file of files) {
     totalBytes += file.size || 0;
     const extension = path.extname(file.originalname).toLowerCase();
     const media = {
-      url: `${host}/uploads/notes/${file.filename}`,
+      url: `${req.protocol}://${req.get('host')}/api/uploads/notes/${file.filename}`,
       original_name: file.originalname,
       size: file.size || 0,
     };

@@ -107,6 +107,21 @@ function categoryGroupFallbackSql(group) {
   };
 }
 
+function normalizeUploadUrl(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  if (raw.startsWith('/api/uploads/')) return raw;
+  if (raw.startsWith('/uploads/')) return `/api${raw}`;
+  try {
+    const url = new URL(raw);
+    if (url.pathname.startsWith('/api/uploads/')) return `https://yinnkhome.com${url.pathname}`;
+    if (url.pathname.startsWith('/uploads/')) return `https://yinnkhome.com/api${url.pathname}`;
+    return raw;
+  } catch (_) {
+    return raw;
+  }
+}
+
 async function listPublicMerchants(req, res) {
   const page = Math.max(1, parseInt(req.query.page) || 1);
   const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
@@ -171,11 +186,11 @@ async function listPublicMerchants(req, res) {
     items: rows.map((row) => ({
       user_id: Number(row.user_id),
       nickname: row.nickname || '',
-      avatar: row.avatar || '',
+      avatar: normalizeUploadUrl(row.avatar),
       city: row.city || '',
       shop_name: row.shop_name || '',
-      logo_url: row.logo_url || '',
-      cover_url: row.cover_url || '',
+      logo_url: normalizeUploadUrl(row.logo_url),
+      cover_url: normalizeUploadUrl(row.cover_url),
       service_area: row.service_area || '',
       address: row.address || '',
       contact_phone: row.contact_phone || '',
