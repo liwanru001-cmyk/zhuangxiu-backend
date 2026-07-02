@@ -672,7 +672,45 @@ async function listMyCompanies(req, res) {
 
 async function listMyProjectCompanies(req, res) {
   const [rows] = await db.query(
-    `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
+    `WITH accessible_projects AS (
+       SELECT p.id, p.updated_at
+       FROM renovation_projects p
+       LEFT JOIN project_members pm
+         ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
+       WHERE COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+         AND (p.user_id = ? OR pm.id IS NOT NULL)
+     ),
+     linked_companies AS (
+       SELECT company_id, MAX(latest_project_updated_at) AS latest_project_updated_at
+       FROM (
+         SELECT COALESCE(ppe.company_id, ppe.participant_id) AS company_id,
+                MAX(ap.updated_at) AS latest_project_updated_at
+         FROM accessible_projects ap
+         JOIN project_participants_ext ppe
+           ON ppe.project_id = ap.id
+          AND ppe.participant_type = 'company'
+          AND ppe.status <> 'removed'
+         WHERE COALESCE(ppe.company_id, ppe.participant_id) IS NOT NULL
+         GROUP BY COALESCE(ppe.company_id, ppe.participant_id)
+
+         UNION ALL
+
+         SELECT cm.company_id AS company_id,
+                MAX(ap.updated_at) AS latest_project_updated_at
+         FROM accessible_projects ap
+         JOIN project_members project_pm
+           ON project_pm.project_id = ap.id
+          AND project_pm.status = 1
+          AND project_pm.role <> 'merchant'
+         JOIN company_members cm
+           ON cm.user_id = project_pm.user_id
+          AND cm.status = 'active'
+         GROUP BY cm.company_id
+       ) sources
+       WHERE company_id IS NOT NULL
+       GROUP BY company_id
+     )
+     SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
             c.city, c.address, c.contact_phone, c.status, c.source,
             c.license_url, c.verification_status, c.paid_display_status,
             c.paid_display_starts_at, c.paid_display_ends_at,
@@ -692,26 +730,17 @@ async function listMyProjectCompanies(req, res) {
               JSON_ARRAY()
             ) AS businesses,
             JSON_ARRAY() AS members,
-            MAX(p.updated_at) AS latest_project_updated_at
-     FROM renovation_projects p
-     LEFT JOIN project_members pm
-       ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
-     JOIN project_participants_ext ppe
-       ON ppe.project_id = p.id
-      AND ppe.participant_type = 'company'
-      AND ppe.status <> 'removed'
+            linked.latest_project_updated_at
+     FROM linked_companies linked
      JOIN companies c
-       ON c.id = COALESCE(ppe.company_id, ppe.participant_id)
-      AND c.status <> 'deleted'
+       ON c.id = linked.company_id AND c.status <> 'deleted'
      LEFT JOIN company_businesses cb
        ON cb.company_id = c.id AND cb.status = 'active'
      LEFT JOIN business_catalog bc
        ON bc.id = cb.business_catalog_id AND bc.status = 'active'
      LEFT JOIN business_catalog parent
        ON parent.id = bc.parent_id AND parent.status = 'active'
-     WHERE COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-       AND (p.user_id = ? OR pm.id IS NOT NULL)
-     GROUP BY c.id
+     GROUP BY c.id, linked.latest_project_updated_at
      ORDER BY latest_project_updated_at DESC, c.updated_at DESC, c.id DESC`,
     [req.user.id, req.user.id]
   );
