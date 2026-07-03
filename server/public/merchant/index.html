@@ -157,10 +157,33 @@
     }
 
     .panel { padding: 22px; }
+    .panel-heading {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 8px;
+    }
     .panel h2, .section h2 {
       margin: 0;
       font-size: 22px;
       letter-spacing: 0;
+    }
+    .demo-link {
+      min-height: 32px;
+      padding: 0 12px;
+      border: 1px solid rgba(47, 115, 232, .28);
+      border-radius: 999px;
+      color: var(--blue-dark);
+      background: rgba(47, 115, 232, .08);
+      cursor: pointer;
+      white-space: nowrap;
+      font-size: 12px;
+      font-weight: 900;
+    }
+    .demo-link:hover {
+      border-color: var(--blue);
+      background: rgba(47, 115, 232, .13);
     }
     .panel-desc {
       margin: 8px 0 20px;
@@ -882,7 +905,10 @@
       </div>
 
       <div class="panel">
-        <h2>商家登录</h2>
+        <div class="panel-heading">
+          <h2>商家登录</h2>
+          <button id="demoProductsBtn" class="demo-link" type="button">演示页面</button>
+        </div>
         <p class="panel-desc">使用已审核账号的手机号和密码登录。</p>
         <form id="loginForm">
           <div class="field">
@@ -1885,6 +1911,10 @@
       } finally {
         $('loginBtn').disabled = false;
       }
+    });
+
+    $('demoProductsBtn').addEventListener('click', () => {
+      window.location.href = `${window.location.pathname}?demo=products`;
     });
 
     $('openCategoryEditorBtn').addEventListener('click', startRootCategory);
