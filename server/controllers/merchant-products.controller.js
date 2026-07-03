@@ -72,6 +72,21 @@ function mapProduct(row) {
   };
 }
 
+function mapFavoriteProduct(row) {
+  return {
+    id: Number(row.favorite_id || 0),
+    created_at: row.favorite_created_at,
+    merchant_user_id: Number(row.merchant_user_id),
+    merchant_name: row.merchant_name || row.merchant_nickname || '商家',
+    merchant_intro: row.merchant_intro || '',
+    consultation_enabled:
+      row.consultation_enabled === 1 ||
+      row.consultation_enabled === true ||
+      row.consultation_enabled === '1',
+    product: mapProduct(row),
+  };
+}
+
 async function getCategoryForMerchant(categoryId, merchantUserId) {
   if (!categoryId) return null;
   const [rows] = await db.query(
@@ -328,6 +343,103 @@ async function listPublicProducts(req, res) {
   return success(res, { categories, products });
 }
 
+async function getActivePublicProduct(productId) {
+  const [rows] = await db.query(
+    `SELECT p.*, c.name AS category_name, c.parent_id AS parent_category_id,
+            parent.name AS parent_category_name,
+            mp.shop_name AS merchant_name, mp.brand_intro AS merchant_intro,
+            mp.consultation_enabled, u.nickname AS merchant_nickname
+     FROM merchant_products p
+     JOIN merchant_profiles mp ON mp.user_id = p.merchant_user_id
+     JOIN users u ON u.id = p.merchant_user_id
+     LEFT JOIN merchant_product_categories c
+       ON c.id = p.category_id AND c.merchant_user_id = p.merchant_user_id
+     LEFT JOIN merchant_product_categories parent
+       ON parent.id = c.parent_id AND parent.merchant_user_id = p.merchant_user_id
+     WHERE p.id = ? AND p.status = 'active'
+       AND EXISTS (
+         SELECT 1 FROM user_roles ur
+         WHERE ur.user_id = p.merchant_user_id
+           AND ${activeVerifiedMerchantExistsSql('ur')}
+       )
+     LIMIT 1`,
+    [productId]
+  );
+  return rows[0] || null;
+}
+
+async function favoriteProduct(req, res) {
+  const productId = Number(req.params.id);
+  if (!productId) return error(res, '产品不存在', 404);
+  const product = await getActivePublicProduct(productId);
+  if (!product) return error(res, '产品不存在或已下架', 404);
+  if (Number(product.merchant_user_id) === Number(req.user.id)) {
+    return error(res, '不能收藏自己的产品');
+  }
+  await db.query(
+    `INSERT IGNORE INTO merchant_product_favorites
+     (user_id, product_id, merchant_user_id)
+     VALUES (?, ?, ?)`,
+    [req.user.id, productId, product.merchant_user_id]
+  );
+  return success(res, { favorited: true }, '已收藏');
+}
+
+async function unfavoriteProduct(req, res) {
+  const productId = Number(req.params.id);
+  if (!productId) return error(res, '产品不存在', 404);
+  await db.query(
+    `DELETE FROM merchant_product_favorites
+     WHERE user_id = ? AND product_id = ?`,
+    [req.user.id, productId]
+  );
+  return success(res, { favorited: false }, '已取消收藏');
+}
+
+async function listFavoriteProducts(req, res) {
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(50, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+  const [rows] = await db.query(
+    `SELECT f.id AS favorite_id, f.created_at AS favorite_created_at,
+            p.*, c.name AS category_name, c.parent_id AS parent_category_id,
+            parent.name AS parent_category_name,
+            mp.shop_name AS merchant_name, mp.brand_intro AS merchant_intro,
+            mp.consultation_enabled, u.nickname AS merchant_nickname
+     FROM merchant_product_favorites f
+     JOIN merchant_products p ON p.id = f.product_id
+     JOIN merchant_profiles mp ON mp.user_id = p.merchant_user_id
+     JOIN users u ON u.id = p.merchant_user_id
+     LEFT JOIN merchant_product_categories c
+       ON c.id = p.category_id AND c.merchant_user_id = p.merchant_user_id
+     LEFT JOIN merchant_product_categories parent
+       ON parent.id = c.parent_id AND parent.merchant_user_id = p.merchant_user_id
+     WHERE f.user_id = ?
+       AND p.status = 'active'
+       AND EXISTS (
+         SELECT 1 FROM user_roles ur
+         WHERE ur.user_id = p.merchant_user_id
+           AND ${activeVerifiedMerchantExistsSql('ur')}
+       )
+     ORDER BY f.created_at DESC, f.id DESC
+     LIMIT ? OFFSET ?`,
+    [req.user.id, pageSize, offset]
+  );
+  const [[countRow]] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM merchant_product_favorites f
+     JOIN merchant_products p ON p.id = f.product_id
+     WHERE f.user_id = ? AND p.status = 'active'`,
+    [req.user.id]
+  );
+  return success(res, {
+    items: rows.map(mapFavoriteProduct),
+    total: Number(countRow.total || 0),
+    page,
+    pageSize,
+  });
+}
+
 async function uploadProductImage(req, res) {
   if (!(await assertMerchant(req, res))) return;
   if (!req.file) return error(res, '请选择产品图片');
@@ -345,5 +457,8 @@ module.exports = {
   updateProduct,
   deleteProduct,
   listPublicProducts,
+  favoriteProduct,
+  unfavoriteProduct,
+  listFavoriteProducts,
   uploadProductImage,
 };

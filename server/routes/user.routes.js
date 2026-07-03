@@ -129,6 +129,9 @@ router.put('/merchant-product-categories/:id', asyncHandler(auth), asyncHandler(
 router.delete('/merchant-product-categories/:id', asyncHandler(auth), asyncHandler(merchantProductsController.deleteCategory));
 router.get('/merchant-products', asyncHandler(auth), asyncHandler(merchantProductsController.listMyProducts));
 router.post('/merchant-products', asyncHandler(auth), asyncHandler(merchantProductsController.createProduct));
+router.get('/merchant-products/favorites', asyncHandler(auth), asyncHandler(merchantProductsController.listFavoriteProducts));
+router.post('/merchant-products/:id/favorite', asyncHandler(auth), asyncHandler(merchantProductsController.favoriteProduct));
+router.delete('/merchant-products/:id/favorite', asyncHandler(auth), asyncHandler(merchantProductsController.unfavoriteProduct));
 router.put('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchantProductsController.updateProduct));
 router.delete('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchantProductsController.deleteProduct));
 router.post(
