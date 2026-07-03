@@ -25,6 +25,11 @@ function normalizeStatus(value) {
   return ['draft', 'active', 'hidden'].includes(status) ? status : 'active';
 }
 
+const MERCHANT_PRODUCT_QUOTAS = {
+  maxCategories: 10,
+  maxProducts: 50,
+};
+
 function normalizeImageUrls(value) {
   return parseJsonArray(value)
     .map((item) => String(item || '').trim())
@@ -118,6 +123,15 @@ async function createCategory(req, res) {
   if (!(await assertMerchant(req, res))) return;
   const name = normalizeString(req.body.name, 80);
   if (!name) return error(res, '分类名称不能为空');
+
+  const [[categoryCount]] = await db.query(
+    `SELECT COUNT(*) AS total FROM merchant_product_categories
+     WHERE merchant_user_id = ?`,
+    [req.user.id]
+  );
+  if (Number(categoryCount.total || 0) >= MERCHANT_PRODUCT_QUOTAS.maxCategories) {
+    return error(res, `产品分类最多 ${MERCHANT_PRODUCT_QUOTAS.maxCategories} 个，请先删除不需要的分类`, 429);
+  }
 
   const parentId = Number(req.body.parent_id || 0) || null;
   if (parentId) {
@@ -250,6 +264,15 @@ async function listMyProducts(req, res) {
 
 async function createProduct(req, res) {
   if (!(await assertMerchant(req, res))) return;
+  const [[productCount]] = await db.query(
+    `SELECT COUNT(*) AS total FROM merchant_products
+     WHERE merchant_user_id = ?`,
+    [req.user.id]
+  );
+  if (Number(productCount.total || 0) >= MERCHANT_PRODUCT_QUOTAS.maxProducts) {
+    return error(res, `产品最多 ${MERCHANT_PRODUCT_QUOTAS.maxProducts} 个，请先删除不需要的产品`, 429);
+  }
+
   const payload = await normalizeProductPayload(req.body, req.user.id);
   if (payload.error) return error(res, payload.error);
   const item = payload.value;

@@ -73,6 +73,7 @@ pool.getConnection()
 
 async function ensureAppTables() {
   await ensureUserAdminStatusColumn();
+  await ensureUserAvatarChangedAtColumn();
   await ensureRenovationProjectNameColumn();
   await ensureRenovationProjectCodeColumn();
   await ensureRenovationProjectArchiveColumns();
@@ -1497,6 +1498,21 @@ async function ensureUserAdminStatusColumn() {
       ADD COLUMN admin_status ENUM('pending', 'approved', 'rejected')
         NOT NULL DEFAULT 'approved' AFTER role,
       ADD INDEX idx_admin_status (admin_status, created_at)
+  `);
+}
+
+async function ensureUserAvatarChangedAtColumn() {
+  const [columns] = await pool.query(`
+    SELECT COLUMN_NAME
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'users'
+      AND COLUMN_NAME = 'avatar_changed_at'
+  `);
+  if (columns.length > 0) return;
+  await pool.query(`
+    ALTER TABLE users
+      ADD COLUMN avatar_changed_at DATETIME DEFAULT NULL AFTER avatar
   `);
 }
 

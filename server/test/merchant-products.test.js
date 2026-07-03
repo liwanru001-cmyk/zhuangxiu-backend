@@ -38,6 +38,10 @@ test('merchant product categories allow two levels and reject a third level', as
     async query(sql, params) {
       calls.push({ sql, params });
       if (/FROM user_roles/.test(sql)) return [[{ 1: 1 }]];
+      if (/COUNT\(\*\) AS total FROM merchant_product_categories/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{ total: 2 }]];
+      }
       if (/FROM merchant_product_categories/.test(sql) && /WHERE id = \?/.test(sql)) {
         return [[{
           id: 7,
@@ -65,8 +69,12 @@ test('merchant product categories allow two levels and reject a third level', as
 
 test('merchant product create requires category owned by the merchant', async () => {
   const dbMock = {
-    async query(sql) {
+    async query(sql, params) {
       if (/FROM user_roles/.test(sql)) return [[{ 1: 1 }]];
+      if (/COUNT\(\*\) AS total FROM merchant_products/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{ total: 3 }]];
+      }
       if (/FROM merchant_product_categories/.test(sql) && /WHERE id = \?/.test(sql)) {
         return [[]];
       }
@@ -83,6 +91,52 @@ test('merchant product create requires category owned by the merchant', async ()
 
   assert.equal(res.statusCode, 400);
   assert.equal(res.payload.message, '产品分类不存在');
+});
+
+test('merchant product categories reject more than ten categories', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM user_roles/.test(sql)) return [[{ 1: 1 }]];
+      if (/COUNT\(\*\) AS total FROM merchant_product_categories/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{ total: 10 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.createCategory({
+    user: { id: 42, role: 'merchant' },
+    body: { name: '阳台砖' },
+  }, res);
+
+  assert.equal(res.statusCode, 429);
+  assert.match(res.payload.message, /最多 10 个/);
+});
+
+test('merchant products reject more than fifty products', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM user_roles/.test(sql)) return [[{ 1: 1 }]];
+      if (/COUNT\(\*\) AS total FROM merchant_products/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{ total: 50 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.createProduct({
+    user: { id: 42, role: 'merchant' },
+    body: { name: '柔光砖' },
+  }, res);
+
+  assert.equal(res.statusCode, 429);
+  assert.match(res.payload.message, /最多 50 个/);
 });
 
 test('merchant product management requires approved verified merchant status', async () => {

@@ -9,6 +9,14 @@ const {
   activeVerifiedMerchantStateSql,
 } = require('../utils/verified-merchant');
 
+const USER_INTERACTION_QUOTAS = {
+  dailyConsultationLimit: 10,
+  dailyConsultationPerTargetLimit: 3,
+  hourlyConsultationMessageLimit: 10,
+  unansweredMessageLimit: 3,
+  dailyFeedbackLimit: 3,
+};
+
 const profileSelect = `
   SELECT u.id, u.phone, u.nickname, u.avatar, u.bio, u.city, u.role,
          (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
@@ -37,6 +45,50 @@ async function verifyPassword(userId, password) {
   const testPassword = process.env.TEST_LOGIN_PASSWORD ||
     (process.env.NODE_ENV !== 'production' ? '123456' : '');
   return Boolean(testPassword) && password === testPassword;
+}
+
+async function countRows(sql, params, executor = db) {
+  const [[row]] = await executor.query(sql, params);
+  return Number(row?.total || 0);
+}
+
+function valuesDiffer(nextValue, currentValue) {
+  return String(nextValue || '').trim() !== String(currentValue || '').trim();
+}
+
+function avatarChangeBlocked(changedAt) {
+  if (!changedAt) return false;
+  const lastChanged = new Date(changedAt).getTime();
+  return Number.isFinite(lastChanged) && Date.now() - lastChanged < 31 * 24 * 60 * 60 * 1000;
+}
+
+async function ensureAvatarCanChange(userId, nextAvatar) {
+  const [rows] = await db.query(
+    'SELECT avatar, avatar_changed_at FROM users WHERE id = ? LIMIT 1',
+    [userId]
+  );
+  const current = rows[0];
+  if (!current) return { allowed: false, message: '用户不存在', status: 404 };
+  if (!valuesDiffer(nextAvatar, current.avatar)) return { allowed: true, changed: false, current };
+  if (avatarChangeBlocked(current.avatar_changed_at)) {
+    return {
+      allowed: false,
+      message: '头像每月只能更换一次，请下月再试',
+      status: 429,
+    };
+  }
+  return { allowed: true, changed: true, current };
+}
+
+async function markMerchantVerificationPending(userId) {
+  await db.query(
+    `UPDATE user_roles
+     SET verified_status = 'pending',
+         verified_applied_at = NOW(),
+         review_note = '商家图片资料已修改，请重新审核'
+     WHERE user_id = ? AND role = 'merchant' AND verified_status = 'approved'`,
+    [userId]
+  );
 }
 
 // 获取用户资料
@@ -305,6 +357,12 @@ async function upsertMerchantProfile(req, res) {
     req.body.consultation_enabled === 'true' ||
     req.body.consultation_enabled === '1' ||
     req.body.consultation_enabled === 1;
+  const currentProfile = await getMerchantProfileData(req.user.id);
+  const imageFieldsChanged = currentProfile
+    ? ['logo_url', 'cover_url', 'license_url', 'authorization_url'].some((field) =>
+        valuesDiffer(req.body[field], currentProfile[field])
+      )
+    : Boolean(logoUrl || coverUrl || licenseUrl || authorizationUrl);
 
   await db.query(
     `INSERT INTO merchant_profiles
@@ -350,8 +408,15 @@ async function upsertMerchantProfile(req, res) {
       consultationEnabled ? 1 : 0,
     ]
   );
+  if (imageFieldsChanged) {
+    await markMerchantVerificationPending(req.user.id);
+  }
   const profile = await getMerchantProfileData(req.user.id);
-  return success(res, profile, '商家资料已保存');
+  return success(
+    res,
+    profile,
+    imageFieldsChanged ? '商家图片资料已保存，需后台重新审核' : '商家资料已保存'
+  );
 }
 
 async function applyVerifiedMerchant(req, res) {
@@ -697,6 +762,29 @@ async function createDesignerConsultation(req, res) {
     req.body.has_project === 1;
   if (!content) return error(res, '请填写咨询内容');
 
+  const todayConsultations = await countRows(
+    `SELECT COUNT(*) AS total FROM designer_consultations
+     WHERE user_id = ? AND created_at >= CURDATE()`,
+    [req.user.id]
+  );
+  if (todayConsultations >= USER_INTERACTION_QUOTAS.dailyConsultationLimit) {
+    return error(res, `今天最多发起 ${USER_INTERACTION_QUOTAS.dailyConsultationLimit} 条咨询，请明天再试`, 429);
+  }
+
+  const todayTargetConsultations = await countRows(
+    `SELECT COUNT(*) AS total FROM designer_consultations
+     WHERE user_id = ? AND designer_id = ? AND target_role = ?
+       AND created_at >= CURDATE()`,
+    [req.user.id, targetId, targetRole]
+  );
+  if (todayTargetConsultations >= USER_INTERACTION_QUOTAS.dailyConsultationPerTargetLimit) {
+    return error(
+      res,
+      `同一个咨询对象每天最多发起 ${USER_INTERACTION_QUOTAS.dailyConsultationPerTargetLimit} 条咨询`,
+      429
+    );
+  }
+
   const [result] = await db.query(
     `INSERT INTO designer_consultations
      (designer_id, target_role, user_id, content, project_city, renovation_stage, has_project)
@@ -852,6 +940,29 @@ async function sendConsultationMessage(req, res) {
 
   const content = String(req.body.content || '').trim().slice(0, 1000);
   if (!content) return error(res, '请填写消息内容');
+
+  const hourlyMessages = await countRows(
+    `SELECT COUNT(*) AS total FROM consultation_messages
+     WHERE sender_id = ? AND created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)`,
+    [req.user.id]
+  );
+  if (hourlyMessages >= USER_INTERACTION_QUOTAS.hourlyConsultationMessageLimit) {
+    return error(res, `每小时最多发送 ${USER_INTERACTION_QUOTAS.hourlyConsultationMessageLimit} 条咨询消息，请稍后再试`, 429);
+  }
+
+  const [latestMessages] = await db.query(
+    `SELECT sender_id FROM consultation_messages
+     WHERE consultation_id = ?
+     ORDER BY created_at DESC, id DESC
+     LIMIT ?`,
+    [consultationId, USER_INTERACTION_QUOTAS.unansweredMessageLimit]
+  );
+  if (
+    latestMessages.length >= USER_INTERACTION_QUOTAS.unansweredMessageLimit &&
+    latestMessages.every((message) => Number(message.sender_id) === Number(req.user.id))
+  ) {
+    return error(res, `请等待对方回复后再继续发送，连续最多 ${USER_INTERACTION_QUOTAS.unansweredMessageLimit} 条`, 429);
+  }
 
   const connection = await db.getConnection();
   try {
@@ -1129,14 +1240,23 @@ async function updateProfile(req, res) {
   const { nickname, avatar, bio, city } = req.body;
   const normalizedNickname = String(nickname || '').trim();
   if (!normalizedNickname) return error(res, '昵称不能为空');
+  const normalizedAvatar = String(avatar || '').trim().slice(0, 255);
+  const avatarCheck = await ensureAvatarCanChange(req.user.id, normalizedAvatar);
+  if (!avatarCheck.allowed) {
+    return error(res, avatarCheck.message, avatarCheck.status);
+  }
 
   await db.query(
-    'UPDATE users SET nickname = ?, avatar = ?, bio = ?, city = ? WHERE id = ?',
+    `UPDATE users
+     SET nickname = ?, avatar = ?, bio = ?, city = ?,
+         avatar_changed_at = CASE WHEN ? THEN NOW() ELSE avatar_changed_at END
+     WHERE id = ?`,
     [
       normalizedNickname.slice(0, 50),
-      String(avatar || '').trim().slice(0, 255),
+      normalizedAvatar,
       String(bio || '').trim().slice(0, 200),
       String(city || '').trim().slice(0, 50),
+      avatarCheck.changed ? 1 : 0,
       req.user.id
     ]
   );
@@ -1190,10 +1310,17 @@ async function updateRole(req, res) {
 async function uploadAvatar(req, res) {
   if (!req.file) return error(res, '请选择头像图片');
   const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/avatars/${req.file.filename}`;
-  const [rows] = await db.query('SELECT avatar FROM users WHERE id = ?', [req.user.id]);
-  const oldAvatar = rows[0]?.avatar || '';
+  const avatarCheck = await ensureAvatarCanChange(req.user.id, avatarUrl);
+  if (!avatarCheck.allowed) {
+    await fs.unlink(req.file.path).catch(() => {});
+    return error(res, avatarCheck.message, avatarCheck.status);
+  }
+  const oldAvatar = avatarCheck.current?.avatar || '';
 
-  await db.query('UPDATE users SET avatar = ? WHERE id = ?', [avatarUrl, req.user.id]);
+  await db.query(
+    'UPDATE users SET avatar = ?, avatar_changed_at = NOW() WHERE id = ?',
+    [avatarUrl, req.user.id]
+  );
 
   if (oldAvatar.includes('/uploads/avatars/')) {
     const oldName = path.basename(oldAvatar);
@@ -1395,6 +1522,14 @@ async function submitFeedback(req, res) {
     ? String(req.body.contact).trim().slice(0, 80)
     : null;
   if (!content) return error(res, '请先填写反馈内容');
+  const todayFeedback = await countRows(
+    `SELECT COUNT(*) AS total FROM user_feedback
+     WHERE user_id = ? AND created_at >= CURDATE()`,
+    [req.user.id]
+  );
+  if (todayFeedback >= USER_INTERACTION_QUOTAS.dailyFeedbackLimit) {
+    return error(res, `今天最多提交 ${USER_INTERACTION_QUOTAS.dailyFeedbackLimit} 条反馈，请明天再试`, 429);
+  }
   await db.query(
     `INSERT INTO user_feedback (user_id, content, contact)
      VALUES (?, ?, ?)`,

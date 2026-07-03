@@ -65,6 +65,25 @@ const legacyInvalidProjectNames = new Set([
 ]);
 const ownerSearchAttempts = new Map();
 const ownerInviteAttempts = new Map();
+const PROJECT_UPLOAD_QUOTAS = {
+  checkInDailyLimit: 3,
+  checkInTotalLimit: 50,
+  inspectionImageLimit: 3,
+  expenseReceiptLimit: 3,
+  spaceImagesPerSpaceLimit: 30,
+  spaceImagesDailyLimit: 20,
+  designDocumentsPerProjectLimit: 30,
+  designDocumentsDailyLimit: 5,
+  handoverImageLimit: 6,
+  handoverImagesDailyLimit: 20,
+  materialImageLimit: 6,
+  materialImagesDailyLimit: 20,
+};
+
+async function countRows(sql, params, executor = db) {
+  const [[row]] = await executor.query(sql, params);
+  return Number(row?.total || 0);
+}
 
 function pruneWindowAttempts(attempts, windowMs) {
   const now = Date.now();
@@ -1583,6 +1602,16 @@ async function uploadProjectSpaceImages(req, res) {
     return error(res, '空间不存在', 404);
   }
   if (!req.files?.length) return error(res, '请选择要上传的图片');
+  const quotaError = await getProjectSpaceImageQuotaError(
+    projectId,
+    spaceId,
+    req.user.id,
+    req.files.length
+  );
+  if (quotaError) {
+    await Promise.all(req.files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, quotaError, 429);
+  }
 
   const host = `${req.protocol}://${req.get('host')}`;
   const imageUrls = req.files.map(
@@ -1600,6 +1629,36 @@ async function uploadProjectSpaceImages(req, res) {
   return success(res, null, `${req.files.length}张图片上传成功`);
 }
 
+async function getProjectSpaceImageQuotaError(
+  projectId,
+  spaceId,
+  userId,
+  addingCount,
+  connection = db
+) {
+  const currentSpaceImages = await countRows(
+    'SELECT COUNT(*) AS total FROM project_space_images WHERE space_id = ?',
+    [spaceId],
+    connection
+  );
+  if (currentSpaceImages + addingCount > PROJECT_UPLOAD_QUOTAS.spaceImagesPerSpaceLimit) {
+    return `单个空间最多保存 ${PROJECT_UPLOAD_QUOTAS.spaceImagesPerSpaceLimit} 张图片，请先删除不需要的图片`;
+  }
+  const todayImages = await countRows(
+    `SELECT COUNT(*) AS total
+     FROM project_space_images psi
+     JOIN project_spaces ps ON ps.id = psi.space_id
+     WHERE ps.project_id = ? AND psi.created_by = ?
+       AND psi.created_at >= CURDATE()`,
+    [projectId, userId],
+    connection
+  );
+  if (todayImages + addingCount > PROJECT_UPLOAD_QUOTAS.spaceImagesDailyLimit) {
+    return `同一项目每天最多上传 ${PROJECT_UPLOAD_QUOTAS.spaceImagesDailyLimit} 张空间图片，请明天再试`;
+  }
+  return '';
+}
+
 async function applyUploadProjectSpaceImages(
   projectId,
   spaceId,
@@ -1608,6 +1667,14 @@ async function applyUploadProjectSpaceImages(
   userId,
   connection = db
 ) {
+  const quotaError = await getProjectSpaceImageQuotaError(
+    projectId,
+    spaceId,
+    userId,
+    imageUrls.length,
+    connection
+  );
+  if (quotaError) throw new Error(quotaError);
   const [existingPrimary] = imageType === 'rendering'
     ? await connection.query(
       `SELECT id FROM project_space_images
@@ -2936,6 +3003,24 @@ async function createProjectCheckIn(req, res) {
       return error(res, '分享成员包含非项目成员');
     }
   }
+  const todayCheckIns = await countRows(
+    `SELECT COUNT(*) AS total FROM project_checkins
+     WHERE project_id = ? AND user_id = ? AND created_at >= CURDATE()`,
+    [projectId, req.user.id]
+  );
+  if (todayCheckIns >= PROJECT_UPLOAD_QUOTAS.checkInDailyLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `同一项目每天最多发布 ${PROJECT_UPLOAD_QUOTAS.checkInDailyLimit} 条工地打卡，请明天再试`, 429);
+  }
+  const totalCheckIns = await countRows(
+    `SELECT COUNT(*) AS total FROM project_checkins
+     WHERE project_id = ?`,
+    [projectId]
+  );
+  if (totalCheckIns >= PROJECT_UPLOAD_QUOTAS.checkInTotalLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `同一项目工地打卡最多 ${PROJECT_UPLOAD_QUOTAS.checkInTotalLimit} 条，请先删除不需要的打卡记录`, 429);
+  }
 
   const connection = await db.getConnection();
   try {
@@ -3403,6 +3488,10 @@ async function createProjectExpense(req, res) {
     await removeUploadedFiles(files);
     return error(res, '费用状态不正确');
   }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.expenseReceiptLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `费用票据最多上传 ${PROJECT_UPLOAD_QUOTAS.expenseReceiptLimit} 张`);
+  }
 
   const connection = await db.getConnection();
   try {
@@ -3686,6 +3775,25 @@ function normalizeUploadedOriginalName(originalName) {
   }
 }
 
+async function getProjectDesignDocumentQuotaError(projectId, userId) {
+  const totalDocuments = await countRows(
+    'SELECT COUNT(*) AS total FROM project_design_documents WHERE project_id = ?',
+    [projectId]
+  );
+  if (totalDocuments >= PROJECT_UPLOAD_QUOTAS.designDocumentsPerProjectLimit) {
+    return `同一项目最多保存 ${PROJECT_UPLOAD_QUOTAS.designDocumentsPerProjectLimit} 份设计文档，请先删除或归档不需要的资料`;
+  }
+  const todayDocuments = await countRows(
+    `SELECT COUNT(*) AS total FROM project_design_documents
+     WHERE project_id = ? AND uploaded_by = ? AND created_at >= CURDATE()`,
+    [projectId, userId]
+  );
+  if (todayDocuments >= PROJECT_UPLOAD_QUOTAS.designDocumentsDailyLimit) {
+    return `同一项目每天最多新增 ${PROJECT_UPLOAD_QUOTAS.designDocumentsDailyLimit} 份设计文档，请明天再试`;
+  }
+  return '';
+}
+
 async function uploadProjectDesignDocument(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -3694,6 +3802,14 @@ async function uploadProjectDesignDocument(req, res) {
     return error(res, '项目不存在或无上传权限', 404);
   }
   if (!req.file) return error(res, '请选择要上传的设计资料');
+  const designDocumentQuotaError = await getProjectDesignDocumentQuotaError(
+    projectId,
+    req.user.id
+  );
+  if (designDocumentQuotaError) {
+    await removeUploadedFiles([req.file]);
+    return error(res, designDocumentQuotaError, 429);
+  }
   const fileType = getDesignDocumentFileType(req.file);
   const originalName = normalizeUploadedOriginalName(req.file.originalname);
   try {
@@ -3750,6 +3866,13 @@ async function createProjectDesignDocument(req, res) {
   if (!title) return error(res, '请填写资料标题');
   if (!fileUrl) {
     return error(res, fileType === 'webview_link' ? '请填写链接地址' : '请上传设计资料文件');
+  }
+  const designDocumentQuotaError = await getProjectDesignDocumentQuotaError(
+    projectId,
+    req.user.id
+  );
+  if (designDocumentQuotaError) {
+    return error(res, designDocumentQuotaError, 429);
   }
   const previewStatuses = new Set(['pending', 'ready', 'failed', 'none']);
   const previewTypes = new Set(['image', 'pdf', 'none']);
@@ -4176,6 +4299,22 @@ async function createProjectHandover(req, res) {
     await removeUploadedFiles(files);
     return error(res, '只有设计师、项目经理或管理员可以创建设计交底', 403);
   }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.handoverImageLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `设计交底图片最多上传 ${PROJECT_UPLOAD_QUOTAS.handoverImageLimit} 张`);
+  }
+  const todayHandoverImages = await countRows(
+    `SELECT COUNT(*) AS total
+     FROM project_handover_media media
+     JOIN project_handovers handover ON handover.id = media.handover_id
+     WHERE handover.project_id = ? AND media.uploaded_by = ?
+       AND media.created_at >= CURDATE()`,
+    [projectId, req.user.id]
+  );
+  if (todayHandoverImages + files.length > PROJECT_UPLOAD_QUOTAS.handoverImagesDailyLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `同一项目每天最多上传 ${PROJECT_UPLOAD_QUOTAS.handoverImagesDailyLimit} 张交底图片，请明天再试`, 429);
+  }
   const title = String(req.body.title || '').trim().slice(0, 120);
   const content = String(req.body.content || '').trim().slice(0, 3000);
   const stageId = req.body.stage_id ? Number(req.body.stage_id) : null;
@@ -4440,6 +4579,22 @@ async function createProjectMaterial(req, res) {
   if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
     await removeUploadedFiles(files);
     return error(res, '项目不存在或无新建权限', 404);
+  }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.materialImageLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `材料图片最多上传 ${PROJECT_UPLOAD_QUOTAS.materialImageLimit} 张`);
+  }
+  const todayMaterialImages = await countRows(
+    `SELECT COUNT(*) AS total
+     FROM project_material_media media
+     JOIN project_material_items material ON material.id = media.material_id
+     WHERE material.project_id = ? AND media.uploaded_by = ?
+       AND media.created_at >= CURDATE()`,
+    [projectId, req.user.id]
+  );
+  if (todayMaterialImages + files.length > PROJECT_UPLOAD_QUOTAS.materialImagesDailyLimit) {
+    await removeUploadedFiles(files);
+    return error(res, `同一项目每天最多上传 ${PROJECT_UPLOAD_QUOTAS.materialImagesDailyLimit} 张材料图片，请明天再试`, 429);
   }
   const name = String(req.body.name || '').trim().slice(0, 120);
   const category = String(req.body.category || 'other');
@@ -6570,6 +6725,10 @@ async function createProjectInspection(req, res) {
     return error(res, '请选择任务并填写验收说明');
   }
   if (!files.length) return error(res, '请至少上传一张现场照片');
+  if (files.length > PROJECT_UPLOAD_QUOTAS.inspectionImageLimit) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, `验收图片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
+  }
   let responsibleMember = null;
   if (responsibleUserId) {
     responsibleMember = await requireActiveProjectMember(projectId, responsibleUserId);
@@ -6895,6 +7054,10 @@ async function resubmitProjectInspection(req, res) {
   if (!description || !files.length) {
     await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, '请填写整改说明并上传整改照片');
+  }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.inspectionImageLimit) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, `整改验收图片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
   }
   const connection = await db.getConnection();
   try {

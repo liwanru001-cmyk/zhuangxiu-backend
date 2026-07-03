@@ -69,7 +69,7 @@ const inspectionImageUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024, files: 9 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 3 },
   fileFilter: (req, file, callback) => {
     callback(null, file.mimetype.startsWith('image/'));
   },
@@ -147,7 +147,7 @@ const expenseMediaUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024, files: 9 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 3 },
   fileFilter: (req, file, callback) => {
     callback(null, file.mimetype.startsWith('image/'));
   },
@@ -227,7 +227,7 @@ const handoverMediaUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024, files: 9 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 6 },
   fileFilter: (req, file, callback) => {
     callback(null, file.mimetype.startsWith('image/'));
   },
@@ -246,7 +246,7 @@ const materialMediaUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024, files: 9 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 6 },
   fileFilter: (req, file, callback) => {
     callback(null, file.mimetype.startsWith('image/'));
   },
@@ -431,7 +431,7 @@ router.get(
 router.post(
   '/projects/:id/inspections',
   ...protectedRoute,
-  inspectionImageUpload.array('images', 9),
+  inspectionImageUpload.array('images', 3),
   setUploadedFilePermissions,
   asyncHandler(controller.createProjectInspection)
 );
@@ -448,7 +448,7 @@ router.put(
 router.post(
   '/projects/:id/inspections/:inspectionId/resubmit',
   ...protectedRoute,
-  inspectionImageUpload.array('images', 9),
+  inspectionImageUpload.array('images', 3),
   setUploadedFilePermissions,
   asyncHandler(controller.resubmitProjectInspection)
 );
@@ -503,7 +503,7 @@ router.get(
 router.post(
   '/projects/:id/expenses',
   ...protectedRoute,
-  expenseMediaUpload.array('receipts', 9),
+  expenseMediaUpload.array('receipts', 3),
   setUploadedFilePermissions,
   asyncHandler(controller.createProjectExpense)
 );
@@ -557,7 +557,7 @@ router.get(
 router.post(
   '/projects/:id/handovers',
   ...protectedRoute,
-  handoverMediaUpload.array('images', 9),
+  handoverMediaUpload.array('images', 6),
   setUploadedFilePermissions,
   asyncHandler(controller.createProjectHandover)
 );
@@ -574,7 +574,7 @@ router.get(
 router.post(
   '/projects/:id/materials',
   ...protectedRoute,
-  materialMediaUpload.array('images', 9),
+  materialMediaUpload.array('images', 6),
   setUploadedFilePermissions,
   asyncHandler(controller.createProjectMaterial)
 );

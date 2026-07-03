@@ -31,6 +31,10 @@ function normalizePage(query) {
   return { page, pageSize, offset: (page - 1) * pageSize };
 }
 
+function valuesDiffer(nextValue, currentValue) {
+  return String(nextValue || '').trim() !== String(currentValue || '').trim();
+}
+
 async function listBusinessCatalog(req, res) {
   const [rows] = await db.query(
     `SELECT child.id, child.parent_id, child.code, child.name, child.level,
@@ -875,10 +879,23 @@ async function updateCompany(req, res) {
   const payload = companyPayload(req.body);
   if (!payload.name) return error(res, '请填写公司名称');
 
+  const [companyRows] = await db.query(
+    'SELECT logo_url, license_url FROM companies WHERE id = ? AND status <> \'deleted\' LIMIT 1',
+    [id]
+  );
+  if (!companyRows[0]) return error(res, '公司不存在', 404);
+  const imageFieldsChanged =
+    valuesDiffer(payload.logo_url, companyRows[0].logo_url) ||
+    valuesDiffer(payload.license_url, companyRows[0].license_url);
+
   await db.query(
     `UPDATE companies
      SET name = ?, logo_url = ?, intro = ?, service_area = ?, city = ?,
-         address = ?, contact_phone = ?, license_url = ?
+         address = ?, contact_phone = ?, license_url = ?,
+         verification_status = CASE
+           WHEN ? THEN 'pending'
+           ELSE verification_status
+         END
      WHERE id = ? AND status <> 'deleted'`,
     [
       payload.name,
@@ -889,6 +906,7 @@ async function updateCompany(req, res) {
       payload.address,
       payload.contact_phone,
       payload.license_url,
+      imageFieldsChanged ? 1 : 0,
       id,
     ]
   );

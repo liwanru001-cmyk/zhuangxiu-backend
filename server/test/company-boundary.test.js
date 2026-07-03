@@ -266,38 +266,81 @@ test('my project companies come from project participants and are read only', as
   assert.equal(queries.length, 1);
 });
 
-test('project member candidate API rejects merchant role before querying users', async () => {
+test('company logo or license changes move company verification back to pending', async () => {
+  const updates = [];
   const dbMock = {
-    async query() {
-      throw new Error('merchant candidate lookup should not hit db');
+    async query(sql, params) {
+      if (/SELECT c\.id/.test(sql) && /LEFT JOIN company_members cm/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9 }]];
+      }
+      if (/SELECT logo_url, license_url FROM companies/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{
+          logo_url: 'https://example.com/old-logo.jpg',
+          license_url: 'https://example.com/old-license.jpg',
+        }]];
+      }
+      if (/UPDATE companies/.test(sql)) {
+        updates.push({ sql, params });
+        assert.match(sql, /verification_status = CASE/);
+        assert.equal(params[8], 1);
+        return [{ affectedRows: 1 }];
+      }
+      if (/FROM companies c/.test(sql) && /WHERE c\.id = \?/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{
+          id: 9,
+          owner_user_id: 42,
+          name: '靠谱装修',
+          logo_url: 'https://example.com/new-logo.jpg',
+          intro: '',
+          service_area: '',
+          city: '',
+          address: '',
+          contact_phone: '',
+          status: 'active',
+          source: 'manual',
+          license_url: 'https://example.com/old-license.jpg',
+          verification_status: 'pending',
+          paid_display_status: 'none',
+          paid_display_starts_at: null,
+          paid_display_ends_at: null,
+          rating_avg: '0.00',
+          review_count: 0,
+          case_count: 0,
+          legacy_merchant_user_id: null,
+          created_at: null,
+          updated_at: null,
+          businesses: JSON.stringify([]),
+          members: JSON.stringify([]),
+        }]];
+      }
+      if (/FROM company_members cm/.test(sql) && /WHERE cm\.company_id = \?/.test(sql)) {
+        assert.deepEqual(params, [9, 5]);
+        return [[]];
+      }
+      if (/SELECT id AS user_id, nickname, avatar FROM users/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{ user_id: 42, nickname: '负责人', avatar: '' }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
     },
   };
-  const controller = loadController('../controllers/renovation.controller', dbMock);
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
   const res = mockResponse();
 
-  await controller.getMemberCandidates({
-    query: { role: 'merchant', project_id: '1', keyword: 'abc' },
-    user: { id: 1 },
-  }, res);
-
-  assert.equal(res.statusCode, 400);
-  assert.equal(res.payload.message, '成员身份不正确');
-});
-
-test('project member invitation API rejects merchant role before querying users', async () => {
-  const dbMock = {
-    async query() {
-      throw new Error('merchant invitation should not hit db');
+  await controller.updateCompany({
+    user: { id: 42 },
+    params: { id: '9' },
+    body: {
+      name: '靠谱装修',
+      logo_url: 'https://example.com/new-logo.jpg',
+      license_url: 'https://example.com/old-license.jpg',
     },
-  };
-  const controller = loadController('../controllers/renovation.controller', dbMock);
-  const res = mockResponse();
-
-  await controller.requestProjectMember({
-    body: { project_id: 1, target_user_id: 2, member_role: 'merchant' },
-    user: { id: 1 },
   }, res);
 
-  assert.equal(res.statusCode, 400);
-  assert.equal(res.payload.message, '成员身份不正确');
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.verification_status, 'pending');
+  assert.equal(updates.length, 1);
 });

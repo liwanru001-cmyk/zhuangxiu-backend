@@ -55,10 +55,17 @@ const ALLOWED_QUESTION_AUDIENCES = new Set([
 ]);
 const NOTE_MEDIA_LIMITS = {
   maxImages: 9,
-  maxVideos: 1,
+  maxVideos: 0,
   maxImageBytes: 2 * 1024 * 1024,
   maxVideoBytes: 10 * 1024 * 1024,
   maxTotalBytes: 20 * 1024 * 1024,
+};
+const NOTE_QUOTAS = {
+  dailyPublishLimit: 5,
+  totalPublishLimit: 50,
+  dailyCommentLimit: 10,
+  minuteCommentLimit: 5,
+  commentMaxLength: 60,
 };
 
 function normalizeUploadUrl(value) {
@@ -80,6 +87,11 @@ async function removeUploadedNoteFiles(files) {
   if (!files?.length) return;
   const fs = require('fs/promises');
   await Promise.allSettled(files.map((file) => fs.unlink(file.path)));
+}
+
+async function countUserRows(sql, params) {
+  const [[row]] = await db.query(sql, params);
+  return Number(row?.total || 0);
 }
 
 // 首页笔记列表（瀑布流分页）
@@ -320,11 +332,8 @@ async function uploadMedia(req, res) {
       }
       images.push(media.url);
     } else {
-      if ((file.size || 0) > NOTE_MEDIA_LIMITS.maxVideoBytes) {
-        await removeUploadedNoteFiles(files);
-        return error(res, '单个视频不能超过 10MB');
-      }
-      videos.push({ ...media, cover_url: '', duration: 0 });
+      await removeUploadedNoteFiles(files);
+      return error(res, '暂不支持上传视频');
     }
   }
   if (totalBytes > NOTE_MEDIA_LIMITS.maxTotalBytes) {
@@ -344,7 +353,7 @@ async function uploadMedia(req, res) {
     video: videos[0] || null,
     policy: {
       image_max_mb: Math.round(NOTE_MEDIA_LIMITS.maxImageBytes / 1024 / 1024),
-      video_max_mb: Math.round(NOTE_MEDIA_LIMITS.maxVideoBytes / 1024 / 1024),
+      video_supported: false,
       total_max_mb: Math.round(NOTE_MEDIA_LIMITS.maxTotalBytes / 1024 / 1024),
       storage_tier: 'hot_local',
     },
@@ -412,9 +421,29 @@ async function create(req, res) {
     images.length === 0 &&
     !video
   ) {
-    return error(res, '请至少上传一张图片或视频');
+    return error(res, '请至少上传一张图片');
   }
   if (images.length > 9) return error(res, '最多上传 9 张图片');
+  if (video) return error(res, '暂不支持发布视频');
+
+  const totalNotes = await countUserRows(
+    `SELECT COUNT(*) AS total FROM notes
+     WHERE user_id = ? AND status IN (1, 3)`,
+    [req.user.id]
+  );
+  if (totalNotes >= NOTE_QUOTAS.totalPublishLimit) {
+    return error(res, `笔记总数最多 ${NOTE_QUOTAS.totalPublishLimit} 篇，请先删除部分笔记`, 429);
+  }
+
+  const todayNotes = await countUserRows(
+    `SELECT COUNT(*) AS total FROM notes
+     WHERE user_id = ? AND status IN (1, 3)
+       AND created_at >= CURDATE()`,
+    [req.user.id]
+  );
+  if (todayNotes >= NOTE_QUOTAS.dailyPublishLimit) {
+    return error(res, `今天最多发布 ${NOTE_QUOTAS.dailyPublishLimit} 篇笔记，请明天再试`, 429);
+  }
 
   const [result] = await db.query(
     `INSERT INTO notes
@@ -556,11 +585,34 @@ async function createComment(req, res) {
   const { id } = req.params;
   const { content, reply_to } = req.body;
 
-  if (!content?.trim()) return error(res, '评论不能为空');
+  const trimmedContent = String(content || '').trim();
+  if (!trimmedContent) return error(res, '评论不能为空');
+  if (trimmedContent.length > NOTE_QUOTAS.commentMaxLength) {
+    return error(res, `评论最多 ${NOTE_QUOTAS.commentMaxLength} 个字`);
+  }
+
+  const todayComments = await countUserRows(
+    `SELECT COUNT(*) AS total FROM comments
+     WHERE user_id = ? AND status = 1 AND created_at >= CURDATE()`,
+    [req.user.id]
+  );
+  if (todayComments >= NOTE_QUOTAS.dailyCommentLimit) {
+    return error(res, `今天最多评论 ${NOTE_QUOTAS.dailyCommentLimit} 条，请明天再试`, 429);
+  }
+
+  const recentComments = await countUserRows(
+    `SELECT COUNT(*) AS total FROM comments
+     WHERE user_id = ? AND status = 1
+       AND created_at >= DATE_SUB(NOW(), INTERVAL 1 MINUTE)`,
+    [req.user.id]
+  );
+  if (recentComments >= NOTE_QUOTAS.minuteCommentLimit) {
+    return error(res, '评论太频繁了，请稍后再试', 429);
+  }
 
   const [result] = await db.query(
     'INSERT INTO comments (user_id, note_id, reply_to, content) VALUES (?, ?, ?, ?)',
-    [req.user.id, id, reply_to || null, content.trim()]
+    [req.user.id, id, reply_to || null, trimmedContent]
   );
 
   await db.query('UPDATE notes SET comments_count = comments_count + 1 WHERE id = ?', [id]);
