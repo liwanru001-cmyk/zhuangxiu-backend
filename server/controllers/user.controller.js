@@ -867,6 +867,36 @@ async function sendConsultationMessage(req, res) {
        VALUES (?, ?)`,
       [result.insertId, req.user.id]
     );
+    const senderIsTarget = Number(req.user.id) === Number(consultation.designer_id);
+    const recipientId = senderIsTarget
+      ? Number(consultation.user_id)
+      : Number(consultation.designer_id);
+    const replyTitle = senderIsTarget
+      ? '咨询有新回复'
+      : consultation.target_role === 'merchant'
+        ? '商品咨询有新消息'
+        : '咨询有新消息';
+    await connection.query(
+      `INSERT INTO project_action_notifications
+         (item_id, recipient_id, event_type, delivery_status, payload)
+       VALUES (NULL, ?, 'consultation', 'pending', ?)`,
+      [
+        recipientId,
+        JSON.stringify({
+          source: 'consultation',
+          targetRole: consultation.target_role,
+          consultationId,
+          messageId: result.insertId,
+          senderUserId: req.user.id,
+          title: replyTitle,
+          content: content.length > 48 ? `${content.slice(0, 48)}...` : content,
+          route: 'consultation_chat',
+          deepLink: { consultationId },
+          entityType: 'consultation',
+          entityId: consultationId,
+        }),
+      ]
+    );
     if (Number(req.user.id) === Number(consultation.designer_id)) {
       await connection.query(
         `UPDATE designer_consultations

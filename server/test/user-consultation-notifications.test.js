@@ -118,3 +118,83 @@ test('notifications API returns consultation notification routing data', async (
   assert.equal(res.payload.data[0].deep_link.consultationId, 88);
   assert.equal(res.payload.data[0].entity_id, 88);
 });
+
+test('consultation reply creates notification for the other participant', async () => {
+  const connectionCalls = [];
+  const connection = {
+    async beginTransaction() {
+      connectionCalls.push({ type: 'begin' });
+    },
+    async query(sql, params) {
+      if (/INSERT INTO consultation_messages/.test(sql)) {
+        connectionCalls.push({ type: 'message', params });
+        return [{ insertId: 501 }];
+      }
+      if (/INSERT IGNORE INTO consultation_message_reads/.test(sql)) {
+        connectionCalls.push({ type: 'read', params });
+        return [{ affectedRows: 1 }];
+      }
+      if (/INSERT INTO project_action_notifications/.test(sql)) {
+        connectionCalls.push({ type: 'notification', params });
+        return [{ insertId: 502 }];
+      }
+      if (/UPDATE designer_consultations/.test(sql)) {
+        connectionCalls.push({ type: 'status', params });
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected connection query: ${sql}`);
+    },
+    async commit() {
+      connectionCalls.push({ type: 'commit' });
+    },
+    async rollback() {
+      connectionCalls.push({ type: 'rollback' });
+    },
+    release() {
+      connectionCalls.push({ type: 'release' });
+    },
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM designer_consultations c/.test(sql) && /WHERE c\.id = \?/.test(sql)) {
+        assert.deepEqual(params, [88, 42, 42]);
+        return [[{
+          id: 88,
+          designer_id: 42,
+          target_role: 'merchant',
+          user_id: 7,
+          content: '咨询商品：柔光砖',
+          status: 'pending',
+          designer_nickname: '木序家居',
+          designer_avatar: '',
+          user_nickname: '用户',
+          user_avatar: '',
+        }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() {
+      return connection;
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.sendConsultationMessage({
+    user: { id: 42 },
+    params: { id: '88' },
+    body: { content: '您好，这款砖有现货，可以到店看样。' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  const notification = connectionCalls.find((item) => item.type === 'notification');
+  assert.ok(notification);
+  assert.equal(notification.params[0], 7);
+  const payload = JSON.parse(notification.params[1]);
+  assert.equal(payload.source, 'consultation');
+  assert.equal(payload.title, '咨询有新回复');
+  assert.equal(payload.consultationId, 88);
+  assert.equal(payload.messageId, 501);
+  assert.equal(payload.route, 'consultation_chat');
+  assert.equal(connectionCalls.at(-2).type, 'commit');
+});
