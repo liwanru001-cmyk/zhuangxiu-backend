@@ -4,6 +4,7 @@ const {
   hasActiveVerifiedMerchant,
   activeVerifiedMerchantExistsSql,
 } = require('../utils/verified-merchant');
+const { requireProjectContext } = require('../utils/project-context');
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -392,6 +393,11 @@ async function getActivePublicProduct(productId) {
 }
 
 async function favoriteProduct(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '收藏商品必须绑定装修项目，请选择项目后再收藏',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const productId = Number(req.params.id);
   if (!productId) return error(res, '产品不存在', 404);
   const product = await getActivePublicProduct(productId);
@@ -405,10 +411,15 @@ async function favoriteProduct(req, res) {
      VALUES (?, ?, ?)`,
     [req.user.id, productId, product.merchant_user_id]
   );
-  return success(res, { favorited: true }, '已收藏');
+  return success(res, { favorited: true, project_id: projectContext.projectId }, '已收藏');
 }
 
 async function unfavoriteProduct(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '取消收藏商品必须绑定装修项目',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const productId = Number(req.params.id);
   if (!productId) return error(res, '产品不存在', 404);
   await db.query(
@@ -416,7 +427,7 @@ async function unfavoriteProduct(req, res) {
      WHERE user_id = ? AND product_id = ?`,
     [req.user.id, productId]
   );
-  return success(res, { favorited: false }, '已取消收藏');
+  return success(res, { favorited: false, project_id: projectContext.projectId }, '已取消收藏');
 }
 
 async function listFavoriteProducts(req, res) {

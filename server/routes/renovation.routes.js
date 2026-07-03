@@ -2,6 +2,7 @@ const express = require('express');
 const auth = require('../middleware/auth');
 const controller = require('../controllers/renovation.controller');
 const asyncHandler = require('../utils/async-handler');
+const { requireProjectContext } = require('../utils/project-context');
 const {
   ensureUploadDir,
   setUploadedFilePermissions,
@@ -19,6 +20,15 @@ function inspectionKbGate(req, res, next) {
   next();
 }
 const protectedRoute = [asyncHandler(auth)];
+
+async function projectContextGate(req, res, next) {
+  if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
+  const context = await requireProjectContext(req, res, {
+    missingMessage: '项目操作必须携带有效 project_id',
+  });
+  if (!context.ok) return context.response;
+  return next();
+}
 
 const floorPlanDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'floor-plans')
@@ -269,6 +279,7 @@ router.delete('/projects/:id', ...protectedRoute, asyncHandler(controller.delete
 router.use(
   '/projects/:id',
   ...protectedRoute,
+  asyncHandler(projectContextGate),
   asyncHandler((req, res, next) => {
     if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
     return controller.requireProjectActiveRoute(req, res, next);
@@ -654,6 +665,7 @@ router.post('/setup', ...protectedRoute, asyncHandler(controller.setup));
 router.post(
   '/floor-plan',
   ...protectedRoute,
+  asyncHandler(projectContextGate),
   floorPlanUpload.single('floor_plan'),
   setUploadedFilePermissions,
   asyncHandler(controller.uploadFloorPlan)
@@ -661,15 +673,15 @@ router.post(
 router.get('/calendar', ...protectedRoute, asyncHandler(controller.getCalendar));
 router.get('/tips', ...protectedRoute, asyncHandler(controller.getTips));
 router.get('/stage/:stageId', ...protectedRoute, asyncHandler(controller.getStageDetail));
-router.put('/task/:taskId', ...protectedRoute, asyncHandler(controller.updateTask));
-router.put('/info', ...protectedRoute, asyncHandler(controller.updateInfo));
-router.delete('/', ...protectedRoute, asyncHandler(controller.resetProject));
+router.put('/task/:taskId', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.updateTask));
+router.put('/info', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.updateInfo));
+router.delete('/', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.resetProject));
 
 // 业主 - 找设计师
 router.get('/users', ...protectedRoute, asyncHandler(controller.listUsers));
-router.post('/designer-request', ...protectedRoute, asyncHandler(controller.requestDesigner));
-router.post('/designer', ...protectedRoute, asyncHandler(controller.bindDesigner));
-router.delete('/designer', ...protectedRoute, asyncHandler(controller.unbindDesigner));
+router.post('/designer-request', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.requestDesigner));
+router.post('/designer', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.bindDesigner));
+router.delete('/designer', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.unbindDesigner));
 
 // 设计师 - 我的工地
 router.get('/my-projects', ...protectedRoute, asyncHandler(controller.getMyProjects));
@@ -682,9 +694,9 @@ router.put('/project-invitations/:id', ...protectedRoute, asyncHandler(controlle
 router.get('/designers', ...protectedRoute, asyncHandler(controller.getDesigners));
 
 // 设计师 - 管理任务
-router.put('/task/:taskId', ...protectedRoute, asyncHandler(controller.updateTask));
-router.put('/task/:taskId/plan', ...protectedRoute, asyncHandler(controller.planTask));
-router.post('/task', ...protectedRoute, asyncHandler(controller.addTask));
-router.put('/stage/:stageId/complete', ...protectedRoute, asyncHandler(controller.completeStage));
+router.put('/task/:taskId', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.updateTask));
+router.put('/task/:taskId/plan', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.planTask));
+router.post('/task', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.addTask));
+router.put('/stage/:stageId/complete', ...protectedRoute, asyncHandler(projectContextGate), asyncHandler(controller.completeStage));
 
 module.exports = router;

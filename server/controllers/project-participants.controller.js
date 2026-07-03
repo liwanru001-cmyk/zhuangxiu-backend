@@ -12,7 +12,6 @@ function mapLegacyRole(role) {
     designer: 'designer',
     project_manager: 'pm',
     project_supervisor: 'supervisor',
-    merchant: 'contractor',
   }[role] || 'client';
 }
 
@@ -73,7 +72,7 @@ function mapInferredCompany(row) {
       designer: 'designer',
       supervisor: 'supervisor',
       project_manager: 'pm',
-      merchant_staff: 'contractor',
+      staff: 'contractor',
       customer_service: 'contractor',
     }[row.member_role] || 'contractor',
     legacyRole: row.member_role || null,
@@ -117,7 +116,7 @@ async function canAccessProject(projectId, userId) {
     `SELECT p.id
      FROM renovation_projects p
      LEFT JOIN project_members pm
-       ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
+       ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1 AND pm.role <> 'merchant'
      WHERE p.id = ?
        AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
        AND (p.user_id = ? OR pm.id IS NOT NULL)
@@ -180,9 +179,9 @@ async function listProjectParticipants(req, res) {
             u.nickname, u.avatar, u.city
      FROM project_members pm
      JOIN users u ON u.id = pm.user_id
-     WHERE pm.project_id = ? AND pm.status = 1
+     WHERE pm.project_id = ? AND pm.status = 1 AND pm.role <> 'merchant'
      ORDER BY FIELD(pm.role, 'owner', 'owner_member', 'project_manager',
-                    'project_supervisor', 'designer', 'merchant'),
+                    'project_supervisor', 'designer'),
               pm.joined_at, pm.id`,
     [projectId]
   );
@@ -210,7 +209,7 @@ async function listProjectParticipants(req, res) {
        ON cm.user_id = pm.user_id AND cm.status = 'active'
      JOIN companies c
        ON c.id = cm.company_id AND c.status <> 'deleted'
-     WHERE pm.project_id = ? AND pm.status = 1`,
+     WHERE pm.project_id = ? AND pm.status = 1 AND pm.role <> 'merchant'`,
     [projectId]
   );
 

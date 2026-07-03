@@ -18,8 +18,10 @@ function mockResponse() {
 
 function loadController(dbMock) {
   const dbPath = require.resolve('../config/db');
+  const projectContextPath = require.resolve('../utils/project-context');
   const controllerPath = require.resolve('../controllers/user.controller');
   delete require.cache[dbPath];
+  delete require.cache[projectContextPath];
   delete require.cache[controllerPath];
   require.cache[dbPath] = {
     id: dbPath,
@@ -34,6 +36,10 @@ test('merchant consultation creates a merchant notification deep link', async ()
   const writes = [];
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 3, 7]);
+        return [[{ id: 3, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
       if (/SELECT u\.id, COALESCE\(profile\.consultation_enabled/.test(sql)) {
         assert.deepEqual(params, [42, 'merchant']);
         return [[{ id: 42, consultation_enabled: 1 }]];
@@ -44,6 +50,10 @@ test('merchant consultation creates a merchant notification deep link', async ()
       if (/INSERT INTO designer_consultations/.test(sql)) {
         writes.push({ type: 'consultation', params });
         return [{ insertId: 88 }];
+      }
+      if (/INSERT IGNORE INTO entity_relations/.test(sql)) {
+        writes.push({ type: 'relation', params });
+        return [{ affectedRows: 1 }];
       }
       if (/INSERT INTO project_action_notifications/.test(sql)) {
         writes.push({ type: 'notification', params });
@@ -60,6 +70,7 @@ test('merchant consultation creates a merchant notification deep link', async ()
     params: { id: '42' },
     body: {
       target_role: 'merchant',
+      project_id: 3,
       content: '咨询商品：柔光砖\n\n咨询内容：想了解库存',
       has_project: false,
     },
@@ -67,13 +78,17 @@ test('merchant consultation creates a merchant notification deep link', async ()
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.id, 88);
-  assert.equal(writes.length, 2);
-  assert.equal(writes[1].type, 'notification');
-  assert.equal(writes[1].params[0], 42);
-  const payload = JSON.parse(writes[1].params[1]);
+  assert.equal(res.payload.data.project_id, 3);
+  assert.equal(writes.length, 3);
+  assert.equal(writes[1].type, 'relation');
+  assert.deepEqual(writes[1].params, [88, 3]);
+  assert.equal(writes[2].type, 'notification');
+  assert.equal(writes[2].params[0], 42);
+  const payload = JSON.parse(writes[2].params[1]);
   assert.equal(payload.source, 'consultation');
   assert.equal(payload.title, '新的商品咨询');
   assert.equal(payload.deepLink.consultationId, 88);
+  assert.equal(payload.deepLink.projectId, 3);
   assert.equal(payload.route, 'consultation_chat');
 });
 
@@ -159,6 +174,10 @@ test('consultation reply creates notification for the other participant', async 
   };
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [42, 3, 42]);
+        return [[{ id: 3, user_id: 7, lifecycle_status: 'active', role: 'merchant' }]];
+      }
       if (/FROM designer_consultations c/.test(sql) && /WHERE c\.id = \?/.test(sql)) {
         assert.deepEqual(params, [88, 42, 42]);
         return [[{
@@ -173,6 +192,10 @@ test('consultation reply creates notification for the other participant', async 
           user_nickname: '用户',
           user_avatar: '',
         }]];
+      }
+      if (/SELECT target_id AS project_id/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{ project_id: 3 }]];
       }
       if (/COUNT\(\*\) AS total FROM consultation_messages/.test(sql)) {
         assert.deepEqual(params, [42]);
@@ -194,7 +217,7 @@ test('consultation reply creates notification for the other participant', async 
   await controller.sendConsultationMessage({
     user: { id: 42 },
     params: { id: '88' },
-    body: { content: '您好，这款砖有现货，可以到店看样。' },
+    body: { project_id: 3, content: '您好，这款砖有现货，可以到店看样。' },
   }, res);
 
   assert.equal(res.statusCode, 200);
@@ -205,6 +228,7 @@ test('consultation reply creates notification for the other participant', async 
   assert.equal(payload.source, 'consultation');
   assert.equal(payload.title, '咨询有新回复');
   assert.equal(payload.consultationId, 88);
+  assert.equal(payload.projectId, 3);
   assert.equal(payload.messageId, 501);
   assert.equal(payload.route, 'consultation_chat');
   assert.equal(connectionCalls.at(-2).type, 'commit');
@@ -213,6 +237,10 @@ test('consultation reply creates notification for the other participant', async 
 test('consultation create enforces daily quota', async () => {
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 3, 7]);
+        return [[{ id: 3, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
       if (/SELECT u\.id, COALESCE\(profile\.consultation_enabled/.test(sql)) {
         assert.deepEqual(params, [42, 'merchant']);
         return [[{ id: 42, consultation_enabled: 1 }]];
@@ -230,7 +258,7 @@ test('consultation create enforces daily quota', async () => {
   await controller.createDesignerConsultation({
     user: { id: 7 },
     params: { id: '42' },
-    body: { target_role: 'merchant', content: '想了解库存' },
+    body: { project_id: 3, target_role: 'merchant', content: '想了解库存' },
   }, res);
 
   assert.equal(res.statusCode, 429);
@@ -240,6 +268,10 @@ test('consultation create enforces daily quota', async () => {
 test('consultation reply enforces unanswered continuous message quota', async () => {
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 3, 7]);
+        return [[{ id: 3, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
       if (/FROM designer_consultations c/.test(sql) && /WHERE c\.id = \?/.test(sql)) {
         assert.deepEqual(params, [88, 7, 7]);
         return [[{
@@ -254,6 +286,10 @@ test('consultation reply enforces unanswered continuous message quota', async ()
           user_nickname: '用户',
           user_avatar: '',
         }]];
+      }
+      if (/SELECT target_id AS project_id/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{ project_id: 3 }]];
       }
       if (/COUNT\(\*\) AS total FROM consultation_messages/.test(sql)) {
         assert.deepEqual(params, [7]);
@@ -272,7 +308,7 @@ test('consultation reply enforces unanswered continuous message quota', async ()
   await controller.sendConsultationMessage({
     user: { id: 7 },
     params: { id: '88' },
-    body: { content: '再问一下' },
+    body: { project_id: 3, content: '再问一下' },
   }, res);
 
   assert.equal(res.statusCode, 429);

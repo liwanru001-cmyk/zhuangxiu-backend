@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
+const { requireProjectContext } = require('../utils/project-context');
 
 const validSourceTypes = new Set(['case', 'review', 'project', 'note', 'consultation']);
 const validTargetTypes = new Set(['company', 'professional', 'project', 'user']);
@@ -87,6 +88,13 @@ async function createEntityRelation(req, res) {
   if (!validTargetTypes.has(targetType)) return error(res, '目标类型不正确');
   if (!targetId) return error(res, '目标对象不正确');
   if (!validRelationTypes.has(relationType)) return error(res, '关系类型不正确');
+  if (targetType === 'project') {
+    req.body.project_id = targetId;
+    const projectContext = await requireProjectContext(req, res, {
+      missingMessage: '项目关系必须绑定有效项目',
+    });
+    if (!projectContext.ok) return projectContext.response;
+  }
   if (!(await targetExists(targetType, targetId))) {
     return error(res, '目标对象不存在', 404);
   }

@@ -4,6 +4,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const storageService = require('../services/storage.service');
 const { ProjectEventType, emitProjectEvent } = require('../services/project-event.service');
+const { requireProjectContext } = require('../utils/project-context');
 
 const stages = [
   { id: 1, name: '设计准备', traditional: '设计准备', emoji: '📐', days: 14, taskCount: 3, keyTaskCount: 1 },
@@ -582,6 +583,9 @@ async function setup(req, res) {
 }
 
 async function uploadFloorPlan(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   if (!req.file) return error(res, '请选择户型图片');
   const imageUrl = `${req.protocol}://${req.get('host')}/uploads/floor-plans/${req.file.filename}`;
   return success(res, { url: imageUrl }, '上传成功');
@@ -607,6 +611,9 @@ async function getStageDetail(req, res) {
 }
 
 async function updateTask(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const { status, remark } = req.body;
   const updates = [];
   const params = [];
@@ -652,6 +659,9 @@ async function updateTask(req, res) {
 }
 
 async function completeStage(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const project = await findProject(req.user.id);
   if (!project) return error(res, '装修档案不存在', 404);
   const stageId = Number(req.params.stageId);
@@ -665,6 +675,9 @@ async function completeStage(req, res) {
 }
 
 async function updateInfo(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const project = await findProject(req.user.id);
   if (!project) return error(res, '装修档案不存在', 404);
   const area = req.body.house_area === undefined ? project.house_area : Number(req.body.house_area);
@@ -680,6 +693,9 @@ async function updateInfo(req, res) {
 }
 
 async function updateProjectInfo(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   if (!(await requireProjectOwner(projectId, req.user.id))) {
     return error(res, '只有业主可以修改项目信息', 403);
@@ -881,6 +897,9 @@ async function getProjectInfoChangeRequests(req, res) {
 }
 
 async function createProjectInfoChangeRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
@@ -907,6 +926,9 @@ async function createProjectInfoChangeRequest(req, res) {
 }
 
 async function handleProjectInfoChangeRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const requestId = Number(req.params.requestId);
   const action = String(req.body.action || '');
@@ -1024,6 +1046,9 @@ async function restoreProject(req, res) {
 }
 
 async function deleteProject(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   if (!(await requireProjectOwner(projectId, req.user.id))) {
     return error(res, '只有主业主可以删除项目', 403);
@@ -1087,6 +1112,9 @@ async function listUsers(req, res) {
 
 // 发送设计师申请（业主→用户）
 async function requestDesigner(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const designerId = Number(req.body.designer_id);
   const projectId = Number(req.body.project_id);
   const message = req.body.message ? String(req.body.message).slice(0, 300) : null;
@@ -1209,6 +1237,9 @@ async function getDesigners(req, res) {
 }
 
 async function bindDesigner(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   return error(res, '请先发送关联申请，设计师同意后才能关联', 409);
 }
 
@@ -1307,6 +1338,9 @@ async function getProjectOwnerSideMembers(req, res) {
 }
 
 async function inviteProjectOwnerMember(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const targetUserId = Number(req.body.target_user_id);
   if (!projectId || !targetUserId) return error(res, '邀请信息不完整');
@@ -1388,6 +1422,9 @@ async function inviteProjectOwnerMember(req, res) {
 }
 
 async function removeProjectOwnerMember(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const memberId = Number(req.params.memberId);
   if (!projectId || !memberId) return error(res, '成员信息不完整');
@@ -1455,6 +1492,9 @@ async function getProjectSpaces(req, res) {
 }
 
 async function createProjectSpace(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const name = String(req.body.name || '').trim().slice(0, 50);
   if (!name) return error(res, '空间名称不能为空');
@@ -1500,6 +1540,9 @@ async function applyCreateProjectSpace(projectId, userId, name, connection = db)
 }
 
 async function updateProjectSpace(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const spaceId = Number(req.params.spaceId);
   const name = String(req.body.name || '').trim().slice(0, 50);
@@ -1551,6 +1594,9 @@ async function assertProjectSpaceIsEmpty(projectId, spaceId, connection = db) {
 }
 
 async function deleteProjectSpace(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const spaceId = Number(req.params.spaceId);
   if (!(await canAccessProject(projectId, req.user.id))) {
@@ -1582,6 +1628,9 @@ async function applyDeleteProjectSpace(req, res, projectId, spaceId, connection 
 }
 
 async function uploadProjectSpaceImages(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const spaceId = Number(req.params.spaceId);
   const imageType = String(req.body.image_type || '');
@@ -1740,6 +1789,9 @@ async function applySetDefaultProjectSpaceImage(spaceId, imageId, connection = d
 }
 
 async function deleteProjectSpaceImage(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const spaceId = Number(req.params.spaceId);
   const imageId = Number(req.params.imageId);
@@ -1902,6 +1954,9 @@ async function applyProjectSpaceChange(projectId, request, connection) {
 }
 
 async function handleProjectSpaceChangeRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const requestId = Number(req.params.requestId);
   const action = String(req.body.action || '');
@@ -1997,6 +2052,9 @@ async function getProjectCaseShares(req, res) {
 }
 
 async function createProjectCaseShare(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
@@ -2071,6 +2129,9 @@ async function createProjectCaseShare(req, res) {
 }
 
 async function handleProjectCaseShare(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const caseId = Number(req.params.caseId);
   const action = String(req.body.action || '');
@@ -2101,6 +2162,9 @@ async function handleProjectCaseShare(req, res) {
 }
 
 async function removeProjectMember(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const memberId = Number(req.params.memberId);
   const [owners] = await db.query(
@@ -2276,6 +2340,9 @@ async function getSentMemberRequests(req, res) {
 }
 
 async function cancelMemberRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const requestId = Number(req.params.requestId);
   const [owners] = await db.query(
@@ -2682,6 +2749,9 @@ async function handleProjectInvitation(req, res) {
 }
 
 async function planTask(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const { planned_start: plannedStart, planned_end: plannedEnd, task_name: taskName } = req.body;
   const fields = [];
   const params = [];
@@ -2725,6 +2795,9 @@ async function planTask(req, res) {
 }
 
 async function addTask(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const {
     project_id: requestedProjectId,
     stage_id: stageId,
@@ -2969,6 +3042,9 @@ async function getProjectCheckIns(req, res) {
 }
 
 async function createProjectCheckIn(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const description = String(req.body.description || '').trim().slice(0, 1000);
   const checkInDate = String(req.body.checkin_date || '');
@@ -3071,6 +3147,9 @@ async function createProjectCheckIn(req, res) {
 }
 
 async function updateProjectCheckInShares(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const checkInId = Number(req.params.checkInId);
   const sharedMemberIds = parseAssigneeIds(req.body.shared_member_ids);
@@ -3131,6 +3210,9 @@ async function updateProjectCheckInShares(req, res) {
 }
 
 async function shareProjectCheckInToCircle(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const checkInId = Number(req.params.checkInId);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -3212,6 +3294,9 @@ async function shareProjectCheckInToCircle(req, res) {
 }
 
 async function deleteProjectCheckIn(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const checkInId = Number(req.params.checkInId);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -3449,6 +3534,9 @@ async function getProjectExpenses(req, res) {
 }
 
 async function createProjectExpense(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const expenseDate = String(req.body.expense_date || '');
   const category = String(req.body.category || 'other');
@@ -3558,6 +3646,9 @@ async function loadProjectExpenseForManage(projectId, expenseId, userId) {
 }
 
 async function updateProjectExpense(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const expenseId = Number(req.params.expenseId);
   const guard = await loadProjectExpenseForManage(projectId, expenseId, req.user.id);
@@ -3605,6 +3696,9 @@ async function updateProjectExpense(req, res) {
 }
 
 async function deleteProjectExpense(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const expenseId = Number(req.params.expenseId);
   const guard = await loadProjectExpenseForManage(projectId, expenseId, req.user.id);
@@ -3795,6 +3889,9 @@ async function getProjectDesignDocumentQuotaError(projectId, userId) {
 }
 
 async function uploadProjectDesignDocument(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
@@ -3838,6 +3935,9 @@ async function uploadProjectDesignDocument(req, res) {
 }
 
 async function createProjectDesignDocument(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
@@ -4021,6 +4121,9 @@ async function canDeleteDesignDocument(documentId, connection = db) {
 }
 
 async function updateProjectDesignDocument(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const documentId = Number(req.params.documentId);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -4063,6 +4166,9 @@ async function updateProjectDesignDocument(req, res) {
 }
 
 async function updateProjectDesignDocumentStatus(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const documentId = Number(req.params.documentId);
   if (!(await isOwnerSide(projectId, req.user.id))) {
@@ -4292,6 +4398,9 @@ async function getProjectDesignHandoverItems(req, res) {
 }
 
 async function createProjectHandover(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   const files = req.files || [];
@@ -4449,6 +4558,9 @@ async function createProjectHandover(req, res) {
 }
 
 async function updateProjectHandoverStatus(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const handoverId = Number(req.params.handoverId);
   const rawStatus = String(req.body.status || '');
@@ -4573,6 +4685,9 @@ async function getProjectMaterials(req, res) {
 }
 
 async function createProjectMaterial(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   const files = req.files || [];
@@ -4695,6 +4810,9 @@ async function createProjectMaterial(req, res) {
 }
 
 async function confirmProjectMaterial(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const materialId = Number(req.params.materialId);
   if (!(await requireProjectOwner(projectId, req.user.id))) {
@@ -4934,6 +5052,9 @@ async function removeUploadedFiles(files) {
 }
 
 async function createProjectActionItem(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const content = String(req.body.content || '').trim().slice(0, 1000);
   const dueDate = String(req.body.due_date || '');
@@ -5015,6 +5136,9 @@ async function createProjectActionItem(req, res) {
 }
 
 async function submitProjectActionItemFeedback(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const itemId = Number(req.params.itemId);
   const result = String(req.body.result || '');
@@ -5693,6 +5817,9 @@ async function submitProgressProposal(req, res) {
 }
 
 async function reviewProgressProposal(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const proposalId = Number(req.params.proposalId);
   const action = String(req.body.action || '');
@@ -5750,6 +5877,9 @@ async function reviewProgressProposal(req, res) {
 }
 
 async function updateProjectPace(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const mode = String(req.body.mode || '');
   if (!['normal', 'accelerated', 'relaxed', 'paused'].includes(mode)) {
@@ -5794,6 +5924,9 @@ async function updateProjectPace(req, res) {
 }
 
 async function planProjectTask(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const taskId = Number(req.params.taskId);
   const plannedStart = req.body.planned_start;
@@ -5859,6 +5992,9 @@ async function planProjectTask(req, res) {
 }
 
 async function createProjectTask(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const stageId = Number(req.body.stage_id);
   const taskName = String(req.body.task_name || '').trim().slice(0, 100);
@@ -5892,6 +6028,9 @@ async function createProjectTask(req, res) {
 }
 
 async function deleteProjectTask(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const taskId = Number(req.params.taskId);
   if (!(await canManageProjectProgress(projectId, req.user.id))) {
@@ -5914,6 +6053,9 @@ async function deleteProjectTask(req, res) {
 }
 
 async function completeProjectStage(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const stageId = Number(req.params.stageId);
   if (!(await requireProjectOwner(projectId, req.user.id))) {
@@ -6153,6 +6295,9 @@ async function recordProjectProgressItemAdjustment(
 }
 
 async function createProjectProgressItem(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const memberRole = await getProjectMemberRole(projectId, req.user.id);
   if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(memberRole)) {
@@ -6233,6 +6378,9 @@ async function createProjectProgressItem(req, res) {
 }
 
 async function updateProjectProgressItem(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const itemId = Number(req.params.itemId);
   const memberRole = await getProjectMemberRole(projectId, req.user.id);
@@ -6342,6 +6490,9 @@ async function updateProjectProgressItem(req, res) {
 }
 
 async function deleteProjectProgressItem(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const itemId = Number(req.params.itemId);
   const memberRole = await getProjectMemberRole(projectId, req.user.id);
@@ -6660,6 +6811,9 @@ async function getProjectWorkItemTemplates(req, res) {
 }
 
 async function updateProjectWorkItemTemplateStatus(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const templateKey = String(req.params.templateKey || '').trim();
   const status = String(req.body.status || '').trim();
@@ -6706,6 +6860,9 @@ function parseJsonField(value, fallback) {
 }
 
 async function createProjectInspection(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   let taskId = Number(req.body.task_id);
   const progressItemId = req.body.progress_item_id
@@ -6836,6 +6993,9 @@ async function createProjectInspection(req, res) {
 }
 
 async function reviewProjectInspection(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const inspectionId = Number(req.params.inspectionId);
   const result = String(req.body.result || '');
@@ -7006,6 +7166,9 @@ async function reviewProjectInspection(req, res) {
 }
 
 async function updateProjectInspectionDesignCheck(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const inspectionId = Number(req.params.inspectionId);
   const checkId = Number(req.params.checkId);
@@ -7043,6 +7206,9 @@ async function updateProjectInspectionDesignCheck(req, res) {
 }
 
 async function resubmitProjectInspection(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
   const projectId = Number(req.params.id);
   const inspectionId = Number(req.params.inspectionId);
   const description = String(req.body.description || '').trim().slice(0, 500);

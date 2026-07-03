@@ -1,5 +1,9 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
+const {
+  requireProjectContext,
+  linkConsultationToProject,
+} = require('../utils/project-context');
 
 const validTargetTypes = new Set(['company', 'professional', 'user']);
 const validSourcePages = new Set(['marketplace', 'profile', 'project']);
@@ -66,6 +70,11 @@ async function targetExists(targetType, targetId) {
 }
 
 async function createUnifiedConsultation(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '咨询必须绑定装修项目，请选择项目后再发送',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const targetType = String(req.body.target_type || '').trim();
   const targetId = Number(req.body.target_id);
   const businessCatalogId = req.body.business_catalog_id === undefined ||
@@ -108,10 +117,12 @@ async function createUnifiedConsultation(req, res) {
       message,
     ]
   );
+  await linkConsultationToProject(result.insertId, projectContext.projectId);
 
   return success(res, {
     id: result.insertId,
     consultation_id: null,
+    project_id: projectContext.projectId,
     target_type: targetType,
     target_id: targetId,
     business_catalog_id: businessCatalogId,

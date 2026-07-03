@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
+const { requireProjectContext } = require('../utils/project-context');
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -1366,6 +1367,11 @@ async function listCompanyProjects(req, res) {
 }
 
 async function attachCompanyProject(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '公司项目关联操作必须携带有效 project_id',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const companyId = Number(req.params.id);
   const projectId = Number(req.body.project_id);
   const roleType = ['designer', 'supervisor', 'contractor', 'client', 'pm']
@@ -1420,6 +1426,11 @@ async function attachCompanyProject(req, res) {
 }
 
 async function updateCompanyProject(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '公司项目关联操作必须携带有效 project_id',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const companyId = Number(req.params.id);
   const projectId = Number(req.params.projectId);
   const roleType = ['designer', 'supervisor', 'contractor', 'client', 'pm']
@@ -1470,6 +1481,11 @@ async function updateCompanyProject(req, res) {
 }
 
 async function detachCompanyProject(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '公司项目关联操作必须携带有效 project_id',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const companyId = Number(req.params.id);
   const projectId = Number(req.params.projectId);
 

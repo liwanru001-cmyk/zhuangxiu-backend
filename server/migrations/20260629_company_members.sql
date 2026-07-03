@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS company_members (
     'designer',
     'supervisor',
     'project_manager',
-    'merchant_staff',
+    'staff',
     'customer_service'
   ) NOT NULL,
   title VARCHAR(80) DEFAULT '',

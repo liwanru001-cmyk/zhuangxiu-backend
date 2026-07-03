@@ -18,8 +18,10 @@ function mockResponse() {
 
 function loadController(controllerPath, dbMock) {
   const dbPath = require.resolve('../config/db');
+  const projectContextPath = require.resolve('../utils/project-context');
   const resolvedControllerPath = require.resolve(controllerPath);
   delete require.cache[dbPath];
+  delete require.cache[projectContextPath];
   delete require.cache[resolvedControllerPath];
   require.cache[dbPath] = {
     id: dbPath,
@@ -343,4 +345,66 @@ test('company logo or license changes move company verification back to pending'
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.verification_status, 'pending');
   assert.equal(updates.length, 1);
+});
+
+test('project member candidate API can search merchant role', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT id FROM project_members/.test(sql) && /role = 'owner'/.test(sql)) {
+        assert.deepEqual(params, [1, 1]);
+        return [[{ id: 1 }]];
+      }
+      if (/FROM user_roles ur/.test(sql) && /WHERE ur\.role = \?/.test(sql)) {
+        assert.deepEqual(params, [1, 1, 'merchant', 1, '%abc%', '%abc%', '%abc%']);
+        return [[]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/renovation.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.getMemberCandidates({
+    query: { role: 'merchant', project_id: '1', keyword: 'abc' },
+    user: { id: 1 },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.payload.data, []);
+});
+
+test('project member invitation API can invite merchant role', async () => {
+  const writes = [];
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT id FROM project_members/.test(sql) && /role = 'owner'/.test(sql)) {
+        assert.deepEqual(params, [1, 1]);
+        return [[{ id: 1 }]];
+      }
+      if (/SELECT id FROM user_roles/.test(sql)) {
+        assert.deepEqual(params, [2, 'merchant']);
+        return [[{ id: 2 }]];
+      }
+      if (/SELECT id FROM project_members/.test(sql) && /role = \?/.test(sql)) {
+        assert.deepEqual(params, [1, 2, 'merchant']);
+        return [[]];
+      }
+      if (/INSERT INTO project_member_requests/.test(sql)) {
+        writes.push(params);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/renovation.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.requestProjectMember({
+    body: { project_id: 1, target_user_id: 2, member_role: 'merchant' },
+    user: { id: 1 },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.message, '关联申请已发送');
+  assert.deepEqual(writes, [[1, 1, 2, 'merchant', null]]);
 });

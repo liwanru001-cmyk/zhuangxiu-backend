@@ -8,6 +8,11 @@ const {
   activeVerifiedMerchantExistsSql,
   activeVerifiedMerchantStateSql,
 } = require('../utils/verified-merchant');
+const {
+  requireProjectContext,
+  linkConsultationToProject,
+  getConsultationProjectContext,
+} = require('../utils/project-context');
 
 const USER_INTERACTION_QUOTAS = {
   dailyConsultationLimit: 10,
@@ -724,6 +729,11 @@ const consultationRoleConfig = {
 };
 
 async function createDesignerConsultation(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '咨询必须绑定装修项目，请选择项目后再发送',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const targetId = Number(req.params.id);
   const targetRole = consultationRoleConfig[req.body.target_role]
     ? req.body.target_role
@@ -799,6 +809,7 @@ async function createDesignerConsultation(req, res) {
       hasProject ? 1 : 0,
     ]
   );
+  await linkConsultationToProject(result.insertId, projectContext.projectId);
   const consultationTitle = targetRole === 'merchant' ? '新的商品咨询' : '新的咨询';
   await db.query(
     `INSERT INTO project_action_notifications
@@ -810,19 +821,20 @@ async function createDesignerConsultation(req, res) {
         source: 'consultation',
         targetRole,
         consultationId: result.insertId,
+        projectId: projectContext.projectId,
         requesterUserId: req.user.id,
         title: consultationTitle,
         content: targetRole === 'merchant'
           ? '你收到一条新的商品咨询'
           : '你收到一条新的站内咨询',
         route: 'consultation_chat',
-        deepLink: { consultationId: result.insertId },
+        deepLink: { consultationId: result.insertId, projectId: projectContext.projectId },
         entityType: 'consultation',
         entityId: result.insertId,
       }),
     ]
   );
-  return success(res, { id: result.insertId }, '咨询已发送');
+  return success(res, { id: result.insertId, project_id: projectContext.projectId }, '咨询已发送');
 }
 
 async function getDesignerConsultations(req, res) {
@@ -934,9 +946,21 @@ async function getConsultationMessages(req, res) {
 }
 
 async function sendConsultationMessage(req, res) {
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '发送咨询消息必须携带 project_id',
+  });
+  if (!projectContext.ok) return projectContext.response;
+
   const consultationId = Number(req.params.id);
   const consultation = await getConsultationForUser(consultationId, req.user.id);
   if (!consultation) return error(res, '咨询不存在或无权限', 404);
+  const linkedProjectId = await getConsultationProjectContext(consultationId);
+  if (linkedProjectId && Number(linkedProjectId) !== Number(projectContext.projectId)) {
+    return error(res, '咨询不属于当前项目', 403);
+  }
+  if (!linkedProjectId) {
+    await linkConsultationToProject(consultationId, projectContext.projectId);
+  }
 
   const content = String(req.body.content || '').trim().slice(0, 1000);
   if (!content) return error(res, '请填写消息内容');
@@ -997,12 +1021,13 @@ async function sendConsultationMessage(req, res) {
           source: 'consultation',
           targetRole: consultation.target_role,
           consultationId,
+          projectId: projectContext.projectId,
           messageId: result.insertId,
           senderUserId: req.user.id,
           title: replyTitle,
           content: content.length > 48 ? `${content.slice(0, 48)}...` : content,
           route: 'consultation_chat',
-          deepLink: { consultationId },
+          deepLink: { consultationId, projectId: projectContext.projectId },
           entityType: 'consultation',
           entityId: consultationId,
         }),

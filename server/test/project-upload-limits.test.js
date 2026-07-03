@@ -19,9 +19,11 @@ function mockResponse() {
 function loadController(dbMock, storageMock = {}) {
   const dbPath = require.resolve('../config/db');
   const storagePath = require.resolve('../services/storage.service');
+  const projectContextPath = require.resolve('../utils/project-context');
   const controllerPath = require.resolve('../controllers/renovation.controller');
   delete require.cache[dbPath];
   delete require.cache[storagePath];
+  delete require.cache[projectContextPath];
   delete require.cache[controllerPath];
   require.cache[dbPath] = {
     id: dbPath,
@@ -41,6 +43,10 @@ function loadController(dbMock, storageMock = {}) {
 test('project check-in enforces daily quota', async () => {
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
       if (/SELECT role FROM project_members/.test(sql)) {
         assert.deepEqual(params, [9, 7]);
         return [[{ role: 'owner' }]];
@@ -58,7 +64,7 @@ test('project check-in enforces daily quota', async () => {
   await controller.createProjectCheckIn({
     user: { id: 7 },
     params: { id: '9' },
-    body: { description: '今天水电验收', checkin_date: '2026-07-03' },
+    body: { project_id: 9, description: '今天水电验收', checkin_date: '2026-07-03' },
     files: [],
   }, res);
 
@@ -69,6 +75,10 @@ test('project check-in enforces daily quota', async () => {
 test('project inspection rejects more than three images', async () => {
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
       if (/SELECT id FROM project_members/.test(sql)) {
         assert.deepEqual(params, [9, 7]);
         return [[{ id: 1 }]];
@@ -82,7 +92,7 @@ test('project inspection rejects more than three images', async () => {
   await controller.createProjectInspection({
     user: { id: 7 },
     params: { id: '9' },
-    body: { task_id: '3', description: '现场验收' },
+    body: { project_id: 9, task_id: '3', description: '现场验收' },
     files: [
       { path: '/tmp/no-a.jpg' },
       { path: '/tmp/no-b.jpg' },
@@ -98,6 +108,10 @@ test('project inspection rejects more than three images', async () => {
 test('design document upload enforces project total quota', async () => {
   const dbMock = {
     async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'designer' }]];
+      }
       if (/SELECT role FROM project_members/.test(sql)) {
         assert.deepEqual(params, [9, 7]);
         return [[{ role: 'designer' }]];
@@ -119,6 +133,7 @@ test('design document upload enforces project total quota', async () => {
   await controller.uploadProjectDesignDocument({
     user: { id: 7 },
     params: { id: '9' },
+    body: { project_id: 9 },
     file: {
       path: '/tmp/no-design.jpg',
       originalname: 'design.jpg',

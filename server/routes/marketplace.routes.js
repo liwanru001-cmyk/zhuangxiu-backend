@@ -2,6 +2,7 @@ const express = require('express');
 const controller = require('../controllers/marketplace.controller');
 const asyncHandler = require('../utils/async-handler');
 const auth = require('../middleware/auth');
+const { requireProjectContext } = require('../utils/project-context');
 const {
   ensureUploadDir,
   setUploadedFilePermissions,
@@ -10,6 +11,14 @@ const multer = require('multer');
 const path = require('path');
 
 const router = express.Router();
+
+async function projectContextGate(req, res, next) {
+  const context = await requireProjectContext(req, res, {
+    missingMessage: '公司项目关联操作必须携带有效 project_id',
+  });
+  if (!context.ok) return context.response;
+  return next();
+}
 
 const companyProfileDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'company-profiles')
@@ -62,9 +71,9 @@ router.get('/companies', asyncHandler(controller.listCompanies));
 router.get('/companies/:id/public', asyncHandler(controller.getPublicCompany));
 router.get('/companies/:id/case-shares', asyncHandler(controller.listPublicCompanyCaseShares));
 router.get('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.listCompanyProjects));
-router.post('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.attachCompanyProject));
-router.put('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(controller.updateCompanyProject));
-router.delete('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(controller.detachCompanyProject));
+router.post('/companies/:id/projects', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.attachCompanyProject));
+router.put('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.updateCompanyProject));
+router.delete('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.detachCompanyProject));
 router.get('/companies/:id/member-candidates', asyncHandler(auth), asyncHandler(controller.searchCompanyMemberCandidates));
 router.get('/companies/:id/members', asyncHandler(controller.listCompanyMembers));
 router.post('/companies/:id/members', asyncHandler(auth), asyncHandler(controller.addCompanyMember));
