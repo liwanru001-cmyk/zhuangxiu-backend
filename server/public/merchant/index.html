@@ -1827,6 +1827,7 @@
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
       showWorkspace(true);
       await loadProfile();
+      showPanel('productsPanel');
     }
 
     async function saveProfile() {
@@ -2245,11 +2246,13 @@
       enterProductsDemo();
     } else if (token()) {
       showWorkspace(true);
-      loadProfile().catch((error) => {
-        localStorage.removeItem(TOKEN_KEY);
-        showWorkspace(false);
-        setMessage('loginMessage', error.message, 'error');
-      });
+      loadProfile()
+        .then(() => showPanel('productsPanel'))
+        .catch((error) => {
+          localStorage.removeItem(TOKEN_KEY);
+          showWorkspace(false);
+          setMessage('loginMessage', error.message, 'error');
+        });
     }
   </script>
 </body>
