@@ -20,6 +20,8 @@
       --white: #ffffff;
       --danger: #d92d20;
       --shadow: 0 18px 48px rgba(30, 64, 120, .12);
+      --page: #f3f6fa;
+      --card-shadow: 0 1px 2px rgba(16, 24, 40, .04);
     }
 
     * { box-sizing: border-box; }
@@ -32,6 +34,9 @@
         var(--paper);
       min-height: 100vh;
     }
+    body.portal-workspace {
+      background: var(--page);
+    }
     a { color: inherit; text-decoration: none; }
     button, input, textarea { font: inherit; }
 
@@ -39,13 +44,13 @@
       position: sticky;
       top: 0;
       z-index: 5;
-      background: rgba(255, 253, 248, .88);
-      backdrop-filter: blur(18px);
+      background: rgba(255, 255, 255, .94);
+      backdrop-filter: blur(12px);
       border-bottom: 1px solid rgba(232, 237, 243, .85);
     }
     .nav-inner {
-      max-width: 1120px;
-      height: 68px;
+      max-width: 1440px;
+      height: 64px;
       margin: 0 auto;
       padding: 0 22px;
       display: flex;
@@ -76,9 +81,12 @@
     .nav-actions a:hover, .nav-actions button:hover { color: var(--blue); }
 
     .shell {
-      max-width: 1120px;
+      max-width: 1440px;
       margin: 0 auto;
-      padding: 34px 22px 60px;
+      padding: 34px 56px 60px;
+    }
+    body.portal-workspace .shell {
+      padding-top: 42px;
     }
     .hero {
       display: grid;
@@ -256,10 +264,10 @@
       gap: 10px;
     }
     .button {
-      min-height: 46px;
-      padding: 0 16px;
+      min-height: 38px;
+      padding: 0 18px;
       border: 1px solid transparent;
-      border-radius: 10px;
+      border-radius: 7px;
       cursor: pointer;
       font-weight: 900;
       display: inline-flex;
@@ -271,7 +279,7 @@
       width: 100%;
       color: #fff;
       background: var(--blue);
-      box-shadow: 0 12px 28px rgba(47, 115, 232, .24);
+      box-shadow: 0 8px 18px rgba(47, 115, 232, .18);
     }
     .button-secondary {
       color: var(--ink);
@@ -307,17 +315,20 @@
       align-items: flex-start;
       justify-content: space-between;
       gap: 18px;
-      margin-bottom: 16px;
+      margin-bottom: 24px;
     }
     .workspace-title h1 {
       margin: 0 0 8px;
-      font-size: 32px;
+      color: #1f2a44;
+      font-size: 34px;
+      line-height: 1.18;
     }
     .workspace-title p {
       margin: 0;
       color: var(--muted);
+      font-size: 14px;
       font-weight: 650;
-      line-height: 1.65;
+      line-height: 1.6;
     }
     .form-grid {
       display: grid;
@@ -411,22 +422,31 @@
     }
     .tabs {
       display: flex;
-      gap: 8px;
-      margin: 0 0 14px;
-      border-bottom: 1px solid var(--line);
+      gap: 10px;
+      margin: -76px 0 48px;
+      justify-content: center;
+      border-bottom: 0;
+      pointer-events: none;
     }
     .tab {
-      border: 0;
-      background: transparent;
-      padding: 12px 4px;
-      color: var(--muted);
+      min-width: 112px;
+      min-height: 38px;
+      border: 1px solid #dbe4ef;
+      border-radius: 7px;
+      background: #fff;
+      padding: 0 18px;
+      color: #344054;
       cursor: pointer;
       font-weight: 900;
-      border-bottom: 3px solid transparent;
+      border-bottom: 0;
+      box-shadow: var(--card-shadow);
+      pointer-events: auto;
     }
     .tab.active {
-      color: var(--blue-dark);
-      border-bottom-color: var(--blue);
+      border-color: var(--blue);
+      color: #fff;
+      background: var(--blue);
+      box-shadow: 0 8px 18px rgba(47, 115, 232, .18);
     }
     .workspace-panel { display: none; }
     .workspace-panel.active { display: block; }
@@ -484,7 +504,7 @@
       align-items: center;
       justify-content: space-between;
       gap: 10px;
-      margin-bottom: 14px;
+      margin-bottom: 24px;
       flex-wrap: wrap;
     }
     .panel-toolbar h2 {
@@ -497,11 +517,12 @@
       margin-bottom: 10px;
     }
     .category-tab {
-      border: 1px solid #d9e1ec;
+      min-height: 36px;
+      border: 1px solid #dbe4ef;
       background: #fff;
       color: #344054;
       border-radius: 999px;
-      padding: 9px 13px;
+      padding: 0 16px;
       cursor: pointer;
       font-weight: 850;
       font-size: 13px;
@@ -545,8 +566,20 @@
     .product-detail-view.active { display: block; }
     .product-card-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-      gap: 12px;
+      grid-template-columns: repeat(3, minmax(260px, 1fr));
+      gap: 28px;
+    }
+    .product-empty {
+      grid-column: 1 / -1;
+      min-height: 120px;
+      display: grid;
+      place-items: center;
+      border: 1px dashed #ccd7e5;
+      border-radius: 8px;
+      color: var(--muted);
+      background: #fff;
+      font-size: 13px;
+      font-weight: 700;
     }
     .product-image-grid {
       display: grid;
@@ -566,11 +599,12 @@
       display: flex;
       align-items: baseline;
       gap: 12px;
-      margin: 22px 0 14px;
+      margin: 34px 0 18px;
       flex-wrap: wrap;
     }
     .product-list-heading h3 {
       margin: 0;
+      color: #1f2a44;
       font-size: 20px;
     }
     .product-list-heading span {
@@ -587,6 +621,7 @@
       grid-template-columns: 132px minmax(0, 1fr);
       gap: 16px;
       align-items: start;
+      box-shadow: var(--card-shadow);
     }
     .product-card-body {
       min-width: 0;
@@ -611,7 +646,7 @@
       height: 130px;
       border-radius: 8px;
       border: 1px solid var(--line);
-      background: #f8fafc;
+      background: #e8f1ff;
       display: grid;
       place-items: center;
       overflow: hidden;
@@ -619,6 +654,8 @@
       font-size: 13px;
       font-weight: 800;
     }
+    .product-card:nth-child(3n + 2) .product-thumb { background: #fff6dc; }
+    .product-card:nth-child(3n) .product-thumb { background: #e3f8ec; }
     .product-thumb img {
       width: 100%;
       height: 100%;
@@ -664,6 +701,118 @@
       display: grid;
       gap: 12px;
     }
+
+    #productsPanel > .section {
+      margin-top: 0;
+      padding: 0;
+      border: 0;
+      background: transparent;
+      box-shadow: none;
+    }
+    #productsPanel > .section > .panel-toolbar .button {
+      width: 138px;
+      border-color: var(--blue);
+      border-radius: 999px;
+      color: #fff;
+      background: var(--blue);
+      box-shadow: 0 8px 18px rgba(47, 115, 232, .18);
+    }
+    .category-card {
+      padding: 22px 24px 18px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--card-shadow);
+    }
+    .category-card-header {
+      display: flex;
+      align-items: baseline;
+      gap: 18px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+    .category-card-title {
+      color: #1f2a44;
+      font-size: 16px;
+      font-weight: 950;
+    }
+    .category-card-note {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .product-editor-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 420px;
+      gap: 96px;
+      align-items: start;
+    }
+    .product-editor-card,
+    .product-preview-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      padding: 28px;
+      box-shadow: var(--card-shadow);
+    }
+    .product-editor-card .form-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .product-preview-card h3 {
+      margin: 0 0 16px;
+      color: #1f2a44;
+      font-size: 16px;
+    }
+    .live-preview-image {
+      height: 230px;
+      margin-bottom: 24px;
+      border-radius: 7px;
+      background: #e8f1ff;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 800;
+    }
+    .live-preview-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      background: #fff;
+    }
+    .live-preview-name {
+      margin: 0 0 4px;
+      color: #1f2a44;
+      font-size: 22px;
+      line-height: 1.25;
+      font-weight: 950;
+    }
+    .live-preview-category,
+    .live-preview-meta {
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.6;
+      font-weight: 700;
+    }
+    .live-preview-price {
+      margin: 16px 0;
+      color: #ff4d3d;
+      font-size: 18px;
+      font-weight: 950;
+    }
+    .live-preview-copy {
+      margin: 0 0 24px;
+      color: #344054;
+      font-size: 13px;
+      line-height: 1.7;
+      font-weight: 650;
+    }
+    .live-preview-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 72px;
+    }
     .product-detail-title {
       margin: 0;
       color: var(--ink);
@@ -693,13 +842,15 @@
 
     @media (max-width: 900px) {
       .hero { grid-template-columns: 1fr; }
-      .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid { grid-template-columns: 1fr; }
+      .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid, .product-editor-layout { grid-template-columns: 1fr; }
       .product-card-grid { grid-template-columns: 1fr; }
       .product-card { grid-template-columns: 1fr; }
       .workspace-header { flex-direction: column; }
       .nav-inner { padding: 0 16px; }
       .shell { padding: 24px 16px 48px; }
+      .tabs { margin: 0 0 18px; justify-content: flex-start; }
       .intro, .panel, .section { padding: 18px; }
+      .product-editor-card, .product-preview-card { padding: 18px; }
     }
   </style>
 </head>
@@ -751,8 +902,8 @@
     <section id="workspaceView" class="workspace">
       <div class="workspace-header">
         <div class="workspace-title">
-          <h1>商家资料</h1>
-          <p>这些信息会同步到移动端商家资料，用于产品/服务展示和线下咨询。</p>
+          <h1 id="workspaceTitle">商家资料</h1>
+          <p id="workspaceSubtitle">这些信息会同步到移动端商家资料，用于产品/服务展示和线下咨询。</p>
         </div>
         <button id="reloadBtn" class="button button-secondary" type="button">重新读取</button>
       </div>
@@ -855,13 +1006,25 @@
               <label for="after_sales_promise">售后承诺</label>
               <textarea id="after_sales_promise" name="after_sales_promise" maxlength="500" placeholder="例如：安装问题 48 小时响应，质保期内提供售后支持"></textarea>
             </div>
-            <div class="field">
-              <label for="license_url">营业执照/资质图片链接</label>
-              <input id="license_url" name="license_url" maxlength="500" placeholder="https://...">
+            <div class="upload-box">
+              <label>营业执照/资质图片</label>
+              <div id="licensePreview" class="upload-preview">建议上传清晰证照图片</div>
+              <div class="upload-actions">
+                <label class="button button-secondary" for="licenseFile">上传营业执照</label>
+                <span id="licenseStatus" class="upload-note">支持 JPG、PNG、WebP</span>
+              </div>
+              <input id="licenseFile" class="file-input" type="file" accept="image/*">
+              <input id="license_url" name="license_url" type="hidden">
             </div>
-            <div class="field">
-              <label for="authorization_url">品牌授权图片链接</label>
-              <input id="authorization_url" name="authorization_url" maxlength="500" placeholder="https://...">
+            <div class="upload-box">
+              <label>品牌授权图片</label>
+              <div id="authorizationPreview" class="upload-preview">建议上传品牌授权或代理证明</div>
+              <div class="upload-actions">
+                <label class="button button-secondary" for="authorizationFile">上传品牌授权</label>
+                <span id="authorizationStatus" class="upload-note">保存资料后同步展示</span>
+              </div>
+              <input id="authorizationFile" class="file-input" type="file" accept="image/*">
+              <input id="authorization_url" name="authorization_url" type="hidden">
             </div>
             <div class="full toggle-row">
               <div>
@@ -883,7 +1046,7 @@
       <section id="productsPanel" class="workspace-panel">
         <section class="section" style="margin-top:0">
           <div class="panel-toolbar">
-            <h2>产品展示</h2>
+            <h2>产品展示管理</h2>
             <div class="small-actions">
               <button id="openCategoryEditorBtn" class="button button-secondary" type="button">新增产品分类</button>
               <button id="newProductBtn" class="button button-primary" type="button">新增产品信息</button>
@@ -891,8 +1054,14 @@
           </div>
 
           <div id="productListView" class="product-list-view">
-            <div id="rootCategoryTabs" class="category-tabs"></div>
-            <div id="childCategoryTabs" class="category-tabs"></div>
+            <div class="category-card">
+              <div class="category-card-header">
+                <div class="category-card-title">分类导航</div>
+                <div class="category-card-note">第一行切换一级分类，第二行切换二级分类。分类新增在右上角按钮里完成。</div>
+              </div>
+              <div id="rootCategoryTabs" class="category-tabs"></div>
+              <div id="childCategoryTabs" class="category-tabs"></div>
+            </div>
             <div class="product-list-heading">
               <h3>已上传产品</h3>
               <span id="productListSummary">按当前分类展示产品卡片。</span>
@@ -917,7 +1086,9 @@
               <h2 id="productEditorTitle">新增产品信息</h2>
               <button id="backToProductListBtn" class="button button-secondary" type="button">返回产品列表</button>
             </div>
-            <div class="form-grid">
+            <div class="product-editor-layout">
+              <div class="product-editor-card">
+                <div class="form-grid">
               <div class="field">
                 <label for="product_category_id">所属分类</label>
                 <select id="product_category_id"></select>
@@ -963,10 +1134,16 @@
                 </div>
                 <input id="productImageFile" class="file-input" type="file" accept="image/*" multiple>
               </div>
-            </div>
-            <div class="save-bar">
-              <button id="saveProductBtn" class="button button-primary" type="button" style="width:auto; min-width:160px">新增产品</button>
-              <button id="cancelProductEditBtn" class="button button-secondary" type="button" style="display:none">取消编辑</button>
+                </div>
+                <div class="save-bar">
+                  <button id="saveProductBtn" class="button button-primary" type="button" style="width:auto; min-width:160px">新增产品</button>
+                  <button id="cancelProductEditBtn" class="button button-secondary" type="button" style="display:none">取消编辑</button>
+                </div>
+              </div>
+              <aside class="product-preview-card">
+                <h3>右侧预览</h3>
+                <div id="productLivePreview"></div>
+              </aside>
             </div>
           </div>
         </section>
@@ -1095,9 +1272,19 @@
       document.querySelectorAll('.tab').forEach((tab) => {
         tab.classList.toggle('active', tab.dataset.panel === panelId);
       });
+      updateWorkspaceHeader(panelId);
       if (panelId === 'profilePanel' && currentProfile) {
         fillProfile(currentProfile);
       }
+    }
+
+    function updateWorkspaceHeader(panelId) {
+      const isProducts = panelId === 'productsPanel';
+      $('workspaceTitle').textContent = isProducts ? '产品展示管理' : '商家资料';
+      $('workspaceSubtitle').textContent = isProducts
+        ? '用商家自己的内部分类管理产品橱窗。这里不做订单、库存和支付，只做展示和咨询引流。'
+        : '这些信息会同步到移动端商家资料，用于产品/服务展示和线下咨询。';
+      $('reloadBtn').style.display = isProducts ? 'none' : 'inline-flex';
     }
 
     function renderTimeOptions() {
@@ -1221,6 +1408,36 @@
           </div>
         `).join('')
         : '<div class="upload-note">还没有产品图片。</div>';
+      renderProductLivePreview();
+    }
+
+    function renderProductLivePreview() {
+      const target = $('productLivePreview');
+      if (!target) return;
+      const name = $('product_name')?.value.trim() || '柔光瓷砖 750x1500';
+      const category = categoryName($('product_category_id')?.value) || '瓷砖 / 客厅砖';
+      const price = $('product_price_text')?.value.trim() || '¥199/㎡ 起';
+      const summary = $('product_summary')?.value.trim()
+        || $('product_description')?.value.trim()
+        || '适合客厅和餐厅的大规格柔光砖。';
+      const brand = $('product_brand')?.value.trim();
+      const spec = $('product_spec')?.value.trim();
+      const image = productImageUrls[0] || '';
+      target.innerHTML = `
+        <div class="live-preview-image">${image ? `<img src="${escapeHtml(displayImageUrl(image))}" alt="">` : '产品图片'}</div>
+        <h4 class="live-preview-name">${escapeHtml(name)}</h4>
+        <div class="live-preview-category">${escapeHtml(category)}</div>
+        <div class="live-preview-price">${escapeHtml(price)}</div>
+        <p class="live-preview-copy">${escapeHtml(summary)}</p>
+        ${(brand || spec) ? `<div class="live-preview-meta">${[
+          brand ? `品牌：${escapeHtml(brand)}` : '',
+          spec ? `规格：${escapeHtml(spec)}` : '',
+        ].filter(Boolean).join(' · ')}</div>` : ''}
+        <div class="live-preview-actions" style="margin-top:18px">
+          <button class="button button-primary" type="button">咨询商家</button>
+          <button class="button button-primary" type="button">收藏</button>
+        </div>
+      `;
     }
 
     function resetCategoryForm() {
@@ -1284,6 +1501,7 @@
       $('productEditorTitle').textContent = '新增产品信息';
       $('cancelProductEditBtn').style.display = 'none';
       renderProductImages();
+      renderProductLivePreview();
     }
 
     function fillProductForm(product) {
@@ -1303,6 +1521,7 @@
       $('productEditorTitle').textContent = '编辑产品信息';
       $('cancelProductEditBtn').style.display = 'inline-flex';
       renderProductImages();
+      renderProductLivePreview();
       showPanel('productsPanel');
       showProductEditorView();
     }
@@ -1381,7 +1600,7 @@
       }
       if (!visibleProducts.length) {
         $('productListSummary').textContent = '当前分类下暂无产品。';
-        $('productList').innerHTML = '<div class="upload-note">当前分类下还没有产品。点击右上角“新增产品信息”开始添加。</div>';
+        $('productList').innerHTML = '<div class="product-empty">当前分类下还没有产品。点击右上角“新增产品信息”开始添加。</div>';
         return;
       }
       const currentCategory = selectedChildCategoryId !== 'all'
@@ -1390,12 +1609,12 @@
       $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
       $('productList').innerHTML = visibleProducts.map((product) => `
         <div class="product-card">
-          <div class="product-thumb">${productCoverUrl(product) ? `<img src="${displayImageUrl(productCoverUrl(product))}" alt="">` : '暂无图片'}</div>
+          <div class="product-thumb">${productCoverUrl(product) ? `<img src="${escapeHtml(displayImageUrl(productCoverUrl(product)))}" alt="">` : '产品图片'}</div>
           <div class="product-card-body">
-            <div class="list-item-title">${product.name}</div>
-            <div class="list-item-meta">${categoryName(product.category_id) || '未分类'}</div>
-            <div class="list-item-title" style="color:var(--danger)">${product.price_text || '价格可咨询'}</div>
-            <div class="list-item-meta">${product.summary || product.description || '暂无简介'}</div>
+            <div class="list-item-title">${escapeHtml(product.name || '未命名产品')}</div>
+            <div class="list-item-meta">${escapeHtml(categoryName(product.category_id) || '未分类')}</div>
+            <div class="list-item-title" style="color:var(--danger)">${escapeHtml(product.price_text || '价格可咨询')}</div>
+            <div class="list-item-meta">${escapeHtml(product.summary || product.description || '暂无简介')}</div>
             <div class="small-actions" style="align-items:center; justify-content:space-between">
               <span class="status-pill">${product.status === 'active' ? '上架展示' : product.status}</span>
               <span class="small-actions">
@@ -1420,8 +1639,21 @@
     }
 
     function setImagePreview(kind, url) {
-      const preview = kind === 'logo' ? $('logoPreview') : $('coverPreview');
-      const fallback = kind === 'logo' ? '建议上传方形 Logo' : '建议上传门店、展厅或产品陈列图';
+      const previewMap = {
+        logo: $('logoPreview'),
+        cover: $('coverPreview'),
+        license: $('licensePreview'),
+        authorization: $('authorizationPreview'),
+      };
+      const fallbackMap = {
+        logo: '建议上传方形 Logo',
+        cover: '建议上传门店、展厅或产品陈列图',
+        license: '建议上传清晰证照图片',
+        authorization: '建议上传品牌授权或代理证明',
+      };
+      const preview = previewMap[kind];
+      const fallback = fallbackMap[kind] || '建议上传图片';
+      if (!preview) return;
       preview.innerHTML = url ? `<img src="${displayImageUrl(url)}" alt="">` : fallback;
     }
 
@@ -1483,6 +1715,7 @@
       $('loginView').style.display = show ? 'none' : 'grid';
       $('workspaceView').style.display = show ? 'block' : 'none';
       $('logoutBtn').style.display = show ? 'inline-flex' : 'none';
+      document.body.classList.toggle('portal-workspace', show);
     }
 
     function fillProfile(profile) {
@@ -1491,6 +1724,8 @@
       }
       setImagePreview('logo', $('logo_url').value);
       setImagePreview('cover', $('cover_url').value);
+      setImagePreview('license', $('license_url').value);
+      setImagePreview('authorization', $('authorization_url').value);
       setBusinessHours(profile?.business_hours || '');
       caseCount = Number(profile?.case_count || 0);
       selectedCategoryGroup = normalizeCategoryGroup(profile);
@@ -1525,8 +1760,21 @@
       if (!file) return;
       const localUrl = URL.createObjectURL(file);
       setImagePreview(kind, localUrl);
-      const status = kind === 'logo' ? $('logoStatus') : $('coverStatus');
-      const field = kind === 'logo' ? $('logo_url') : $('cover_url');
+      const statusMap = {
+        logo: $('logoStatus'),
+        cover: $('coverStatus'),
+        license: $('licenseStatus'),
+        authorization: $('authorizationStatus'),
+      };
+      const fieldMap = {
+        logo: $('logo_url'),
+        cover: $('cover_url'),
+        license: $('license_url'),
+        authorization: $('authorization_url'),
+      };
+      const status = statusMap[kind];
+      const field = fieldMap[kind];
+      if (!status || !field) return;
       if (!token()) {
         status.textContent = '请先登录商家账号后再上传图片。';
         return;
@@ -1657,6 +1905,11 @@
       tab.addEventListener('click', () => showPanel(tab.dataset.panel));
     });
 
+    [...productFields, 'product_category_id'].forEach((field) => {
+      $(field).addEventListener('input', renderProductLivePreview);
+      $(field).addEventListener('change', renderProductLivePreview);
+    });
+
     $('logoFile').addEventListener('change', async (event) => {
       try {
         await uploadProfileImage('logo', event.target.files[0]);
@@ -1672,6 +1925,26 @@
         await uploadProfileImage('cover', event.target.files[0]);
       } catch (error) {
         $('coverStatus').textContent = error.message;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    $('licenseFile').addEventListener('change', async (event) => {
+      try {
+        await uploadProfileImage('license', event.target.files[0]);
+      } catch (error) {
+        $('licenseStatus').textContent = error.message;
+      } finally {
+        event.target.value = '';
+      }
+    });
+
+    $('authorizationFile').addEventListener('change', async (event) => {
+      try {
+        await uploadProfileImage('authorization', event.target.files[0]);
+      } catch (error) {
+        $('authorizationStatus').textContent = error.message;
       } finally {
         event.target.value = '';
       }
@@ -1887,6 +2160,79 @@
       setMessage('loginMessage', '已退出登录');
     });
 
+    function enterProductsDemo() {
+      productCategories = [
+        { id: 1, name: '瓷砖', parent_id: null, status: 'active' },
+        { id: 2, name: '灯具', parent_id: null, status: 'active' },
+        { id: 3, name: '卫浴', parent_id: null, status: 'active' },
+        { id: 4, name: '木门', parent_id: null, status: 'active' },
+        { id: 5, name: '客厅砖', parent_id: 1, status: 'active' },
+        { id: 6, name: '厨卫砖', parent_id: 1, status: 'active' },
+        { id: 7, name: '阳台砖', parent_id: 1, status: 'active' },
+      ];
+      merchantProducts = [
+        {
+          id: 11,
+          category_id: 5,
+          name: '柔光瓷砖 750x1500',
+          price_text: '¥199/㎡ 起',
+          brand: '木序精选',
+          spec: '750x1500mm',
+          summary: '适合客厅和餐厅的大规格柔光砖',
+          description: '耐磨、防滑、易打理，到店可看实物色板。',
+          status: 'active',
+        },
+        {
+          id: 12,
+          category_id: 6,
+          name: '岩板背景墙',
+          price_text: '到店咨询',
+          summary: '电视背景墙和餐厅背景可选',
+          status: 'active',
+        },
+        {
+          id: 13,
+          category_id: 6,
+          name: '防滑厨卫砖',
+          price_text: '¥89/㎡ 起',
+          summary: '厨卫空间防滑耐污',
+          status: 'active',
+        },
+        {
+          id: 14,
+          category_id: 2,
+          name: '无主灯射灯',
+          price_text: '¥128 起',
+          summary: '适合现代简约无主灯设计',
+          status: 'active',
+        },
+        {
+          id: 15,
+          category_id: 3,
+          name: '智能浴室柜',
+          price_text: '到店咨询',
+          summary: '镜柜、收纳、台盆组合',
+          status: 'active',
+        },
+        {
+          id: 16,
+          category_id: 4,
+          name: '木门静音系列',
+          price_text: '¥1680/樘 起',
+          summary: '卧室静音门，颜色可定制',
+          status: 'active',
+        },
+      ];
+      currentProfile = {};
+      selectedRootCategoryId = 'all';
+      selectedChildCategoryId = 'all';
+      showWorkspace(true);
+      showPanel('productsPanel');
+      renderProductCategories();
+      renderProducts();
+      setMessage('productMessage', '当前为本地演示数据，保存、上传和删除需要登录真实商家账号。');
+    }
+
     renderTimeOptions();
     updateBusinessHours();
     renderChips();
@@ -1894,7 +2240,10 @@
     renderProductCategories();
     renderProducts();
     bindChipClicks();
-    if (token()) {
+    const demoMode = new URLSearchParams(window.location.search).get('demo');
+    if (demoMode === 'products') {
+      enterProductsDemo();
+    } else if (token()) {
       showWorkspace(true);
       loadProfile().catch((error) => {
         localStorage.removeItem(TOKEN_KEY);
