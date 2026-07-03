@@ -429,6 +429,7 @@ jobs:
             node scripts/run-migration.js migrations/20260702_verified_merchant_status.sql
             node scripts/run-migration.js migrations/20260702_verified_merchant_application.sql
             node scripts/run-migration.js migrations/20260703_merchant_product_favorites.sql
+            node scripts/run-migration.js migrations/20260703_consultation_notifications.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true

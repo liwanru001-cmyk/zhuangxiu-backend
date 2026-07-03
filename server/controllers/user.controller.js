@@ -711,6 +711,29 @@ async function createDesignerConsultation(req, res) {
       hasProject ? 1 : 0,
     ]
   );
+  const consultationTitle = targetRole === 'merchant' ? '新的商品咨询' : '新的咨询';
+  await db.query(
+    `INSERT INTO project_action_notifications
+       (item_id, recipient_id, event_type, delivery_status, payload)
+     VALUES (NULL, ?, 'consultation', 'pending', ?)`,
+    [
+      targetId,
+      JSON.stringify({
+        source: 'consultation',
+        targetRole,
+        consultationId: result.insertId,
+        requesterUserId: req.user.id,
+        title: consultationTitle,
+        content: targetRole === 'merchant'
+          ? '你收到一条新的商品咨询'
+          : '你收到一条新的站内咨询',
+        route: 'consultation_chat',
+        deepLink: { consultationId: result.insertId },
+        entityType: 'consultation',
+        entityId: result.insertId,
+      }),
+    ]
+  );
   return success(res, { id: result.insertId }, '咨询已发送');
 }
 
@@ -957,6 +980,13 @@ function buildNotificationText(row) {
       content: `你有一条整改事项：${shortContent}`,
     };
   }
+  if (row.event_type === 'consultation' || payload.source === 'consultation') {
+    return {
+      type: 'consultation',
+      title: payload.title || '新的咨询',
+      content: payload.content || '你收到一条新的咨询',
+    };
+  }
   return {
     type: 'action_assigned',
     title: '待处理事项',
@@ -996,7 +1026,7 @@ async function getNotifications(req, res) {
        ON item.id = n.item_id AND n.event_type NOT IN ('case_share_request', 'project_event')
      LEFT JOIN project_case_shares case_share
        ON case_share.id = n.item_id AND n.event_type = 'case_share_request'
-     JOIN renovation_projects p ON p.id = COALESCE(
+     LEFT JOIN renovation_projects p ON p.id = COALESCE(
        item.project_id,
        case_share.project_id,
        CAST(JSON_UNQUOTE(JSON_EXTRACT(n.payload, '$.projectId')) AS UNSIGNED),
@@ -1030,10 +1060,10 @@ async function getNotifications(req, res) {
       action_item_id: row.item_id,
       event_type: row.event_type,
       item_status: row.item_status,
-      route: row.event_type === 'project_event' ? payload.route || null : null,
-      deep_link: row.event_type === 'project_event' ? payload.deepLink || null : null,
-      entity_type: row.event_type === 'project_event' ? payload.entityType || null : null,
-      entity_id: row.event_type === 'project_event' ? payload.entityId || null : null,
+      route: ['project_event', 'consultation'].includes(row.event_type) ? payload.route || null : null,
+      deep_link: ['project_event', 'consultation'].includes(row.event_type) ? payload.deepLink || null : null,
+      entity_type: ['project_event', 'consultation'].includes(row.event_type) ? payload.entityType || null : null,
+      entity_id: ['project_event', 'consultation'].includes(row.event_type) ? payload.entityId || null : null,
       is_read: Boolean(row.read_at),
       created_at: row.created_at,
     };
