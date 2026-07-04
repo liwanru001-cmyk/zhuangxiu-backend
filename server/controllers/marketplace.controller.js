@@ -93,6 +93,12 @@ function mapCompanyRow(row) {
       .split('||')
       .map((item) => item.trim())
       .filter(Boolean);
+  const projectIds = Array.isArray(row.project_ids)
+    ? row.project_ids
+    : String(row.project_ids || '')
+      .split('||')
+      .map((item) => Number(item))
+      .filter((item) => Number.isInteger(item) && item > 0);
   const uniqueProjectNames = [...new Set(projectNames)];
   return {
     id: row.id,
@@ -118,6 +124,7 @@ function mapCompanyRow(row) {
     legacy_merchant_user_id: row.legacy_merchant_user_id || null,
     businesses: parseJsonArray(row.businesses).filter(Boolean),
     members: parseJsonArray(row.members).filter(Boolean),
+    project_ids: [...new Set(projectIds)],
     project_names: uniqueProjectNames,
     created_at: row.created_at,
     updated_at: row.updated_at,
@@ -317,6 +324,22 @@ function mapCompanyCaseShareRow(row) {
     designer_name: row.designer_name || '设计师',
     owner_name: row.owner_name || '业主',
     reviewed_at: row.reviewed_at || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
+  };
+}
+
+function mapCompanyReviewRow(row) {
+  return {
+    id: row.id,
+    company_id: row.company_id,
+    project_id: row.project_id || null,
+    project_name: row.project_name || '',
+    reviewer_user_id: row.reviewer_user_id || null,
+    reviewer_name: row.reviewer_name || '装修用户',
+    reviewer_avatar: row.reviewer_avatar || '',
+    rating: Number(row.rating || 0),
+    content: row.content || '',
     created_at: row.created_at || null,
     updated_at: row.updated_at || null,
   };
@@ -731,11 +754,16 @@ async function listMyProjectCompanies(req, res) {
        SELECT company_id,
               MAX(project_updated_at) AS latest_project_updated_at,
               GROUP_CONCAT(
+                project_id ORDER BY project_updated_at DESC
+                SEPARATOR '||'
+              ) AS project_ids,
+              GROUP_CONCAT(
                 project_name ORDER BY project_updated_at DESC
                 SEPARATOR '||'
               ) AS project_names
        FROM (
          SELECT COALESCE(ppe.company_id, ppe.participant_id) AS company_id,
+                ap.id AS project_id,
                 COALESCE(NULLIF(ap.project_name, ''), '装修项目') AS project_name,
                 ap.updated_at AS project_updated_at
          FROM accessible_projects ap
@@ -748,6 +776,7 @@ async function listMyProjectCompanies(req, res) {
          UNION ALL
 
          SELECT cm.company_id AS company_id,
+                ap.id AS project_id,
                 COALESCE(NULLIF(ap.project_name, ''), '装修项目') AS project_name,
                 ap.updated_at AS project_updated_at
          FROM accessible_projects ap
@@ -783,6 +812,7 @@ async function listMyProjectCompanies(req, res) {
             ) AS businesses,
             JSON_ARRAY() AS members,
             linked.latest_project_updated_at,
+            linked.project_ids,
             linked.project_names
      FROM linked_companies linked
      JOIN companies c
@@ -1163,7 +1193,7 @@ async function getPublicCompany(req, res) {
   if (!rows[0]) return error(res, '公司不存在', 404);
   const company = mapCompanyRow(rows[0]);
   company.owner_user_id = rows[0].owner_user_id || null;
-  company.members = await listCompanyMembersForCompany(company, { limit: 5 });
+  company.members = await listCompanyMembersForCompany(company, { limit: 6 });
   return success(res, company);
 }
 
@@ -1179,30 +1209,47 @@ async function listPublicCompanyCaseShares(req, res) {
   );
   if (!companyRows[0]) return error(res, '公司不存在', 404);
 
+  const companyProjectsCte = `WITH company_projects AS (
+    SELECT DISTINCT ppe.project_id
+    FROM project_participants_ext ppe
+    JOIN renovation_projects p
+      ON p.id = ppe.project_id
+     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+    WHERE ppe.status <> 'removed'
+      AND (
+        ppe.company_id = ?
+        OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+      )
+
+    UNION
+
+    SELECT DISTINCT pm.project_id
+    FROM company_members cm
+    JOIN project_members pm
+      ON pm.user_id = cm.user_id AND pm.status = 1
+    JOIN renovation_projects p
+      ON p.id = pm.project_id
+     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+    WHERE cm.company_id = ? AND cm.status = 'active'
+  )`;
+
+  const [[participatedRow]] = await db.query(
+    `${companyProjectsCte}
+     SELECT COUNT(*) AS total FROM company_projects`,
+    [companyId, companyId, companyId]
+  );
+
+  const [[authorizedRow]] = await db.query(
+    `${companyProjectsCte}
+     SELECT COUNT(DISTINCT share.project_id) AS total
+     FROM project_case_shares share
+     JOIN company_projects cp ON cp.project_id = share.project_id
+     WHERE share.status = 1`,
+    [companyId, companyId, companyId]
+  );
+
   const [rows] = await db.query(
-    `WITH company_projects AS (
-       SELECT DISTINCT ppe.project_id
-       FROM project_participants_ext ppe
-       JOIN renovation_projects p
-         ON p.id = ppe.project_id
-        AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-       WHERE ppe.status <> 'removed'
-         AND (
-           ppe.company_id = ?
-           OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
-         )
-
-       UNION
-
-       SELECT DISTINCT pm.project_id
-       FROM company_members cm
-       JOIN project_members pm
-         ON pm.user_id = cm.user_id AND pm.status = 1
-       JOIN renovation_projects p
-         ON p.id = pm.project_id
-        AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-       WHERE cm.company_id = ? AND cm.status = 'active'
-     )
+    `${companyProjectsCte}
      SELECT share.id, share.project_id, p.project_name,
             share.designer_id, share.owner_id, share.title, share.style,
             share.summary, share.highlights, share.image_urls,
@@ -1218,11 +1265,604 @@ async function listPublicCompanyCaseShares(req, res) {
      WHERE share.status = 1
      ORDER BY COALESCE(share.reviewed_at, share.updated_at) DESC,
               share.id DESC
-     LIMIT 12`,
+     LIMIT 50`,
     [companyId, companyId, companyId]
   );
 
-  return success(res, rows.map(mapCompanyCaseShareRow));
+  return success(res, {
+    participated_project_count: Number(participatedRow?.total || 0),
+    authorized_project_count: Number(authorizedRow?.total || 0),
+    items: rows.map(mapCompanyCaseShareRow),
+  });
+}
+
+async function listPublicCompanyReviews(req, res) {
+  const companyId = Number(req.params.id);
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+
+  const [companyRows] = await db.query(
+    `SELECT id FROM companies
+     WHERE id = ? AND status = 'active' AND verification_status = 'verified'
+     LIMIT 1`,
+    [companyId]
+  );
+  if (!companyRows[0]) return error(res, '公司不存在', 404);
+
+  const [rows] = await db.query(
+    `SELECT review.id, review.company_id, review.project_id,
+            review.reviewer_user_id, review.rating, review.content,
+            review.created_at, review.updated_at,
+            reviewer.nickname AS reviewer_name,
+            reviewer.avatar AS reviewer_avatar,
+            project.project_name
+     FROM company_reviews review
+     LEFT JOIN users reviewer ON reviewer.id = review.reviewer_user_id
+     LEFT JOIN renovation_projects project ON project.id = review.project_id
+     WHERE review.company_id = ? AND review.status = 1
+     ORDER BY review.created_at DESC, review.id DESC
+     LIMIT 100`,
+    [companyId]
+  );
+
+  return success(res, rows.map(mapCompanyReviewRow));
+}
+
+async function isCompanyLinkedToProject(companyId, projectId) {
+  const [participantRows] = await db.query(
+    `SELECT id
+     FROM project_participants_ext
+     WHERE project_id = ?
+       AND status <> 'removed'
+       AND (
+         company_id = ?
+         OR (participant_type = 'company' AND participant_id = ?)
+       )
+     LIMIT 1`,
+    [projectId, companyId, companyId]
+  );
+  if (participantRows[0]) return true;
+
+  const [memberRows] = await db.query(
+    `SELECT pm.id
+     FROM company_members cm
+     JOIN project_members pm
+       ON pm.user_id = cm.user_id AND pm.status = 1
+     WHERE cm.company_id = ?
+       AND cm.status = 'active'
+       AND pm.project_id = ?
+     LIMIT 1`,
+    [companyId, projectId]
+  );
+  return Boolean(memberRows[0]);
+}
+
+async function refreshCompanyReviewStats(companyId) {
+  const [[stats]] = await db.query(
+    `SELECT COUNT(*) AS review_count, AVG(rating) AS rating_avg
+     FROM company_reviews
+     WHERE company_id = ? AND status = 1`,
+    [companyId]
+  );
+  await db.query(
+    `UPDATE companies
+     SET review_count = ?, rating_avg = ?
+     WHERE id = ?`,
+    [
+      Number(stats?.review_count || 0),
+      Number(stats?.rating_avg || 0).toFixed(2),
+      companyId,
+    ]
+  );
+}
+
+async function submitCompanyReview(req, res) {
+  return error(res, '公司评价体系已升级，请使用四维评价入口', 410);
+}
+
+const evaluationDimensions = {
+  communication: { label: '沟通体验', source: '用户评价 + 系统行为数据' },
+  materials: { label: '材料管理', source: '用户评价 + 系统行为数据' },
+  progress: { label: '项目推进', source: '用户评价 + 系统行为数据' },
+  problem_handling: { label: '问题处理', source: '用户评价 + 系统行为数据' },
+};
+
+function boundedScore(value) {
+  if (value === null || value === undefined || Number.isNaN(Number(value))) return null;
+  return Math.max(1, Math.min(5, Number(value)));
+}
+
+function scoreFromRatio(ratio) {
+  if (ratio === null || ratio === undefined || Number.isNaN(Number(ratio))) return null;
+  return boundedScore(1 + Number(ratio) * 4);
+}
+
+function combineScores(systemScore, userScore) {
+  const system = boundedScore(systemScore);
+  const user = boundedScore(userScore);
+  if (system !== null && user !== null) return Number((system * 0.7 + user * 0.3).toFixed(2));
+  if (system !== null) return Number(system.toFixed(2));
+  if (user !== null) return Number(user.toFixed(2));
+  return null;
+}
+
+function percent(numerator, denominator) {
+  const total = Number(denominator || 0);
+  if (total <= 0) return null;
+  return Number(numerator || 0) / total;
+}
+
+async function linkedProjectIdsForCompany(companyId, projectId = null) {
+  const params = [companyId, companyId];
+  let projectFilter = '';
+  if (projectId) {
+    projectFilter = 'AND p.id = ?';
+    params.push(projectId);
+  }
+  const [rows] = await db.query(
+    `SELECT DISTINCT p.id
+     FROM renovation_projects p
+     JOIN project_participants_ext ppe
+       ON ppe.project_id = p.id
+      AND ppe.status <> 'removed'
+      AND (
+        ppe.company_id = ?
+        OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+      )
+     WHERE COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       ${projectFilter}`,
+    params
+  );
+  return rows.map((row) => Number(row.id)).filter(Boolean);
+}
+
+async function companyMemberUserIds(companyId) {
+  const [rows] = await db.query(
+    `SELECT user_id FROM company_members
+     WHERE company_id = ? AND status = 'active'`,
+    [companyId]
+  );
+  return rows.map((row) => Number(row.user_id)).filter(Boolean);
+}
+
+async function calculateProblemHandlingSystemScore(companyId, projectId = null) {
+  const projectIds = await linkedProjectIdsForCompany(companyId, projectId);
+  const memberIds = await companyMemberUserIds(companyId);
+  if (!projectIds.length || !memberIds.length) {
+    return { score: null, metrics: { total_items: 0 } };
+  }
+  const [rows] = await db.query(
+    `SELECT COUNT(DISTINCT item.id) AS total_items,
+            COUNT(DISTINCT CASE WHEN item.status = 'completed' THEN item.id END) AS completed_items,
+            COUNT(DISTINCT CASE WHEN item.status = 'pending' AND item.due_date < CURDATE() THEN item.id END) AS overdue_items,
+            AVG(
+              CASE WHEN completed_feedback.created_at IS NOT NULL
+                   THEN TIMESTAMPDIFF(HOUR, item.created_at, completed_feedback.created_at)
+                   ELSE NULL
+              END
+            ) AS avg_resolution_hours,
+            COUNT(DISTINCT CASE
+              WHEN item.status = 'completed'
+               AND completed_feedback.created_at IS NOT NULL
+               AND DATE(completed_feedback.created_at) <= item.due_date
+              THEN item.id END
+            ) AS on_time_items
+     FROM project_action_items item
+     JOIN project_action_item_assignees assignee
+       ON assignee.item_id = item.id AND assignee.user_id IN (?)
+     LEFT JOIN (
+       SELECT item_id, MIN(created_at) AS created_at
+       FROM project_action_item_feedback
+       WHERE result = 'completed'
+       GROUP BY item_id
+     ) completed_feedback ON completed_feedback.item_id = item.id
+     WHERE item.project_id IN (?)`,
+    [memberIds, projectIds]
+  );
+  const stats = rows[0] || {};
+  const total = Number(stats.total_items || 0);
+  if (!total) return { score: null, metrics: { total_items: 0 } };
+  const completionRate = percent(stats.completed_items, total);
+  const onTimeRate = percent(stats.on_time_items, total);
+  const overdueRate = percent(stats.overdue_items, total);
+  const avgHours = Number(stats.avg_resolution_hours || 0);
+  const avgTimeScore = avgHours > 0 ? Math.max(0, Math.min(1, 1 - avgHours / 168)) : null;
+  const weighted =
+    (completionRate ?? 0) * 0.35 +
+    (onTimeRate ?? 0) * 0.35 +
+    (1 - (overdueRate ?? 0)) * 0.2 +
+    (avgTimeScore ?? 0.6) * 0.1;
+  return {
+    score: scoreFromRatio(weighted),
+    metrics: {
+      total_items: total,
+      completion_rate: completionRate,
+      on_time_rate: onTimeRate,
+      overdue_rate: overdueRate,
+      avg_resolution_hours: avgHours || null,
+    },
+  };
+}
+
+async function calculateMaterialsSystemScore(companyId, projectId = null) {
+  const projectIds = await linkedProjectIdsForCompany(companyId, projectId);
+  if (!projectIds.length) return { score: null, metrics: { total_items: 0 } };
+  const [rows] = await db.query(
+    `SELECT COUNT(*) AS total_items,
+            SUM(CASE WHEN confirm_status IN ('confirmed', 'approved') THEN 1 ELSE 0 END) AS confirmed_items,
+            SUM(CASE WHEN arrival_status IN ('arrived', 'completed', 'delivered') THEN 1 ELSE 0 END) AS arrived_items,
+            SUM(CASE
+              WHEN name <> ''
+               AND category <> ''
+               AND (brand_model IS NOT NULL AND brand_model <> '')
+               AND quantity IS NOT NULL
+              THEN 1 ELSE 0 END
+            ) AS complete_items,
+            AVG(CASE
+              WHEN budget_unit_price IS NOT NULL AND budget_unit_price > 0
+               AND actual_unit_price IS NOT NULL
+              THEN ABS(actual_unit_price - budget_unit_price) / budget_unit_price
+              ELSE NULL END
+            ) AS avg_price_variance
+     FROM project_material_items
+     WHERE project_id IN (?)`,
+    [projectIds]
+  );
+  const stats = rows[0] || {};
+  const total = Number(stats.total_items || 0);
+  if (!total) return { score: null, metrics: { total_items: 0 } };
+  const confirmedRate = percent(stats.confirmed_items, total);
+  const arrivedRate = percent(stats.arrived_items, total);
+  const completeRate = percent(stats.complete_items, total);
+  const variance = stats.avg_price_variance === null ? null : Number(stats.avg_price_variance);
+  const priceScore = variance === null ? 0.7 : Math.max(0, Math.min(1, 1 - variance));
+  const weighted =
+    (completeRate ?? 0) * 0.35 +
+    (confirmedRate ?? 0) * 0.25 +
+    (arrivedRate ?? 0) * 0.25 +
+    priceScore * 0.15;
+  return {
+    score: scoreFromRatio(weighted),
+    metrics: {
+      total_items: total,
+      complete_rate: completeRate,
+      confirmed_rate: confirmedRate,
+      arrived_rate: arrivedRate,
+      avg_price_variance: variance,
+    },
+  };
+}
+
+async function calculateProgressSystemScore(companyId, projectId = null) {
+  const projectIds = await linkedProjectIdsForCompany(companyId, projectId);
+  if (!projectIds.length) return { score: null, metrics: { total_items: 0 } };
+  const [[progressStats]] = await db.query(
+    `SELECT COUNT(*) AS total_items,
+            SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed_items,
+            SUM(CASE
+              WHEN status = 'completed'
+               AND actual_finish IS NOT NULL
+               AND planned_end IS NOT NULL
+               AND actual_finish <= planned_end
+              THEN 1 ELSE 0 END
+            ) AS on_time_items,
+            SUM(CASE WHEN status = 'delayed' THEN 1 ELSE 0 END) AS delayed_items
+     FROM project_progress_items
+     WHERE project_id IN (?)`,
+    [projectIds]
+  );
+  const [[taskStats]] = await db.query(
+    `SELECT COUNT(*) AS total_items,
+            SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS completed_items,
+            SUM(CASE
+              WHEN status = 2
+               AND actual_end IS NOT NULL
+               AND planned_end IS NOT NULL
+               AND actual_end <= planned_end
+              THEN 1 ELSE 0 END
+            ) AS on_time_items,
+            SUM(CASE WHEN status = 3 THEN 1 ELSE 0 END) AS delayed_items
+     FROM renovation_tasks
+     WHERE project_id IN (?)`,
+    [projectIds]
+  );
+  const total = Number(progressStats?.total_items || 0) + Number(taskStats?.total_items || 0);
+  if (!total) return { score: null, metrics: { total_items: 0 } };
+  const completedItems = Number(progressStats?.completed_items || 0) + Number(taskStats?.completed_items || 0);
+  const onTimeItems = Number(progressStats?.on_time_items || 0) + Number(taskStats?.on_time_items || 0);
+  const delayedItems = Number(progressStats?.delayed_items || 0) + Number(taskStats?.delayed_items || 0);
+  const completionRate = percent(completedItems, total);
+  const onTimeRate = percent(onTimeItems, total);
+  const delayedRate = percent(delayedItems, total);
+  const weighted =
+    (completionRate ?? 0) * 0.45 +
+    (onTimeRate ?? 0) * 0.35 +
+    (1 - (delayedRate ?? 0)) * 0.2;
+  return {
+    score: scoreFromRatio(weighted),
+    metrics: {
+      total_items: total,
+      completion_rate: completionRate,
+      on_time_rate: onTimeRate,
+      delayed_rate: delayedRate,
+    },
+  };
+}
+
+async function calculateCommunicationSystemScore(companyId, projectId = null) {
+  const params = [companyId];
+  let projectJoin = '';
+  if (projectId) {
+    projectJoin = `
+      JOIN entity_relations relation
+        ON relation.source_type = 'consultation'
+       AND relation.source_id = c.id
+       AND relation.target_type = 'project'
+       AND relation.target_id = ?`;
+    params.unshift(projectId);
+  }
+  const [rows] = await db.query(
+    `SELECT COUNT(DISTINCT c.id) AS consultation_count,
+            COUNT(m.id) AS message_count
+     FROM consultation_targets target
+     LEFT JOIN designer_consultations c
+       ON c.id = target.consultation_id
+     ${projectJoin}
+     LEFT JOIN consultation_messages m
+       ON m.consultation_id = c.id
+     WHERE target.target_type = 'company'
+       AND target.target_id = ?`,
+    params
+  );
+  const stats = rows[0] || {};
+  const consultationCount = Number(stats.consultation_count || 0);
+  const messageCount = Number(stats.message_count || 0);
+  if (!consultationCount && !messageCount) {
+    return { score: null, metrics: { consultation_count: 0, message_count: 0 } };
+  }
+  const activityRatio = Math.min(1, messageCount / Math.max(consultationCount * 4, 1));
+  return {
+    score: scoreFromRatio(activityRatio),
+    metrics: {
+      consultation_count: consultationCount,
+      message_count: messageCount,
+    },
+  };
+}
+
+async function userFeedbackAverage(companyId, dimension, projectId = null) {
+  const params = [companyId, dimension];
+  let projectFilter = '';
+  if (projectId) {
+    projectFilter = 'AND project_id = ?';
+    params.push(projectId);
+  }
+  const [[row]] = await db.query(
+    `SELECT AVG(score) AS avg_score, COUNT(*) AS feedback_count
+     FROM company_evaluation_feedback
+     WHERE company_id = ?
+       AND dimension = ?
+       AND status = 1
+       ${projectFilter}`,
+    params
+  );
+  return {
+    score: row?.avg_score === null || row?.avg_score === undefined
+      ? null
+      : Number(row.avg_score),
+    count: Number(row?.feedback_count || 0),
+  };
+}
+
+async function calculateDimension(companyId, dimension, projectId = null) {
+  const calculators = {
+    communication: calculateCommunicationSystemScore,
+    materials: calculateMaterialsSystemScore,
+    progress: calculateProgressSystemScore,
+    problem_handling: calculateProblemHandlingSystemScore,
+  };
+  const [system, user] = await Promise.all([
+    calculators[dimension](companyId, projectId),
+    userFeedbackAverage(companyId, dimension, projectId),
+  ]);
+  return {
+    key: dimension,
+    label: evaluationDimensions[dimension].label,
+    source: evaluationDimensions[dimension].source,
+    score: combineScores(system.score, user.score),
+    system_score: system.score === null ? null : Number(system.score.toFixed(2)),
+    user_score: user.score === null ? null : Number(user.score.toFixed(2)),
+    feedback_count: user.count,
+    metrics: system.metrics,
+  };
+}
+
+async function buildCompanyEvaluationSummary(companyId, projectId = null) {
+  const entries = await Promise.all(
+    Object.keys(evaluationDimensions).map((dimension) =>
+      calculateDimension(companyId, dimension, projectId)
+    )
+  );
+  return {
+    company_id: companyId,
+    project_id: projectId || null,
+    dimensions: entries,
+  };
+}
+
+async function getCompanyEvaluationSummary(req, res) {
+  const companyId = Number(req.params.id);
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+  const [companyRows] = await db.query(
+    `SELECT id FROM companies
+     WHERE id = ? AND status <> 'deleted'
+     LIMIT 1`,
+    [companyId]
+  );
+  if (!companyRows[0]) return error(res, '公司不存在', 404);
+  return success(res, await buildCompanyEvaluationSummary(companyId));
+}
+
+async function getProjectCompanyEvaluation(req, res) {
+  const projectId = Number(req.params.projectId);
+  const companyId = Number(req.params.companyId);
+  if (!projectId || !companyId) return error(res, '项目或公司不存在', 404);
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '项目评价必须携带有效 project_id',
+  });
+  if (!projectContext.ok) return projectContext.response;
+  if (Number(projectContext.projectId) !== projectId) return error(res, '项目上下文不一致', 403);
+  const linked = await isCompanyLinkedToProject(companyId, projectId);
+  if (!linked) return error(res, '该项目未关联这家装修公司', 403);
+  return success(res, await buildCompanyEvaluationSummary(companyId, projectId));
+}
+
+async function submitCompanyEvaluationFeedback(req, res) {
+  const projectId = Number(req.params.projectId);
+  const companyId = Number(req.params.companyId);
+  const dimension = String(req.body?.dimension || '').trim();
+  const score = Number(req.body?.score);
+  const comment = String(req.body?.comment_private || '').trim().slice(0, 300);
+  if (!projectId || !companyId) return error(res, '项目或公司不存在', 404);
+  if (!evaluationDimensions[dimension]) return error(res, '评价维度不正确', 400);
+  if (!Number.isInteger(score) || score < 1 || score > 5) {
+    return error(res, '请选择 1-5 分评价', 400);
+  }
+  const projectContext = await requireProjectContext(req, res, {
+    missingMessage: '项目评价必须携带有效 project_id',
+  });
+  if (!projectContext.ok) return projectContext.response;
+  if (Number(projectContext.projectId) !== projectId) return error(res, '项目上下文不一致', 403);
+  if (!(await isCompanyLinkedToProject(companyId, projectId))) {
+    return error(res, '该项目未关联这家装修公司，不能评价', 403);
+  }
+  await db.query(
+    `INSERT INTO company_evaluation_feedback
+       (company_id, project_id, reviewer_user_id, dimension, score,
+        comment_private, source_scene, status)
+     VALUES (?, ?, ?, ?, ?, ?, 'project', 1)
+     ON DUPLICATE KEY UPDATE
+       score = VALUES(score),
+       comment_private = VALUES(comment_private),
+       status = 1,
+       updated_at = CURRENT_TIMESTAMP`,
+    [companyId, projectId, req.user.id, dimension, score, comment || null]
+  );
+  return success(res, await buildCompanyEvaluationSummary(companyId, projectId), '评价已提交');
+}
+
+async function submitConsultationEvaluationFeedback(req, res) {
+  const consultationId = Number(req.params.id);
+  const dimension = 'communication';
+  const score = Number(req.body?.score);
+  const comment = String(req.body?.comment_private || '').trim().slice(0, 300);
+  if (!consultationId) return error(res, '咨询不存在', 404);
+  if (!Number.isInteger(score) || score < 1 || score > 5) {
+    return error(res, '请选择 1-5 分评价', 400);
+  }
+  const [rows] = await db.query(
+    `SELECT target.target_id AS company_id,
+            relation.target_id AS project_id,
+            c.user_id,
+            c.designer_id
+     FROM consultation_targets target
+     LEFT JOIN designer_consultations c ON c.id = target.consultation_id
+     LEFT JOIN entity_relations relation
+       ON relation.source_type = 'consultation'
+      AND relation.source_id = c.id
+      AND relation.target_type = 'project'
+     WHERE (target.consultation_id = ? OR target.id = ?)
+       AND target.target_type = 'company'
+     LIMIT 1`,
+    [consultationId, consultationId]
+  );
+  const row = rows[0];
+  if (!row) return error(res, '咨询不存在或未关联装修公司', 404);
+  if (
+    row.user_id &&
+    row.designer_id &&
+    Number(req.user.id) !== Number(row.user_id) &&
+    Number(req.user.id) !== Number(row.designer_id)
+  ) {
+    return error(res, '无权限评价该咨询', 403);
+  }
+  await db.query(
+    `INSERT INTO company_evaluation_feedback
+       (company_id, project_id, consultation_id, reviewer_user_id, dimension,
+        score, comment_private, source_scene, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, 'consultation', 1)
+     ON DUPLICATE KEY UPDATE
+       score = VALUES(score),
+       comment_private = VALUES(comment_private),
+       status = 1,
+       updated_at = CURRENT_TIMESTAMP`,
+    [
+      Number(row.company_id),
+      row.project_id || null,
+      consultationId,
+      req.user.id,
+      dimension,
+      score,
+      comment || null,
+    ]
+  );
+  return success(res, await buildCompanyEvaluationSummary(Number(row.company_id)), '评价已提交');
+}
+
+async function submitCompanyReviewLegacyDisabled(req, res) {
+  const companyId = Number(req.params.id);
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+
+  const projectId = req.projectContext?.projectId;
+  if (!projectId) return error(res, '请选择装修项目后再评价', 400);
+
+  const rating = Number(req.body?.rating);
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    return error(res, '请选择 1-5 星评分', 400);
+  }
+
+  const content = String(req.body?.content || '').trim();
+  if (content.length < 2) return error(res, '评价内容至少填写 2 个字', 400);
+  if (content.length > 300) return error(res, '评价内容最多 300 字', 400);
+
+  const [companyRows] = await db.query(
+    `SELECT id FROM companies
+     WHERE id = ? AND status <> 'deleted'
+     LIMIT 1`,
+    [companyId]
+  );
+  if (!companyRows[0]) return error(res, '公司不存在', 404);
+
+  const linked = await isCompanyLinkedToProject(companyId, projectId);
+  if (!linked) return error(res, '该项目未关联这家装修公司，不能评价', 403);
+
+  const [existingRows] = await db.query(
+    `SELECT id
+     FROM company_reviews
+     WHERE company_id = ?
+       AND project_id = ?
+       AND reviewer_user_id = ?
+     LIMIT 1`,
+    [companyId, projectId, req.user.id]
+  );
+
+  if (existingRows[0]) {
+    await db.query(
+      `UPDATE company_reviews
+       SET rating = ?, content = ?, status = 1, updated_at = NOW()
+       WHERE id = ?`,
+      [rating, content, existingRows[0].id]
+    );
+  } else {
+    await db.query(
+      `INSERT INTO company_reviews
+         (company_id, project_id, reviewer_user_id, rating, content, status)
+       VALUES (?, ?, ?, ?, ?, 1)`,
+      [companyId, projectId, req.user.id, rating, content]
+    );
+  }
+
+  await refreshCompanyReviewStats(companyId);
+  return success(res, null, '评价已提交');
 }
 
 async function listCompanyMembers(req, res) {
@@ -1761,6 +2401,12 @@ module.exports = {
   getCompany,
   getPublicCompany,
   listPublicCompanyCaseShares,
+  listPublicCompanyReviews,
+  submitCompanyReview,
+  getCompanyEvaluationSummary,
+  getProjectCompanyEvaluation,
+  submitCompanyEvaluationFeedback,
+  submitConsultationEvaluationFeedback,
   listProfessionals,
   getProfessional,
   listCompanyMembers,

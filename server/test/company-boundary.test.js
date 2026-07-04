@@ -128,6 +128,18 @@ test('public company case shares require verified company and approved project c
         assert.deepEqual(params, [9]);
         return [[{ id: 9 }]];
       }
+      if (queries.length === 2) {
+        assert.match(sql, /COUNT\(\*\) AS total/);
+        assert.match(sql, /company_projects/);
+        assert.deepEqual(params, [9, 9, 9]);
+        return [[{ total: 4 }]];
+      }
+      if (queries.length === 3) {
+        assert.match(sql, /COUNT\(DISTINCT share\.project_id\) AS total/);
+        assert.match(sql, /project_case_shares share/);
+        assert.deepEqual(params, [9, 9, 9]);
+        return [[{ total: 1 }]];
+      }
       assert.match(sql, /project_participants_ext ppe/);
       assert.match(sql, /company_members cm/);
       assert.match(sql, /share\.status = 1/);
@@ -158,10 +170,54 @@ test('public company case shares require verified company and approved project c
   await controller.listPublicCompanyCaseShares({ params: { id: '9' } }, res);
 
   assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.participated_project_count, 4);
+  assert.equal(res.payload.data.authorized_project_count, 1);
+  assert.equal(res.payload.data.items.length, 1);
+  assert.equal(res.payload.data.items[0].project_name, '旧房翻新');
+  assert.deepEqual(res.payload.data.items[0].image_urls, ['/api/uploads/case-1.jpg']);
+  assert.deepEqual(res.payload.data.items[0].visible_fields, { area: true });
+  assert.equal(queries.length, 4);
+});
+
+test('public company reviews require verified company and return review list', async () => {
+  const queries = [];
+  const dbMock = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      if (queries.length === 1) {
+        assert.match(sql, /status = 'active'/);
+        assert.match(sql, /verification_status = 'verified'/);
+        assert.deepEqual(params, [9]);
+        return [[{ id: 9 }]];
+      }
+      assert.match(sql, /FROM company_reviews review/);
+      assert.match(sql, /review\.status = 1/);
+      assert.deepEqual(params, [9]);
+      return [[{
+        id: 12,
+        company_id: 9,
+        project_id: 11,
+        project_name: '旧房翻新',
+        reviewer_user_id: 42,
+        reviewer_name: '业主B',
+        reviewer_avatar: '/uploads/avatar.jpg',
+        rating: 5,
+        content: '沟通及时，施工配合顺畅',
+        created_at: null,
+        updated_at: null,
+      }]];
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.listPublicCompanyReviews({ params: { id: '9' } }, res);
+
+  assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.length, 1);
+  assert.equal(res.payload.data[0].rating, 5);
+  assert.equal(res.payload.data[0].content, '沟通及时，施工配合顺畅');
   assert.equal(res.payload.data[0].project_name, '旧房翻新');
-  assert.deepEqual(res.payload.data[0].image_urls, ['/api/uploads/case-1.jpg']);
-  assert.deepEqual(res.payload.data[0].visible_fields, { area: true });
   assert.equal(queries.length, 2);
 });
 
@@ -250,6 +306,7 @@ test('my project companies come from project participants and are read only', as
         businesses: JSON.stringify([]),
         members: JSON.stringify([]),
         latest_project_updated_at: null,
+        project_ids: '11||12',
         project_names: '旧房翻新||客厅改造',
       }]];
     },
@@ -262,10 +319,34 @@ test('my project companies come from project participants and are read only', as
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.length, 1);
   assert.equal(res.payload.data[0].name, '项目合作装修公司');
+  assert.deepEqual(res.payload.data[0].project_ids, [11, 12]);
   assert.deepEqual(res.payload.data[0].project_names, ['旧房翻新', '客厅改造']);
   assert.equal(res.payload.data[0].memberRole, 'client');
   assert.equal(res.payload.data[0].canManage, false);
   assert.equal(queries.length, 1);
+});
+
+test('legacy company review submit is disabled after evaluation redesign', async () => {
+  const queries = [];
+  const dbMock = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.submitCompanyReview({
+    user: { id: 42 },
+    projectContext: { projectId: 11 },
+    params: { id: '9' },
+    body: { project_id: 11, rating: 5, content: '整体服务很顺畅' },
+  }, res);
+
+  assert.equal(res.statusCode, 410);
+  assert.equal(res.payload.message, '公司评价体系已升级，请使用四维评价入口');
+  assert.equal(queries.length, 0);
 });
 
 test('company logo or license changes move company verification back to pending', async () => {
