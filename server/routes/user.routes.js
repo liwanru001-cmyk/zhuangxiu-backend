@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
 const merchantProductsController = require('../controllers/merchant-products.controller');
+const merchantCasesController = require('../controllers/merchant-cases.controller');
 const auth = require('../middleware/auth');
 const requireActiveVerifiedMerchant = require('../middleware/verified-merchant');
 const asyncHandler = require('../utils/async-handler');
@@ -20,6 +21,9 @@ const merchantProfileDir = ensureUploadDir(
 );
 const merchantProductsDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'merchant-products')
+);
+const merchantCasesDir = ensureUploadDir(
+  path.join(__dirname, '..', 'uploads', 'merchant-cases')
 );
 
 const avatarUpload = multer({
@@ -106,6 +110,33 @@ const merchantProductImageUpload = multer({
   },
 });
 
+const merchantCaseImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: merchantCasesDir,
+    filename: (req, file, callback) => {
+      const extension = path.extname(file.originalname).toLowerCase() || '.jpg';
+      callback(null, `merchant-case-${req.user.id}-${Date.now()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024 },
+  fileFilter: (req, file, callback) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedExtensions = new Set([
+      '.jpg',
+      '.jpeg',
+      '.png',
+      '.webp',
+      '.gif',
+      '.heic',
+      '.heif',
+    ]);
+    callback(
+      null,
+      file.mimetype.startsWith('image/') || allowedExtensions.has(extension)
+    );
+  },
+});
+
 router.get('/profile', asyncHandler(auth), asyncHandler(userController.getProfile));
 router.get('/profile/:id', asyncHandler(userController.getProfile));
 router.get('/designer-profile', asyncHandler(auth), asyncHandler(userController.getDesignerProfile));
@@ -134,6 +165,20 @@ router.post('/merchant-products/:id/favorite', asyncHandler(auth), asyncHandler(
 router.delete('/merchant-products/:id/favorite', asyncHandler(auth), asyncHandler(merchantProductsController.unfavoriteProduct));
 router.put('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchantProductsController.updateProduct));
 router.delete('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchantProductsController.deleteProduct));
+router.get('/merchant/dashboard/cases', asyncHandler(auth), asyncHandler(merchantCasesController.listDashboardCases));
+router.post('/merchant/dashboard/cases', asyncHandler(auth), asyncHandler(merchantCasesController.createDashboardCase));
+router.put('/merchant/dashboard/cases/:id', asyncHandler(auth), asyncHandler(merchantCasesController.updateDashboardCase));
+router.delete('/merchant/dashboard/cases/:id', asyncHandler(auth), asyncHandler(merchantCasesController.deleteDashboardCase));
+router.post('/merchant/dashboard/cases/:id/publish', asyncHandler(auth), asyncHandler(merchantCasesController.publishDashboardCase));
+router.post('/merchant/dashboard/cases/:id/hide', asyncHandler(auth), asyncHandler(merchantCasesController.hideDashboardCase));
+router.post(
+  '/merchant/dashboard/cases/image',
+  asyncHandler(auth),
+  asyncHandler(requireActiveVerifiedMerchant),
+  merchantCaseImageUpload.single('image'),
+  setUploadedFilePermissions,
+  asyncHandler(merchantCasesController.uploadCaseImage)
+);
 router.post(
   '/merchant-products/image',
   asyncHandler(auth),
@@ -142,6 +187,8 @@ router.post(
   setUploadedFilePermissions,
   asyncHandler(merchantProductsController.uploadProductImage)
 );
+router.get('/merchants/:id/cases', asyncHandler(merchantCasesController.listPublicMerchantCases));
+router.get('/merchant-cases/:id', asyncHandler(merchantCasesController.getPublicMerchantCase));
 router.get('/:userId/merchant-products', asyncHandler(merchantProductsController.listPublicProducts));
 router.get('/designer-consultations', asyncHandler(auth), asyncHandler(userController.getDesignerConsultations));
 router.get('/my-consultations', asyncHandler(auth), asyncHandler(userController.getMyConsultations));
