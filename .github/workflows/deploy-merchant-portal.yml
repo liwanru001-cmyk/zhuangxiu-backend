@@ -5,7 +5,7 @@ on:
     branches:
       - main
     paths:
-      - 'server/public/**'
+      - 'server/public/index.html'
       - 'server/public/merchant/**'
       - '.github/workflows/deploy-merchant-portal.yml'
   workflow_dispatch:
@@ -19,16 +19,14 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Validate public static artifact
+      - name: Validate merchant portal artifact
         run: |
           set -euo pipefail
           test -f server/public/index.html
-          test -f server/public/main.dart.js
-          test -f server/public/flutter_bootstrap.js
           test -f server/public/merchant/index.html
           test ! -f server/public/index.html.tmp
 
-      - name: Upload public static files over SSH
+      - name: Upload merchant portal over SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -89,11 +87,11 @@ jobs:
           )
 
           remote="${SSH_USER}@${SSH_HOST}"
-          archive="/tmp/yinnkhome-public-${GITHUB_RUN_ID}.tgz"
-          remote_archive="/tmp/yinnkhome-public-${GITHUB_RUN_ID}.tgz"
+          remote_home_tmp="/tmp/yinnkhome-home-index-${GITHUB_RUN_ID}.html"
+          remote_merchant_tmp="/tmp/yinnkhome-merchant-index-${GITHUB_RUN_ID}.html"
 
-          tar --exclude='.DS_Store' -C server/public -czf "$archive" .
-          scp "${scp_opts[@]}" "$archive" "$remote:$remote_archive"
+          scp "${scp_opts[@]}" server/public/index.html "$remote:$remote_home_tmp"
+          scp "${scp_opts[@]}" server/public/merchant/index.html "$remote:$remote_merchant_tmp"
           ssh "${ssh_opts[@]}" "$remote" \
             "set -euo pipefail
              runner=''
@@ -105,24 +103,26 @@ jobs:
                  exit 1
                fi
              fi
-             \$runner mkdir -p '$MERCHANT_PUBLIC_DIR'
-             \$runner tar -xzf '$remote_archive' -C '$MERCHANT_PUBLIC_DIR'
-             rm -f '$remote_archive'
+             \$runner mkdir -p '$MERCHANT_PUBLIC_DIR/merchant'
+             cp '$remote_home_tmp' /tmp/yinnkhome-home-index-ready.html
+             cp '$remote_merchant_tmp' /tmp/yinnkhome-merchant-index-ready.html
+             \$runner cp /tmp/yinnkhome-home-index-ready.html '$MERCHANT_PUBLIC_DIR/index.html.tmp'
+             \$runner cp /tmp/yinnkhome-merchant-index-ready.html '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp'
+             \$runner mv '$MERCHANT_PUBLIC_DIR/index.html.tmp' '$MERCHANT_PUBLIC_DIR/index.html'
+             \$runner mv '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html'
+             rm -f '$remote_home_tmp'
+             rm -f '$remote_merchant_tmp'
+             rm -f /tmp/yinnkhome-home-index-ready.html
+             rm -f /tmp/yinnkhome-merchant-index-ready.html
              test -f '$MERCHANT_PUBLIC_DIR/index.html'
-             test -f '$MERCHANT_PUBLIC_DIR/main.dart.js'
-             test -f '$MERCHANT_PUBLIC_DIR/flutter_bootstrap.js'
              test -f '$MERCHANT_PUBLIC_DIR/merchant/index.html'"
-          rm -f "$archive"
 
       - name: Verify public static URLs
         run: |
           set -euo pipefail
           home_file="$(mktemp)"
-          app_file="$(mktemp)"
           merchant_file="$(mktemp)"
           curl -fsS https://yinnkhome.com/ -o "$home_file"
-          curl -fsS https://yinnkhome.com/main.dart.js -o "$app_file"
           curl -fsS https://yinnkhome.com/merchant/ -o "$merchant_file"
-          grep -q 'flutter_bootstrap.js' "$home_file"
-          grep -q 'evaluation-summary' "$app_file"
+          grep -q '商家登录' "$home_file"
           grep -q '商家入口 - 装修不凡' "$merchant_file"
