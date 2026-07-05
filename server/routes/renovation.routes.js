@@ -273,6 +273,16 @@ router.get(
   asyncHandler(controller.getAccessibleProjects)
 );
 router.get('/projects/:id', ...protectedRoute, asyncHandler(controller.getProjectDetail));
+router.get('/projects/:id/showcase', ...protectedRoute, asyncHandler(controller.getProjectShowcase));
+router.put('/projects/:id/showcase', ...protectedRoute, asyncHandler(controller.updateProjectShowcase));
+router.post('/projects/:id/showcase/publish', ...protectedRoute, asyncHandler(controller.publishProjectShowcase));
+router.post('/projects/:id/showcase/hide', ...protectedRoute, asyncHandler(controller.hideProjectShowcase));
+router.get(
+  '/projects/:id/showcase/image-candidates',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectShowcaseImageCandidates)
+);
+router.get('/project-showcases/:id', ...protectedRoute, asyncHandler(controller.getPublishedProjectShowcase));
 router.put('/projects/:id/archive', ...protectedRoute, asyncHandler(controller.archiveProject));
 router.put('/projects/:id/restore', ...protectedRoute, asyncHandler(controller.restoreProject));
 router.delete('/projects/:id', ...protectedRoute, asyncHandler(controller.deleteProject));

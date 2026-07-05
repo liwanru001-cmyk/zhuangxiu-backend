@@ -9,7 +9,6 @@ const {
   activeVerifiedMerchantStateSql,
 } = require('../utils/verified-merchant');
 const {
-  requireProjectContext,
   linkConsultationToProject,
   getConsultationProjectContext,
 } = require('../utils/project-context');
@@ -728,11 +727,65 @@ const consultationRoleConfig = {
   },
 };
 
+function normalizeConsultationProjectId(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const projectId = Number(value);
+  return Number.isInteger(projectId) && projectId > 0 ? projectId : null;
+}
+
+function getRequestedConsultationProjectId(req) {
+  return (
+    normalizeConsultationProjectId(req.body?.project_id) ||
+    normalizeConsultationProjectId(req.body?.projectId) ||
+    normalizeConsultationProjectId(req.query?.project_id) ||
+    normalizeConsultationProjectId(req.query?.projectId)
+  );
+}
+
+async function getAccessibleConsultationProject(projectId, userId) {
+  const params = [userId];
+  let where = `
+    COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+  `;
+  if (projectId) {
+    params.push(projectId);
+    where += ' AND p.id = ?';
+  }
+  params.push(userId);
+  where += ' AND (p.user_id = ? OR pm.id IS NOT NULL)';
+  const [rows] = await db.query(
+    `SELECT p.id, p.user_id, p.lifecycle_status, pm.role
+     FROM renovation_projects p
+     LEFT JOIN project_members pm
+       ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
+     WHERE ${where}
+     ORDER BY
+       CASE WHEN COALESCE(p.lifecycle_status, 'active') = 'active' THEN 0 ELSE 1 END,
+       p.updated_at DESC,
+       p.id DESC
+     LIMIT 1`,
+    params
+  );
+  return rows[0] || null;
+}
+
+async function resolveOptionalConsultationProject(req) {
+  if (!req.user?.id) return null;
+  const requestedProjectId = getRequestedConsultationProjectId(req);
+  const project =
+    (requestedProjectId
+      ? await getAccessibleConsultationProject(requestedProjectId, req.user.id)
+      : null) || await getAccessibleConsultationProject(null, req.user.id);
+  if (!project) return null;
+  return {
+    projectId: Number(project.id),
+    role: project.role || (Number(project.user_id) === Number(req.user.id) ? 'owner' : null),
+    lifecycleStatus: project.lifecycle_status || 'active',
+  };
+}
+
 async function createDesignerConsultation(req, res) {
-  const projectContext = await requireProjectContext(req, res, {
-    missingMessage: '咨询必须绑定装修项目，请选择项目后再发送',
-  });
-  if (!projectContext.ok) return projectContext.response;
+  const projectContext = await resolveOptionalConsultationProject(req);
 
   const targetId = Number(req.params.id);
   const targetRole = consultationRoleConfig[req.body.target_role]
@@ -809,8 +862,12 @@ async function createDesignerConsultation(req, res) {
       hasProject ? 1 : 0,
     ]
   );
-  await linkConsultationToProject(result.insertId, projectContext.projectId);
+  if (projectContext?.projectId) {
+    await linkConsultationToProject(result.insertId, projectContext.projectId);
+  }
   const consultationTitle = targetRole === 'merchant' ? '新的商品咨询' : '新的咨询';
+  const deepLink = { consultationId: result.insertId };
+  if (projectContext?.projectId) deepLink.projectId = projectContext.projectId;
   await db.query(
     `INSERT INTO project_action_notifications
        (item_id, recipient_id, event_type, delivery_status, payload)
@@ -821,20 +878,20 @@ async function createDesignerConsultation(req, res) {
         source: 'consultation',
         targetRole,
         consultationId: result.insertId,
-        projectId: projectContext.projectId,
+        projectId: projectContext?.projectId || null,
         requesterUserId: req.user.id,
         title: consultationTitle,
         content: targetRole === 'merchant'
           ? '你收到一条新的商品咨询'
           : '你收到一条新的站内咨询',
         route: 'consultation_chat',
-        deepLink: { consultationId: result.insertId, projectId: projectContext.projectId },
+        deepLink,
         entityType: 'consultation',
         entityId: result.insertId,
       }),
     ]
   );
-  return success(res, { id: result.insertId, project_id: projectContext.projectId }, '咨询已发送');
+  return success(res, { id: result.insertId, project_id: projectContext?.projectId || null }, '咨询已发送');
 }
 
 async function getDesignerConsultations(req, res) {
@@ -946,19 +1003,18 @@ async function getConsultationMessages(req, res) {
 }
 
 async function sendConsultationMessage(req, res) {
-  const projectContext = await requireProjectContext(req, res, {
-    missingMessage: '发送咨询消息必须携带 project_id',
-  });
-  if (!projectContext.ok) return projectContext.response;
-
   const consultationId = Number(req.params.id);
   const consultation = await getConsultationForUser(consultationId, req.user.id);
   if (!consultation) return error(res, '咨询不存在或无权限', 404);
   const linkedProjectId = await getConsultationProjectContext(consultationId);
-  if (linkedProjectId && Number(linkedProjectId) !== Number(projectContext.projectId)) {
+  const requestedProjectId = getRequestedConsultationProjectId(req);
+  if (linkedProjectId && requestedProjectId && Number(linkedProjectId) !== Number(requestedProjectId)) {
     return error(res, '咨询不属于当前项目', 403);
   }
-  if (!linkedProjectId) {
+  let projectContext = linkedProjectId
+    ? { projectId: linkedProjectId }
+    : await resolveOptionalConsultationProject(req);
+  if (!linkedProjectId && projectContext?.projectId) {
     await linkConsultationToProject(consultationId, projectContext.projectId);
   }
 
@@ -1011,6 +1067,8 @@ async function sendConsultationMessage(req, res) {
       : consultation.target_role === 'merchant'
         ? '商品咨询有新消息'
         : '咨询有新消息';
+    const deepLink = { consultationId };
+    if (projectContext?.projectId) deepLink.projectId = projectContext.projectId;
     await connection.query(
       `INSERT INTO project_action_notifications
          (item_id, recipient_id, event_type, delivery_status, payload)
@@ -1021,13 +1079,13 @@ async function sendConsultationMessage(req, res) {
           source: 'consultation',
           targetRole: consultation.target_role,
           consultationId,
-          projectId: projectContext.projectId,
+          projectId: projectContext?.projectId || null,
           messageId: result.insertId,
           senderUserId: req.user.id,
           title: replyTitle,
           content: content.length > 48 ? `${content.slice(0, 48)}...` : content,
           route: 'consultation_chat',
-          deepLink: { consultationId, projectId: projectContext.projectId },
+          deepLink,
           entityType: 'consultation',
           entityId: consultationId,
         }),

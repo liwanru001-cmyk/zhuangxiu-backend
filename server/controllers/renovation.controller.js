@@ -860,6 +860,389 @@ function parseJsonArray(value) {
   }
 }
 
+const projectShowcaseDefaultFields = {
+  project_name: true,
+  owner_city: true,
+  house_area: true,
+  house_layout: true,
+  project_type: true,
+  renovation_method: true,
+  start_date: true,
+  total_days: true,
+  current_stage: true,
+  style_preference: true,
+  key_spaces: true,
+  special_needs: true,
+};
+
+function normalizeShowcaseVisibleFields(input) {
+  if (Array.isArray(input)) {
+    return input.reduce((result, key) => {
+      const normalized = String(key || '').trim();
+      if (normalized) result[normalized] = true;
+      return result;
+    }, {});
+  }
+  const parsed = parseJsonObject(input);
+  return Object.entries(parsed).reduce((result, [key, value]) => {
+    const normalized = String(key || '').trim();
+    if (normalized) result[normalized] = Boolean(value);
+    return result;
+  }, {});
+}
+
+function mapProjectShowcaseRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    project_id: Number(row.project_id),
+    owner_user_id: Number(row.owner_user_id),
+    title: row.title || '',
+    description: row.description || '',
+    cover_image: row.cover_image || '',
+    visibility: row.visibility || 'private',
+    status: row.status || 'draft',
+    visible_fields: {
+      ...projectShowcaseDefaultFields,
+      ...parseJsonObject(row.visible_fields),
+    },
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function mapProjectShowcaseImage(row) {
+  return {
+    id: Number(row.id),
+    showcase_id: Number(row.showcase_id),
+    source_type: row.source_type || 'manual',
+    source_id: row.source_id ? Number(row.source_id) : null,
+    image_url: row.image_url || '',
+    caption: row.caption || '',
+    sort_order: Number(row.sort_order || 0),
+    is_cover: Boolean(row.is_cover),
+  };
+}
+
+function mapProjectShowcaseImageCandidate(row) {
+  return {
+    source_type: row.source_type || 'manual',
+    source_id: row.source_id ? Number(row.source_id) : null,
+    image_url: row.image_url || '',
+    caption: row.caption || '',
+    space_name: row.space_name || '',
+    image_type: row.image_type || '',
+    is_primary: Boolean(row.is_primary),
+  };
+}
+
+function buildProjectShowcaseDefaults(project) {
+  const title = normalizeProjectName(project.project_name);
+  const needs = [
+    project.style_preference ? `风格偏好：${project.style_preference}` : '',
+    project.key_spaces ? `重点空间：${project.key_spaces}` : '',
+    project.special_needs ? `特殊需求：${project.special_needs}` : '',
+  ].filter(Boolean);
+  return {
+    title,
+    description: needs.join('\n'),
+    cover_image: project.floor_plan_image || '',
+    visibility: 'private',
+    status: 'draft',
+    visible_fields: projectShowcaseDefaultFields,
+  };
+}
+
+async function getProjectForShowcase(projectId, userId, ownerOnly = false) {
+  const roleSql = ownerOnly ? "AND pm.role = 'owner'" : '';
+  const [rows] = await db.query(
+    `SELECT p.*, owner.nickname AS owner_nickname, owner.city AS owner_city,
+            pm.role AS member_role
+     FROM renovation_projects p
+     JOIN users owner ON owner.id = p.user_id
+     JOIN project_members pm
+       ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1 ${roleSql}
+     WHERE p.id = ?
+       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
+     LIMIT 1`,
+    [userId, projectId]
+  );
+  return rows[0] || null;
+}
+
+function mapProjectShowcaseBaseProject(project) {
+  const stage = stages.find((item) => item.id === Number(project.current_stage));
+  return {
+    id: Number(project.id),
+    project_code: project.project_code,
+    project_name: normalizeProjectName(project.project_name),
+    owner_city: project.owner_city || '',
+    house_area: Number(project.house_area || 0),
+    house_layout: project.house_layout || '',
+    project_type: project.project_type || '',
+    renovation_method: project.renovation_method || '',
+    start_date: project.start_date,
+    total_days: Number(project.total_days || 0),
+    current_stage: Number(project.current_stage || 1),
+    current_stage_name: stage?.name || `第 ${project.current_stage || 1} 阶段`,
+    style_preference: project.style_preference || '',
+    key_spaces: project.key_spaces || '',
+    special_needs: project.special_needs || '',
+    floor_plan_image: project.floor_plan_image || '',
+  };
+}
+
+async function fetchProjectShowcase(showcaseId) {
+  const [[row]] = await db.query(
+    `SELECT * FROM project_showcases WHERE id = ? LIMIT 1`,
+    [showcaseId]
+  );
+  return mapProjectShowcaseRow(row);
+}
+
+async function fetchProjectShowcaseByProject(projectId) {
+  const [[row]] = await db.query(
+    `SELECT * FROM project_showcases WHERE project_id = ? LIMIT 1`,
+    [projectId]
+  );
+  return mapProjectShowcaseRow(row);
+}
+
+async function fetchProjectShowcaseImages(showcaseId) {
+  const [rows] = await db.query(
+    `SELECT *
+     FROM project_showcase_images
+     WHERE showcase_id = ?
+     ORDER BY sort_order ASC, id ASC`,
+    [showcaseId]
+  );
+  return rows.map(mapProjectShowcaseImage);
+}
+
+async function ensureProjectShowcase(project) {
+  let showcase = await fetchProjectShowcaseByProject(project.id);
+  if (showcase) return showcase;
+  const defaults = buildProjectShowcaseDefaults(project);
+  const [result] = await db.query(
+    `INSERT INTO project_showcases
+       (project_id, owner_user_id, title, description, cover_image, visibility, status, visible_fields)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      project.id,
+      project.user_id,
+      defaults.title,
+      defaults.description,
+      defaults.cover_image,
+      defaults.visibility,
+      defaults.status,
+      JSON.stringify(defaults.visible_fields),
+    ]
+  );
+  return fetchProjectShowcase(result.insertId);
+}
+
+async function getProjectShowcase(req, res) {
+  const projectId = Number(req.params.id);
+  const project = await getProjectForShowcase(projectId, req.user.id, true);
+  if (!project) return error(res, '只有项目业主可以管理展示页', 403);
+  const showcase = await ensureProjectShowcase(project);
+  const images = await fetchProjectShowcaseImages(showcase.id);
+  return success(res, {
+    project: mapProjectShowcaseBaseProject(project),
+    showcase,
+    images,
+  });
+}
+
+async function updateProjectShowcase(req, res) {
+  const projectId = Number(req.params.id);
+  const project = await getProjectForShowcase(projectId, req.user.id, true);
+  if (!project) return error(res, '只有项目业主可以管理展示页', 403);
+  const showcase = await ensureProjectShowcase(project);
+  const title = String(req.body.title || '').trim().slice(0, 120);
+  if (!title) return error(res, '展示标题不能为空');
+  const description = String(req.body.description || '').trim().slice(0, 1000);
+  const coverImage = String(req.body.cover_image || '').trim().slice(0, 500);
+  const visibility = ['private', 'participants', 'public'].includes(req.body.visibility)
+    ? req.body.visibility
+    : 'private';
+  const status = ['draft', 'published', 'hidden'].includes(req.body.status)
+    ? req.body.status
+    : showcase.status;
+  const visibleFields = normalizeShowcaseVisibleFields(req.body.visible_fields);
+  const images = parseJsonArray(req.body.images)
+    .map((item, index) => ({
+      sourceType: ['floor_plan', 'project_space_image', 'manual'].includes(item?.source_type)
+        ? item.source_type
+        : 'manual',
+      sourceId: item?.source_id ? Number(item.source_id) : null,
+      imageUrl: String(item?.image_url || '').trim().slice(0, 500),
+      caption: String(item?.caption || '').trim().slice(0, 120),
+      sortOrder: Number.isFinite(Number(item?.sort_order)) ? Number(item.sort_order) : index,
+      isCover: Boolean(item?.is_cover),
+    }))
+    .filter((item) => item.imageUrl)
+    .slice(0, 30);
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query(
+      `UPDATE project_showcases
+       SET title = ?, description = ?, cover_image = ?, visibility = ?,
+           status = ?, visible_fields = ?
+       WHERE id = ?`,
+      [
+        title,
+        description || null,
+        coverImage || null,
+        visibility,
+        status,
+        JSON.stringify({ ...projectShowcaseDefaultFields, ...visibleFields }),
+        showcase.id,
+      ]
+    );
+    await connection.query(
+      'DELETE FROM project_showcase_images WHERE showcase_id = ?',
+      [showcase.id]
+    );
+    if (images.length) {
+      await connection.query(
+        `INSERT INTO project_showcase_images
+           (showcase_id, source_type, source_id, image_url, caption, sort_order, is_cover)
+         VALUES ${images.map(() => '(?, ?, ?, ?, ?, ?, ?)').join(', ')}`,
+        images.flatMap((item) => [
+          showcase.id,
+          item.sourceType,
+          item.sourceId,
+          item.imageUrl,
+          item.caption || null,
+          item.sortOrder,
+          item.isCover ? 1 : 0,
+        ])
+      );
+    }
+    await connection.commit();
+  } catch (saveError) {
+    await connection.rollback();
+    return error(res, saveError.message || '保存展示页失败');
+  } finally {
+    connection.release();
+  }
+
+  return getProjectShowcase(req, res);
+}
+
+async function publishProjectShowcase(req, res) {
+  const projectId = Number(req.params.id);
+  const project = await getProjectForShowcase(projectId, req.user.id, true);
+  if (!project) return error(res, '只有项目业主可以管理展示页', 403);
+  const showcase = await ensureProjectShowcase(project);
+  await db.query(
+    `UPDATE project_showcases SET status = 'published' WHERE id = ?`,
+    [showcase.id]
+  );
+  return success(res, { id: showcase.id, status: 'published' }, '展示页已发布');
+}
+
+async function hideProjectShowcase(req, res) {
+  const projectId = Number(req.params.id);
+  const project = await getProjectForShowcase(projectId, req.user.id, true);
+  if (!project) return error(res, '只有项目业主可以管理展示页', 403);
+  const showcase = await ensureProjectShowcase(project);
+  await db.query(
+    `UPDATE project_showcases SET status = 'hidden' WHERE id = ?`,
+    [showcase.id]
+  );
+  return success(res, { id: showcase.id, status: 'hidden' }, '展示页已隐藏');
+}
+
+async function getProjectShowcaseImageCandidates(req, res) {
+  const projectId = Number(req.params.id);
+  const project = await getProjectForShowcase(projectId, req.user.id, true);
+  if (!project) return error(res, '只有项目业主可以管理展示页', 403);
+  const candidates = [];
+  if (project.floor_plan_image) {
+    candidates.push({
+      source_type: 'floor_plan',
+      source_id: null,
+      image_url: project.floor_plan_image,
+      caption: '户型图',
+      space_name: '',
+      image_type: 'floor_plan',
+      is_primary: true,
+    });
+  }
+  const [rows] = await db.query(
+    `SELECT 'project_space_image' AS source_type,
+            psi.id AS source_id,
+            psi.image_url,
+            ps.name AS space_name,
+            psi.image_type,
+            psi.is_primary,
+            CONCAT(ps.name, CASE psi.image_type WHEN 'rendering' THEN '效果图' ELSE '现场图' END) AS caption
+     FROM project_space_images psi
+     JOIN project_spaces ps ON ps.id = psi.space_id
+     WHERE ps.project_id = ?
+     ORDER BY psi.is_primary DESC, ps.sort_order ASC, psi.sort_order ASC, psi.id DESC`,
+    [projectId]
+  );
+  return success(res, [...candidates, ...rows.map(mapProjectShowcaseImageCandidate)]);
+}
+
+async function getPublishedProjectShowcase(req, res) {
+  const showcaseId = Number(req.params.id);
+  const [[row]] = await db.query(
+    `SELECT showcase.id AS showcase_id, showcase.project_id, showcase.owner_user_id,
+            showcase.title, showcase.description, showcase.cover_image,
+            showcase.visibility, showcase.status AS showcase_status,
+            showcase.visible_fields, showcase.created_at AS showcase_created_at,
+            showcase.updated_at AS showcase_updated_at,
+            p.id, p.project_code, p.project_name, p.house_area, p.start_date,
+            p.total_days, p.current_stage, p.project_type, p.house_layout,
+            p.floor_plan_image, p.renovation_method, p.style_preference,
+            p.key_spaces, p.special_needs, p.lifecycle_status,
+            owner.city AS owner_city
+     FROM project_showcases showcase
+     JOIN renovation_projects p ON p.id = showcase.project_id
+     JOIN users owner ON owner.id = p.user_id
+     WHERE showcase.id = ?
+       AND showcase.status = 'published'
+       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
+     LIMIT 1`,
+    [showcaseId]
+  );
+  if (!row) return error(res, '展示页不存在或未发布', 404);
+  const showcase = mapProjectShowcaseRow({
+    id: row.showcase_id,
+    project_id: row.project_id,
+    owner_user_id: row.owner_user_id,
+    title: row.title,
+    description: row.description,
+    cover_image: row.cover_image,
+    visibility: row.visibility,
+    status: row.showcase_status,
+    visible_fields: row.visible_fields,
+    created_at: row.showcase_created_at,
+    updated_at: row.showcase_updated_at,
+  });
+  if (showcase.visibility === 'private' && Number(showcase.owner_user_id) !== Number(req.user?.id)) {
+    return error(res, '无权查看展示页', 403);
+  }
+  if (showcase.visibility === 'participants') {
+    const canView =
+      Number(showcase.owner_user_id) === Number(req.user?.id) ||
+      (req.user?.id && await canAccessProject(row.project_id, req.user.id));
+    if (!canView) return error(res, '无权查看展示页', 403);
+  }
+  const images = await fetchProjectShowcaseImages(showcase.id);
+  return success(res, {
+    project: mapProjectShowcaseBaseProject(row),
+    showcase,
+    images,
+  });
+}
+
 async function getProjectInfoChangeRequests(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
@@ -7338,6 +7721,12 @@ module.exports = {
   completeStage,
   updateInfo,
   updateProjectInfo,
+  getProjectShowcase,
+  updateProjectShowcase,
+  publishProjectShowcase,
+  hideProjectShowcase,
+  getProjectShowcaseImageCandidates,
+  getPublishedProjectShowcase,
   getProjectInfoChangeRequests,
   createProjectInfoChangeRequest,
   handleProjectInfoChangeRequest,
