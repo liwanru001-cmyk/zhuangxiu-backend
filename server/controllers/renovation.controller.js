@@ -6992,13 +6992,51 @@ async function getProjectInspections(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   const hasMemberRole = await ensureProjectInspectionMemberRoleColumn();
-  const memberRoleSelect = hasMemberRole
-    ? 'i.`member_role` AS member_role'
-    : "'owner' AS member_role";
+  const memberRoleExpression = hasMemberRole ? 'i.`member_role`' : "'owner'";
+  const ownerRoleSql = "'owner', 'owner_member'";
+  const visibleStatusExpression = `
+            CASE
+              WHEN i.status = 'pending'
+                   AND ${memberRoleExpression} IN (${ownerRoleSql})
+                   AND i.responsible_user_id IS NOT NULL THEN 'rework'
+              WHEN i.status = 'pending'
+                   AND ${memberRoleExpression} IN (${ownerRoleSql})
+                   AND i.responsible_user_id IS NULL THEN 'passed'
+              ELSE i.status
+            END`;
+  const requesterRole = await getProjectMemberRole(projectId, req.user.id);
+  const requesterOwnerSide = isOwnerSideRole(requesterRole);
+  const filters = ['i.project_id = ?'];
+  const params = [projectId];
+  if (!requesterOwnerSide) {
+    filters.push(`
+      (
+        (i.status = 'pending'
+          AND ${memberRoleExpression} NOT IN (${ownerRoleSql})
+          AND i.submitted_by = ?)
+        OR (i.status = 'rework'
+          AND (i.responsible_user_id = ? OR i.submitted_by = ?))
+        OR (i.status = 'passed'
+          AND (i.responsible_user_id = ? OR i.submitted_by = ?))
+        OR (i.status = 'pending'
+          AND ${memberRoleExpression} IN (${ownerRoleSql})
+          AND i.responsible_user_id = ?)
+      )
+    `);
+    params.push(
+      req.user.id,
+      req.user.id,
+      req.user.id,
+      req.user.id,
+      req.user.id,
+      req.user.id
+    );
+  }
   const [rows] = await db.query(
     `SELECT i.id, i.project_id, i.task_id, i.progress_item_id,
-            i.stage_id, i.responsible_user_id, i.status,
-            ${memberRoleSelect},
+            i.stage_id, i.responsible_user_id,
+            ${visibleStatusExpression} AS status,
+            ${memberRoleExpression} AS member_role,
             i.description, i.review_remark, i.submission_round,
             i.created_at, i.updated_at, i.reviewed_at,
             COALESCE(progress_item.title, t.task_name) AS task_name,
@@ -7012,10 +7050,10 @@ async function getProjectInspections(req, res) {
      JOIN users submitter ON submitter.id = i.submitted_by
      LEFT JOIN users responsible ON responsible.id = i.responsible_user_id
      LEFT JOIN users reviewer ON reviewer.id = i.reviewed_by
-     WHERE i.project_id = ?
+     WHERE ${filters.join(' AND ')}
      ORDER BY CASE i.status WHEN 'pending' THEN 0 WHEN 'rework' THEN 1 ELSE 2 END,
               i.updated_at DESC`,
-    [projectId]
+    params
   );
   const [images] = await db.query(
     `SELECT image.id, image.inspection_id, image.image_url,
@@ -7333,6 +7371,12 @@ async function createProjectInspection(req, res) {
 
   const memberRole =
     (await getProjectMemberRole(projectId, req.user.id)) || req.user.role || 'owner';
+  const ownerSideSubmission = isOwnerSideRole(memberRole);
+  const initialStatus = ownerSideSubmission
+    ? (responsibleUserId ? 'rework' : 'passed')
+    : 'pending';
+  const initialReviewRemark =
+    ownerSideSubmission && responsibleUserId ? description : null;
   const hasMemberRole = await ensureProjectInspectionMemberRoleColumn();
   const connection = await db.getConnection();
   try {
@@ -7341,12 +7385,12 @@ async function createProjectInspection(req, res) {
       hasMemberRole
         ? `INSERT INTO project_inspections
            (project_id, task_id, progress_item_id, stage_id, submitted_by,
-            member_role, responsible_user_id, status, description)
-           VALUES (?, ?, ?, ?, ?, ?, ?, 'pending', ?)`
+            member_role, responsible_user_id, status, description, review_remark)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
         : `INSERT INTO project_inspections
            (project_id, task_id, progress_item_id, stage_id, submitted_by,
-            responsible_user_id, status, description)
-           VALUES (?, ?, ?, ?, ?, ?, 'pending', ?)`,
+            responsible_user_id, status, description, review_remark)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       hasMemberRole
         ? [
             projectId,
@@ -7356,7 +7400,9 @@ async function createProjectInspection(req, res) {
             req.user.id,
             memberRole,
             responsibleUserId,
+            initialStatus,
             description,
+            initialReviewRemark,
           ]
         : [
             projectId,
@@ -7365,7 +7411,9 @@ async function createProjectInspection(req, res) {
             progressItem?.stage_id || tasks[0].stage_id,
             req.user.id,
             responsibleUserId,
+            initialStatus,
             description,
+            initialReviewRemark,
           ]
     );
     const host = `${req.protocol}://${req.get('host')}`;
@@ -7616,6 +7664,13 @@ async function getProjectInspectionStepRecords(req, res) {
   }
   const params = [projectId];
   const filters = ['record.project_id = ?'];
+  const requesterRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!isOwnerSideRole(requesterRole)) {
+    filters.push(
+      '(record.created_by = ? OR record.target_user_id = ? OR record.response_by = ?)'
+    );
+    params.push(req.user.id, req.user.id, req.user.id);
+  }
   if (stageId) {
     filters.push('record.stage_id = ?');
     params.push(stageId);
