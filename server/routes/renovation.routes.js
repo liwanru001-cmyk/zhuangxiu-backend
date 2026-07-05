@@ -438,6 +438,28 @@ router.get(
   asyncHandler(controller.getProjectInspections)
 );
 router.get(
+  '/projects/:id/inspection-step-records',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectInspectionStepRecords)
+);
+router.post(
+  '/projects/:id/inspection-step-records',
+  ...protectedRoute,
+  asyncHandler(controller.createProjectInspectionStepRecord)
+);
+router.put(
+  '/projects/:id/inspection-step-records/:recordId/review',
+  ...protectedRoute,
+  asyncHandler(controller.reviewProjectInspectionStepRecord)
+);
+router.post(
+  '/projects/:id/inspection-step-records/:recordId/rework-response',
+  ...protectedRoute,
+  inspectionImageUpload.array('images', 3),
+  setUploadedFilePermissions,
+  asyncHandler(controller.submitProjectInspectionStepRework)
+);
+router.get(
   '/projects/:id/inspection-templates',
   ...protectedRoute,
   inspectionKbGate,

@@ -1616,7 +1616,27 @@ async function getDesigners(req, res) {
      WHERE ${where} ORDER BY u.id DESC`,
     params
   );
-  return success(res, rows);
+  if (!rows.length) return success(res, []);
+  const recordIds = rows.map((item) => item.id);
+  const [images] = await db.query(
+    `SELECT id, record_id, image_url, uploaded_by, created_at
+     FROM project_inspection_step_record_images
+     WHERE record_id IN (${recordIds.map(() => '?').join(', ')})
+     ORDER BY id`,
+    recordIds
+  );
+  const imageMap = new Map();
+  for (const image of images) {
+    if (!imageMap.has(image.record_id)) imageMap.set(image.record_id, []);
+    imageMap.get(image.record_id).push(image);
+  }
+  return success(
+    res,
+    rows.map((item) => ({
+      ...item,
+      images: imageMap.get(item.id) || [],
+    }))
+  );
 }
 
 async function bindDesigner(req, res) {
@@ -7588,6 +7608,374 @@ async function updateProjectInspectionDesignCheck(req, res) {
   return success(res, null, '设计检查结果已记录');
 }
 
+async function getProjectInspectionStepRecords(req, res) {
+  const projectId = Number(req.params.id);
+  const stageId = req.query.stage_id ? Number(req.query.stage_id) : null;
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const params = [projectId];
+  const filters = ['record.project_id = ?'];
+  if (stageId) {
+    filters.push('record.stage_id = ?');
+    params.push(stageId);
+  }
+  const [rows] = await db.query(
+    `SELECT record.id, record.project_id, record.stage_id,
+            record.progress_item_id, record.step_key, record.step_title,
+            record.step_action, record.record_type, record.status,
+            record.description, record.review_remark,
+            record.response_description, record.response_by, record.response_at,
+            record.created_by, record.member_role,
+            record.target_user_id, record.reviewed_by, record.reviewed_at,
+            record.created_at, record.updated_at,
+            creator.nickname AS creator_name,
+            target.nickname AS target_name,
+            reviewer.nickname AS reviewer_name,
+            responder.nickname AS responder_name
+     FROM project_inspection_step_records record
+     JOIN users creator ON creator.id = record.created_by
+     LEFT JOIN users target ON target.id = record.target_user_id
+     LEFT JOIN users reviewer ON reviewer.id = record.reviewed_by
+     LEFT JOIN users responder ON responder.id = record.response_by
+     WHERE ${filters.join(' AND ')}
+     ORDER BY record.updated_at DESC, record.id DESC`,
+    params
+  );
+  return success(res, rows);
+}
+
+async function createProjectInspectionStepRecord(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const stageId = Number(req.body.stage_id);
+  const progressItemId = req.body.progress_item_id
+    ? Number(req.body.progress_item_id)
+    : null;
+  const stepKey = String(req.body.step_key || '').trim().slice(0, 160);
+  const stepTitle = String(req.body.step_title || '').trim().slice(0, 160);
+  const stepAction = String(req.body.step_action || '').trim().slice(0, 500) || null;
+  const description = String(req.body.description || '').trim().slice(0, 500) || null;
+  const targetUserId = req.body.target_user_id ? Number(req.body.target_user_id) : null;
+  const requestedType = String(req.body.record_type || '').trim();
+
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  if (!stageId || !stepKey || !stepTitle) {
+    return error(res, '记录事项信息不完整');
+  }
+  if (progressItemId) {
+    const [items] = await db.query(
+      'SELECT id FROM project_progress_items WHERE id = ? AND project_id = ?',
+      [progressItemId, projectId]
+    );
+    if (!items[0]) return error(res, '进度事项不存在', 404);
+  }
+  if (targetUserId) {
+    const targetMember = await requireActiveProjectMember(projectId, targetUserId);
+    if (!targetMember) return error(res, '指定成员不是项目成员');
+  }
+
+  const memberRole =
+    (await getProjectMemberRole(projectId, req.user.id)) || req.user.role || 'owner';
+  const ownerSide = isOwnerSideRole(memberRole);
+  const recordType = requestedType || (ownerSide ? 'self_checked' : 'member_checked');
+  const status = ownerSide
+    ? (targetUserId ? 'pending_member_check' : 'recorded')
+    : 'pending_owner_view';
+
+  const [existingRows] = await db.query(
+    `SELECT id FROM project_inspection_step_records
+     WHERE project_id = ?
+       AND stage_id = ?
+       AND ((progress_item_id IS NULL AND ? IS NULL) OR progress_item_id = ?)
+       AND step_key = ?
+       AND created_by = ?
+       AND ((target_user_id IS NULL AND ? IS NULL) OR target_user_id = ?)
+     ORDER BY id DESC
+     LIMIT 1`,
+    [
+      projectId,
+      stageId,
+      progressItemId,
+      progressItemId,
+      stepKey,
+      req.user.id,
+      targetUserId,
+      targetUserId,
+    ]
+  );
+
+  if (existingRows[0]) {
+    await db.query(
+      `UPDATE project_inspection_step_records
+       SET step_title = ?, step_action = ?, record_type = ?, status = ?,
+           description = ?, member_role = ?, target_user_id = ?
+       WHERE id = ?`,
+      [
+        stepTitle,
+        stepAction,
+        recordType,
+        status,
+        description,
+        memberRole,
+        targetUserId,
+        existingRows[0].id,
+      ]
+    );
+    if (targetUserId && status === 'pending_member_check') {
+      await emitProjectEvent(ProjectEventType.INSPECTION_STEP_CHECK_REQUESTED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: [targetUserId],
+        entityType: 'inspection_step',
+        entityId: existingRows[0].id,
+        title: '请核对现场事项',
+        content: stepTitle,
+        route: 'project_inspection',
+        deepLink: { projectId, stepKey, stepTitle },
+      });
+    }
+    if (!ownerSide && status === 'pending_owner_view') {
+      const ownerIds = await getOwnerSideMemberUserIds(projectId);
+      await emitProjectEvent(ProjectEventType.INSPECTION_STEP_SUBMITTED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: ownerIds,
+        entityType: 'inspection_step',
+        entityId: existingRows[0].id,
+        title: '成员已提交核对记录',
+        content: stepTitle,
+        route: 'project_inspection',
+        deepLink: { projectId, stepKey, stepTitle },
+      });
+    }
+    return success(res, { id: existingRows[0].id, status }, '记录已更新');
+  }
+
+  const [result] = await db.query(
+    `INSERT INTO project_inspection_step_records
+       (project_id, stage_id, progress_item_id, step_key, step_title,
+        step_action, record_type, status, description, created_by,
+        member_role, target_user_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      projectId,
+      stageId,
+      progressItemId,
+      stepKey,
+      stepTitle,
+      stepAction,
+      recordType,
+      status,
+      description,
+      req.user.id,
+      memberRole,
+      targetUserId,
+    ]
+  );
+  if (targetUserId && status === 'pending_member_check') {
+    await emitProjectEvent(ProjectEventType.INSPECTION_STEP_CHECK_REQUESTED, {
+      projectId,
+      actorId: req.user.id,
+      targetUserIds: [targetUserId],
+      entityType: 'inspection_step',
+      entityId: result.insertId,
+      title: '请核对现场事项',
+      content: stepTitle,
+      route: 'project_inspection',
+      deepLink: { projectId, stepKey, stepTitle },
+    });
+  }
+  if (!ownerSide && status === 'pending_owner_view') {
+    const ownerIds = await getOwnerSideMemberUserIds(projectId);
+    await emitProjectEvent(ProjectEventType.INSPECTION_STEP_SUBMITTED, {
+      projectId,
+      actorId: req.user.id,
+      targetUserIds: ownerIds,
+      entityType: 'inspection_step',
+      entityId: result.insertId,
+      title: '成员已提交核对记录',
+      content: stepTitle,
+      route: 'project_inspection',
+      deepLink: { projectId, stepKey, stepTitle },
+    });
+  }
+  return success(res, { id: result.insertId, status }, '记录已保存');
+}
+
+async function reviewProjectInspectionStepRecord(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const recordId = Number(req.params.recordId);
+  const result = String(req.body.result || '').trim();
+  const remark = String(req.body.remark || '').trim().slice(0, 500);
+  const responsibleUserId = req.body.responsible_user_id
+    ? Number(req.body.responsible_user_id)
+    : null;
+  if (!['recorded', 'rework'].includes(result)) {
+    return error(res, '处理结果不正确');
+  }
+  if (!(await isOwnerSide(projectId, req.user.id))) {
+    return error(res, '只有业主方可以处理成员提交的记录', 403);
+  }
+  if (result === 'rework' && !remark) return error(res, '请填写整改要求');
+  if (result === 'rework' && !responsibleUserId) {
+    return error(res, '请选择整改责任人');
+  }
+  if (responsibleUserId) {
+    const responsibleMember = await requireActiveProjectMember(
+      projectId,
+      responsibleUserId
+    );
+    if (!responsibleMember) return error(res, '整改责任人不是项目成员');
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, step_title
+       FROM project_inspection_step_records
+       WHERE id = ? AND project_id = ? AND status = 'pending_owner_view'
+       FOR UPDATE`,
+      [recordId, projectId]
+    );
+    if (!rows[0]) {
+      await connection.rollback();
+      return error(res, '记录不存在或已处理', 404);
+    }
+    await connection.query(
+      `UPDATE project_inspection_step_records
+       SET status = ?, review_remark = ?, reviewed_by = ?, reviewed_at = NOW(),
+           target_user_id = CASE WHEN ? IS NULL THEN target_user_id ELSE ? END
+       WHERE id = ?`,
+      [
+        result,
+        remark || null,
+        req.user.id,
+        responsibleUserId || null,
+        responsibleUserId || null,
+        recordId,
+      ]
+    );
+    if (result === 'rework') {
+      await emitProjectEvent(ProjectEventType.INSPECTION_REWORK_REQUIRED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: [responsibleUserId],
+        entityType: 'inspection_step',
+        entityId: recordId,
+        title: '现场记录需要整改',
+        content: rows[0].step_title,
+        route: 'project_inspection',
+        deepLink: { projectId, stepRecordId: recordId },
+      }, connection);
+    }
+    await connection.commit();
+    return success(
+      res,
+      { id: recordId, status: result },
+      result === 'recorded' ? '记录已查看' : '已要求整改'
+    );
+  } catch (reviewError) {
+    await connection.rollback();
+    throw reviewError;
+  } finally {
+    connection.release();
+  }
+}
+
+async function submitProjectInspectionStepRework(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const recordId = Number(req.params.recordId);
+  const description = String(req.body.description || '').trim().slice(0, 500);
+  const files = req.files || [];
+
+  if (!description) return error(res, '请填写整改处理说明');
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, '项目不存在或无权限', 404);
+  }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.inspectionImageLimit) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, `整改图片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT id, step_title, target_user_id
+       FROM project_inspection_step_records
+       WHERE id = ? AND project_id = ? AND status = 'rework'
+       FOR UPDATE`,
+      [recordId, projectId]
+    );
+    if (!rows[0]) {
+      await connection.rollback();
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '整改记录不存在或已处理', 404);
+    }
+    if (Number(rows[0].target_user_id) !== Number(req.user.id)) {
+      await connection.rollback();
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '只有整改责任人可以提交处理记录', 403);
+    }
+    await connection.query(
+      `UPDATE project_inspection_step_records
+       SET status = 'pending_owner_view',
+           record_type = 'rework_response',
+           response_description = ?,
+           response_by = ?,
+           response_at = NOW()
+       WHERE id = ?`,
+      [description, req.user.id, recordId]
+    );
+    if (files.length) {
+      const host = `${req.protocol}://${req.get('host')}`;
+      await connection.query(
+        `INSERT INTO project_inspection_step_record_images
+         (record_id, image_url, uploaded_by)
+         VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
+        files.flatMap((file) => [
+          recordId,
+          `${host}/uploads/inspections/${file.filename}`,
+          req.user.id,
+        ])
+      );
+    }
+    const ownerIds = await getOwnerSideMemberUserIds(projectId);
+    await emitProjectEvent(ProjectEventType.INSPECTION_STEP_REWORK_SUBMITTED, {
+      projectId,
+      actorId: req.user.id,
+      targetUserIds: ownerIds,
+      entityType: 'inspection_step',
+      entityId: recordId,
+      title: '整改处理记录已提交',
+      content: rows[0].step_title,
+      route: 'project_inspection',
+      deepLink: { projectId, stepRecordId: recordId },
+    }, connection);
+    await connection.commit();
+    return success(res, { id: recordId, status: 'pending_owner_view' }, '整改记录已提交');
+  } catch (submitError) {
+    await connection.rollback();
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    throw submitError;
+  } finally {
+    connection.release();
+  }
+}
+
 async function resubmitProjectInspection(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
@@ -7825,6 +8213,10 @@ module.exports = {
   createProjectInspection,
   reviewProjectInspection,
   updateProjectInspectionDesignCheck,
+  getProjectInspectionStepRecords,
+  createProjectInspectionStepRecord,
+  reviewProjectInspectionStepRecord,
+  submitProjectInspectionStepRework,
   resubmitProjectInspection,
   getStageTasks,
   getChecklist,

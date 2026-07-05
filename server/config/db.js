@@ -81,6 +81,7 @@ async function ensureAppTables() {
   await ensureProjectDesignDocumentRevisionRequestTables();
   await ensureProjectHandoverTables();
   await ensureProjectDesignHandoverReferenceTables();
+  await ensureProjectInspectionStepRecordTables();
   await ensureConstructionDisclosureDocumentTables();
   await ensureProjectMaterialTables();
   await ensureProjectTipsTable();
@@ -832,6 +833,73 @@ async function ensureProjectDesignHandoverReferenceTables() {
       KEY idx_design_check_item (design_handover_item_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+}
+
+async function ensureProjectInspectionStepRecordTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_inspection_step_records (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      stage_id TINYINT UNSIGNED NOT NULL,
+      progress_item_id BIGINT UNSIGNED DEFAULT NULL,
+      step_key VARCHAR(160) NOT NULL,
+      step_title VARCHAR(160) NOT NULL,
+      step_action VARCHAR(500) DEFAULT NULL,
+      record_type VARCHAR(32) NOT NULL DEFAULT 'self_checked',
+      status VARCHAR(32) NOT NULL DEFAULT 'recorded',
+      description VARCHAR(500) DEFAULT NULL,
+      review_remark VARCHAR(500) DEFAULT NULL,
+      response_description VARCHAR(500) DEFAULT NULL,
+      created_by BIGINT UNSIGNED NOT NULL,
+      member_role VARCHAR(32) NOT NULL DEFAULT 'owner',
+      target_user_id BIGINT UNSIGNED DEFAULT NULL,
+      reviewed_by BIGINT UNSIGNED DEFAULT NULL,
+      reviewed_at TIMESTAMP NULL DEFAULT NULL,
+      response_by BIGINT UNSIGNED DEFAULT NULL,
+      response_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_step_records_project_stage (project_id, stage_id, updated_at),
+      KEY idx_step_records_progress (progress_item_id, updated_at),
+      KEY idx_step_records_creator (created_by, updated_at),
+      KEY idx_step_records_target (target_user_id, status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_inspection_step_record_images (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      record_id BIGINT UNSIGNED NOT NULL,
+      image_url VARCHAR(500) NOT NULL,
+      uploaded_by BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_step_record_images_record (record_id, id),
+      KEY idx_step_record_images_uploader (uploaded_by, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const optionalColumns = [
+    ['review_remark', "VARCHAR(500) DEFAULT NULL AFTER description"],
+    ['response_description', "VARCHAR(500) DEFAULT NULL AFTER review_remark"],
+    ['response_by', "BIGINT UNSIGNED DEFAULT NULL AFTER reviewed_at"],
+    ['response_at', "TIMESTAMP NULL DEFAULT NULL AFTER response_by"],
+  ];
+  for (const [columnName, definition] of optionalColumns) {
+    const [existing] = await pool.query(
+      `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+       WHERE TABLE_SCHEMA = DATABASE()
+         AND TABLE_NAME = 'project_inspection_step_records'
+         AND COLUMN_NAME = ?`,
+      [columnName]
+    );
+    if (!existing.length) {
+      await pool.query(`
+        ALTER TABLE project_inspection_step_records
+        ADD COLUMN ${columnName} ${definition}
+      `);
+    }
+  }
 }
 
 async function ensureProjectDesignDocumentRevisionRequestTables() {
