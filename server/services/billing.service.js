@@ -1155,7 +1155,7 @@ async function getMerchantBillingSnapshot(merchantUserId) {
      FROM billing_audit_logs
      WHERE subject_type = 'merchant' AND subject_id = ?
      ORDER BY id DESC
-     LIMIT 10`,
+     LIMIT 50`,
     [merchantUserId]
   );
   const eventPromise = db.query(
@@ -1173,7 +1173,7 @@ async function getMerchantBillingSnapshot(merchantUserId) {
        AND subject_id = ?
        AND appeal_type = 'merchant_display_restore'
      ORDER BY id DESC
-     LIMIT 5`,
+     LIMIT 50`,
     [merchantUserId]
   );
   const entitlement = await getCurrentEntitlement('merchant', merchantUserId);

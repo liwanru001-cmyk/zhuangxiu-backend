@@ -373,6 +373,7 @@ function billingAppealsTabHtml() {
         <button id="billing-appeal-btn-next" onclick="loadBillingAppeals(billingAppealPage+1)">下一页 ›</button>
       </div>
     </div>
+    <div id="billing-appeal-detail" class="item-panel"></div>
   `;
 }
 
@@ -428,12 +429,77 @@ function billingAppealRow(item) {
       </td>
       <td>
         <div class="row-actions">
-          <button class="action-btn" onclick="viewBillingMerchant(${Number(merchant.user_id || item.subject_id || 0)})">商户详情</button>
+          <button class="action-btn" onclick="viewBillingAppealMerchant(${Number(merchant.user_id || item.subject_id || 0)})">商户详情</button>
           ${pending ? `<button class="success-btn" onclick="approveBillingAppeal(${Number(item.id)})">通过恢复</button>` : ''}
           ${pending ? `<button class="danger-btn" onclick="rejectBillingAppeal(${Number(item.id)})">驳回</button>` : ''}
         </div>
       </td>
     </tr>
+  `;
+}
+
+async function viewBillingAppealMerchant(userId) {
+  selectedBillingMerchantId = Number(userId);
+  const detail = document.getElementById('billing-appeal-detail');
+  if (!detail) return;
+  detail.innerHTML = '<div class="placeholder">正在加载商户处理记录...</div>';
+  try {
+    const j = await adminFetch(`/billing/merchants/${userId}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    selectedBillingDetailData = j.data || {};
+    detail.innerHTML = billingAppealMerchantDetailHtml(selectedBillingDetailData);
+    detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    detail.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '加载失败')}</div>`;
+  }
+}
+
+function billingAppealMerchantDetailHtml(data) {
+  const merchant = data.merchant || {};
+  const billing = data.billing || {};
+  const entitlement = billing.entitlement || {};
+  return `
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>${esc(merchant.shop_name || merchant.nickname || '商户详情')}</h3>
+          <p>ID ${esc(merchant.user_id)} · ${esc(merchant.phone || '-')} · ${billing.shop_visible ? '展示中' : '未展示'}</p>
+        </div>
+        <div class="row-actions">
+          ${billing.shop_visible
+            ? `<button class="danger-btn" onclick="suspendMerchantDisplay(${Number(merchant.user_id || 0)})">暂停展示</button>`
+            : `<button class="success-btn" onclick="manualActivateMerchant(${Number(merchant.user_id || 0)})">手动开通/续期</button>`}
+          <button class="ghost-btn" onclick="viewBillingAppealMerchant(${Number(merchant.user_id || 0)})">刷新</button>
+        </div>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-cell"><span>店铺名称</span><strong>${esc(merchant.shop_name || '-')}</strong></div>
+        <div class="detail-cell"><span>联系人电话</span><strong>${esc(merchant.contact_phone || merchant.phone || '-')}</strong></div>
+        <div class="detail-cell"><span>分类</span><strong>${esc(merchant.category_group || '-')}</strong></div>
+        <div class="detail-cell"><span>城市</span><strong>${esc(merchant.city || '-')}</strong></div>
+        <div class="detail-cell"><span>当前权益</span><strong>${billing.shop_visible ? '店铺可见' : '店铺不可见'}</strong></div>
+        <div class="detail-cell"><span>关闭原因</span><strong>${esc(entitlement.reason_label || entitlement.reason || '-')}</strong></div>
+        <div class="detail-cell"><span>到期时间</span><strong>${entitlement.expire_at ? fmtTime(entitlement.expire_at) : '-'}</strong></div>
+        <div class="detail-cell"><span>只读模式</span><strong>${entitlement.readonly_mode ? '是' : '否'}</strong></div>
+      </div>
+      ${billingSectionTable('申诉处理记录', ['ID', '申诉号', '状态', '关闭原因', '申诉内容', '处理原因', '时间'], billing.appeals || [], row => [
+        row.id,
+        row.appeal_no,
+        appealStatusLabel(row.status),
+        row.reason_label || row.reason_code || '-',
+        row.content || '-',
+        row.result_reason || '-',
+        fmtTime(row.reviewed_at || row.created_at),
+      ])}
+      ${billingSectionTable('后台处理记录', ['ID', '动作', '对象', '原因', '凭证', '时间'], billing.audit_logs || [], row => [
+        row.id,
+        row.action,
+        `${row.target_type || '-'} #${row.target_id || '-'}`,
+        row.reason || '-',
+        auditVoucherText(row.after_json),
+        fmtTime(row.created_at),
+      ])}
+    </div>
   `;
 }
 
