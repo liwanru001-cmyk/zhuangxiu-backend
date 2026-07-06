@@ -79,6 +79,7 @@ test('current entitlement only marks shop visible when active, not readonly, and
         feature_json: JSON.stringify({ shop_visible: true }),
         limit_json: JSON.stringify({ product_limit: 50 }),
         readonly_mode: 0,
+        reason: null,
         expire_at: future,
       }]];
     },
@@ -90,6 +91,8 @@ test('current entitlement only marks shop visible when active, not readonly, and
   assert.equal(entitlement.id, 11);
   assert.equal(entitlement.shop_visible, true);
   assert.equal(entitlement.readonly_mode, false);
+  assert.equal(entitlement.reason, null);
+  assert.equal(entitlement.reason_label, null);
   assert.deepEqual(entitlement.limit, { product_limit: 50 });
 });
 
@@ -103,6 +106,7 @@ test('current entitlement hides shop when readonly mode is enabled', async () =>
         feature_json: JSON.stringify({ shop_visible: true }),
         limit_json: '{}',
         readonly_mode: 1,
+        reason: 'manual_suspend',
         expire_at: future,
       }]];
     },
@@ -113,6 +117,34 @@ test('current entitlement hides shop when readonly mode is enabled', async () =>
 
   assert.equal(entitlement.shop_visible, false);
   assert.equal(entitlement.readonly_mode, true);
+  assert.equal(entitlement.reason, 'manual_suspend');
+  assert.equal(entitlement.reason_label, '后台已暂停展示');
+});
+
+test('current entitlement exposes close reason even when entitlement is inactive', async () => {
+  const future = new Date(Date.now() + 86400000).toISOString();
+  const dbMock = {
+    async query(sql, params) {
+      assert.match(sql, /ORDER BY \(status = 'active' AND expire_at > NOW\(\)\) DESC/);
+      assert.deepEqual(params, [42]);
+      return [[{
+        id: 13,
+        status: 'inactive',
+        feature_json: JSON.stringify({ shop_visible: true }),
+        limit_json: '{}',
+        readonly_mode: 1,
+        reason: 'refund_closed',
+        expire_at: future,
+      }]];
+    },
+  };
+  const billingService = loadBillingService(dbMock);
+
+  const entitlement = await billingService.getCurrentEntitlement('merchant', 42);
+
+  assert.equal(entitlement.shop_visible, false);
+  assert.equal(entitlement.reason, 'refund_closed');
+  assert.equal(entitlement.reason_label, '后台已关闭展示权益');
 });
 
 test('create merchant display order requires merchant profile and role', async () => {

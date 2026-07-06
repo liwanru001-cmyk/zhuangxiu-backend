@@ -667,24 +667,43 @@ function normalizeEntitlement(row) {
       feature: {},
       limit: {},
       readonly_mode: true,
+      reason: null,
+      reason_label: null,
       expire_at: null,
       shop_visible: false,
     };
   }
   const feature = safeJson(row.feature_json);
+  const expireAt = row.expire_at;
+  const expired = expireAt ? new Date(expireAt).getTime() <= Date.now() : false;
+  const reason = row.reason || (expired ? 'expired' : row.status !== 'active' ? row.status : null);
   return {
     id: row.id,
     status: row.status,
     feature,
     limit: safeJson(row.limit_json),
     readonly_mode: Boolean(row.readonly_mode),
-    expire_at: row.expire_at,
+    reason,
+    reason_label: getEntitlementReasonLabel(reason),
+    expire_at: expireAt,
     shop_visible:
       row.status === 'active' &&
       !row.readonly_mode &&
       Boolean(feature.shop_visible) &&
-      new Date(row.expire_at).getTime() > Date.now(),
+      !expired,
   };
+}
+
+function getEntitlementReasonLabel(reason) {
+  const labels = {
+    manual_suspend: '后台已暂停展示',
+    refund_closed: '后台已关闭展示权益',
+    expired: '展示权益已到期',
+    inactive: '展示权益未生效',
+    cancelled: '展示权益已取消',
+    refunded: '展示权益已退款关闭',
+  };
+  return reason ? labels[reason] || '店铺展示暂不可用' : null;
 }
 
 async function getCurrentEntitlement(subjectType, subjectId) {
@@ -696,8 +715,9 @@ async function getCurrentEntitlement(subjectType, subjectId) {
      FROM billing_entitlements
      WHERE subject_type = 'merchant'
        AND subject_id = ?
-       AND status = 'active'
-     ORDER BY expire_at DESC, id DESC
+     ORDER BY (status = 'active' AND expire_at > NOW()) DESC,
+              updated_at DESC,
+              id DESC
      LIMIT 1`,
     [subjectId]
   );
