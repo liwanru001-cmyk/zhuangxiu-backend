@@ -16,6 +16,7 @@ function billingTabsHtml() {
     <div class="tabs">
       <button class="${billingTab === 'summary' ? 'active' : ''}" onclick="switchBillingTab('summary')">财务概览</button>
       <button class="${billingTab === 'merchants' ? 'active' : ''}" onclick="switchBillingTab('merchants')">商户列表</button>
+      <button class="${billingTab === 'appeals' ? 'active' : ''}" onclick="switchBillingTab('appeals')">申诉记录</button>
       <button class="${billingTab === 'orders' ? 'active' : ''}" onclick="switchBillingTab('orders')">订单记录</button>
       <button class="${billingTab === 'exceptions' ? 'active' : ''}" onclick="switchBillingTab('exceptions')">异常处理</button>
       <button class="${billingTab === 'plan' ? 'active' : ''}" onclick="switchBillingTab('plan')">套餐配置</button>
@@ -56,7 +57,16 @@ function billingGuideHtml() {
       </ol>
     </section>
     <section>
-      <h4>3. 怎么查订单</h4>
+      <h4>3. 怎么处理商户申诉</h4>
+      <ol>
+        <li>进入「申诉记录」，优先处理「待处理」申诉。</li>
+        <li>点击「商户详情」核对关闭原因、权益状态、审计日志。</li>
+        <li>确认问题已处理后，点击「通过恢复」，系统会恢复展示权益。</li>
+        <li>如果资料仍不符合要求，点击「驳回」，填写清楚驳回原因，商户可在 App 查看并重新提交。</li>
+      </ol>
+    </section>
+    <section>
+      <h4>4. 怎么查订单</h4>
       <ol>
         <li>进入「订单记录」。</li>
         <li>可按订单号、商家名称、手机号搜索。</li>
@@ -66,7 +76,7 @@ function billingGuideHtml() {
       </ol>
     </section>
     <section>
-      <h4>4. 怎么处理异常</h4>
+      <h4>5. 怎么处理异常</h4>
       <ol>
         <li>进入「异常处理」。</li>
         <li>支付成功但未开通：先核对订单、支付和权益，确认无误后补开权益。</li>
@@ -75,7 +85,7 @@ function billingGuideHtml() {
       </ol>
     </section>
     <section>
-      <h4>5. 操作留痕要求</h4>
+      <h4>6. 操作留痕要求</h4>
       <ol>
         <li>开通、关闭、退款、重跑、忽略都会写入审计日志和事件记录。</li>
         <li>原因和凭证说明要写清楚，方便客服追踪和财务对账。</li>
@@ -100,6 +110,8 @@ function refreshBillingTab() {
     loadBillingExceptions();
   } else if (billingTab === 'orders') {
     loadBillingOrders(billingOrderPage);
+  } else if (billingTab === 'appeals') {
+    loadBillingAppeals(billingAppealPage);
   } else if (billingTab === 'summary') {
     loadBillingSummary();
   } else {
@@ -124,6 +136,11 @@ function renderBillingTabContent() {
   if (billingTab === 'orders') {
     box.innerHTML = billingOrdersTabHtml();
     loadBillingOrders(1);
+    return;
+  }
+  if (billingTab === 'appeals') {
+    box.innerHTML = billingAppealsTabHtml();
+    loadBillingAppeals(1);
     return;
   }
   if (billingTab === 'summary') {
@@ -320,6 +337,131 @@ function billingOrdersTabHtml() {
       </div>
     </div>
   `;
+}
+
+function billingAppealsTabHtml() {
+  return `
+    <div class="toolbar">
+      <input id="billingAppealSearch" placeholder="搜索申诉号/商家/手机号/内容" onkeydown="if(event.key==='Enter')loadBillingAppeals(1)">
+      <select id="billingAppealStatus" onchange="loadBillingAppeals(1)">
+        <option value="">全部申诉状态</option>
+        <option value="pending">待处理</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已驳回</option>
+        <option value="cancelled">已取消</option>
+      </select>
+      <button onclick="loadBillingAppeals(1)">查询</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>申诉</th>
+            <th>商户</th>
+            <th>关闭原因</th>
+            <th>申诉内容</th>
+            <th>状态</th>
+            <th>时间</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="billing-appeal-body"></tbody>
+      </table>
+      <div class="pagination">
+        <span id="billing-appeal-page-info"></span>
+        <button id="billing-appeal-btn-prev" onclick="loadBillingAppeals(billingAppealPage-1)">‹ 上一页</button>
+        <button id="billing-appeal-btn-next" onclick="loadBillingAppeals(billingAppealPage+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+}
+
+async function loadBillingAppeals(p) {
+  billingAppealPage = Math.max(1, p || 1);
+  const keyword = document.getElementById('billingAppealSearch')?.value.trim() || '';
+  const status = document.getElementById('billingAppealStatus')?.value || '';
+  const params = new URLSearchParams({ page: billingAppealPage, pageSize: 20 });
+  if (keyword) params.set('keyword', keyword);
+  if (status) params.set('status', status);
+
+  const body = document.getElementById('billing-appeal-body');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/billing/appeals?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const appeals = j.data.appeals || [];
+    billingAppealTotal = Number(j.data.total || 0);
+    body.innerHTML = appeals.map(billingAppealRow).join('') ||
+      '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">暂无申诉记录</td></tr>';
+    const totalPages = Math.ceil(billingAppealTotal / 20) || 1;
+    document.getElementById('billing-appeal-page-info').textContent = `共 ${billingAppealTotal} 条 · ${billingAppealPage}/${totalPages}`;
+    document.getElementById('billing-appeal-btn-prev').disabled = billingAppealPage <= 1;
+    document.getElementById('billing-appeal-btn-next').disabled = billingAppealPage >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function billingAppealRow(item) {
+  const merchant = item.merchant || {};
+  const pending = item.status === 'pending';
+  return `
+    <tr>
+      <td>
+        <div class="mono">${esc(item.appeal_no || `#${item.id}`)}</div>
+        <div class="muted">ID ${esc(item.id)}</div>
+      </td>
+      <td>
+        <div>${esc(merchant.shop_name || merchant.nickname || '-')}</div>
+        <div class="muted mono">ID ${esc(merchant.user_id || item.subject_id)} · ${esc(merchant.phone || '-')}</div>
+      </td>
+      <td>${esc(item.reason_label || item.reason_code || '-')}</td>
+      <td>
+        <div>${esc(item.content || '-')}</div>
+        ${item.result_reason ? `<div class="muted">处理：${esc(item.result_reason)}</div>` : ''}
+      </td>
+      <td><span class="badge ${appealStatusClass(item.status)}">${appealStatusLabel(item.status)}</span></td>
+      <td>
+        <div>${fmtTime(item.created_at)}</div>
+        ${item.reviewed_at ? `<div class="muted">处理 ${fmtTime(item.reviewed_at)}</div>` : ''}
+      </td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="viewBillingMerchant(${Number(merchant.user_id || item.subject_id || 0)})">商户详情</button>
+          ${pending ? `<button class="success-btn" onclick="approveBillingAppeal(${Number(item.id)})">通过恢复</button>` : ''}
+          ${pending ? `<button class="danger-btn" onclick="rejectBillingAppeal(${Number(item.id)})">驳回</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function approveBillingAppeal(appealId) {
+  openBillingActionModal({
+    type: 'approveAppeal',
+    appealId,
+    title: '通过商户申诉',
+    summary: '通过后会恢复该商户的展示权益，店铺重新进入公开展示。',
+    submitText: '通过并恢复展示',
+    fields: [
+      { name: 'reason', label: '通过原因', type: 'textarea', placeholder: '例如：资料已整改，恢复展示', required: true },
+    ],
+  });
+}
+
+function rejectBillingAppeal(appealId) {
+  openBillingActionModal({
+    type: 'rejectAppeal',
+    appealId,
+    title: '驳回商户申诉',
+    summary: '驳回后商户可在 App 查看驳回原因，并可重新提交申诉。',
+    submitText: '确认驳回',
+    danger: true,
+    fields: [
+      { name: 'reason', label: '驳回原因', type: 'textarea', placeholder: '例如：资料仍不符合展示要求，请补充资质后再提交', required: true },
+    ],
+  });
 }
 
 async function loadBillingOrders(p) {
@@ -835,6 +977,7 @@ async function refreshBillingAfterMerchantAction(userId) {
   const tasks = [];
   if (document.getElementById('billing-exceptions')) tasks.push(loadBillingExceptions());
   if (document.getElementById('billing-merchant-body')) tasks.push(loadBillingMerchants(page));
+  if (document.getElementById('billing-appeal-body')) tasks.push(loadBillingAppeals(billingAppealPage));
   await Promise.all(tasks);
   if (document.getElementById('billing-detail')) await viewBillingMerchant(userId, false);
 }
@@ -969,6 +1112,20 @@ async function executeBillingAction(action, values) {
     if (j.code !== 200) throw new Error(j.message || '关闭失败');
     toast('商户展示权益已关闭');
     await refreshBillingAfterMerchantAction(action.userId);
+    return;
+  }
+  if (action.type === 'approveAppeal' || action.type === 'rejectAppeal') {
+    const endpoint = action.type === 'approveAppeal' ? 'approve' : 'reject';
+    const j = await adminFetch(`/billing/appeals/${action.appealId}/${endpoint}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reason: values.reason }),
+    });
+    if (j.code !== 200) throw new Error(j.message || (action.type === 'approveAppeal' ? '通过失败' : '驳回失败'));
+    toast(action.type === 'approveAppeal' ? '申诉已通过，商户展示已恢复' : '申诉已驳回');
+    if (document.getElementById('billing-appeal-body')) await loadBillingAppeals(billingAppealPage);
+    if (document.getElementById('billing-merchant-body')) await loadBillingMerchants(page);
+    if (selectedBillingMerchantId) await viewBillingMerchant(selectedBillingMerchantId, false);
     return;
   }
   if (action.type === 'retryEvent') {
@@ -1202,6 +1359,7 @@ function billingDetailTabsHtml() {
     ['orders', '订单'],
     ['payments', '支付'],
     ['entitlements', '订阅与权益'],
+    ['appeals', '申诉'],
     ['audit', '审计日志'],
     ['events', '事件'],
   ];
@@ -1252,6 +1410,17 @@ function billingDetailTabPanelHtml(merchant, billing, entitlement) {
       ])}
     `;
   }
+  if (billingDetailTab === 'appeals') {
+    return billingSectionTable('申诉', ['ID', '申诉号', '状态', '关闭原因', '申诉内容', '处理原因', '时间'], billing.appeals || [], row => [
+      row.id,
+      row.appeal_no,
+      appealStatusLabel(row.status),
+      row.reason_label || row.reason_code || '-',
+      row.content || '-',
+      row.result_reason || '-',
+      fmtTime(row.reviewed_at || row.created_at),
+    ]);
+  }
   if (billingDetailTab === 'audit') {
     return billingSectionTable('审计', ['ID', '动作', '对象', '原因', '凭证', '时间'], billing.audit_logs || [], row => [
       row.id,
@@ -1282,6 +1451,7 @@ function billingDetailTabPanelHtml(merchant, billing, entitlement) {
       <div class="detail-cell"><span>订单数量</span><strong>${(billing.orders || []).length} 条</strong></div>
       <div class="detail-cell"><span>支付记录</span><strong>${(billing.payments || []).length} 条</strong></div>
       <div class="detail-cell"><span>订阅记录</span><strong>${(billing.subscriptions || []).length} 条</strong></div>
+      <div class="detail-cell"><span>申诉记录</span><strong>${(billing.appeals || []).length} 条</strong></div>
       <div class="detail-cell"><span>审计记录</span><strong>${(billing.audit_logs || []).length} 条</strong></div>
     </div>
   `;
@@ -1461,6 +1631,24 @@ function billingStatusClass(status) {
     expired: 'status-hidden',
     cancelled: 'status-rejected',
     inactive: 'status-hidden',
+  }[status] || 'status-hidden';
+}
+
+function appealStatusLabel(status) {
+  return {
+    pending: '待处理',
+    approved: '已通过',
+    rejected: '已驳回',
+    cancelled: '已取消',
+  }[status] || status || '-';
+}
+
+function appealStatusClass(status) {
+  return {
+    pending: 'status-pending',
+    approved: 'status-approved',
+    rejected: 'status-rejected',
+    cancelled: 'status-hidden',
   }[status] || 'status-hidden';
 }
 

@@ -706,6 +706,40 @@ function getEntitlementReasonLabel(reason) {
   return reason ? labels[reason] || '店铺展示暂不可用' : null;
 }
 
+function normalizeAppeal(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    appeal_no: row.appeal_no || '',
+    subject_type: row.subject_type || 'merchant',
+    subject_id: Number(row.subject_id || 0),
+    appeal_type: row.appeal_type || 'merchant_display_restore',
+    status: row.status || 'pending',
+    entitlement_id: row.entitlement_id ? Number(row.entitlement_id) : null,
+    reason_code: row.reason_code || null,
+    reason_label: row.reason_label || null,
+    content: row.content || '',
+    result_reason: row.result_reason || null,
+    created_by: row.created_by ? Number(row.created_by) : null,
+    reviewed_by: row.reviewed_by ? Number(row.reviewed_by) : null,
+    reviewed_at: row.reviewed_at || null,
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
+  };
+}
+
+function assertAppealableEntitlement(entitlement) {
+  if (!entitlement || !entitlement.id) {
+    throw new BillingError('当前没有可申诉的关闭记录', 400);
+  }
+  if (entitlement.shop_visible) {
+    throw new BillingError('店铺当前正在展示，无需申诉', 409);
+  }
+  if (!['manual_suspend', 'refund_closed'].includes(entitlement.reason)) {
+    throw new BillingError('当前状态不支持申诉，请按页面提示处理', 400);
+  }
+}
+
 async function getCurrentEntitlement(subjectType, subjectId) {
   if (subjectType !== 'merchant') {
     throw new BillingError('当前 MVP 只支持 merchant 主体', 400);
@@ -722,6 +756,373 @@ async function getCurrentEntitlement(subjectType, subjectId) {
     [subjectId]
   );
   return normalizeEntitlement(rows[0] || null);
+}
+
+async function getLatestMerchantAppeal(merchantUserId, status = '') {
+  const params = [merchantUserId];
+  let statusWhere = '';
+  if (status) {
+    statusWhere = ' AND status = ?';
+    params.push(status);
+  }
+  const [rows] = await db.query(
+    `SELECT *
+     FROM billing_appeals
+     WHERE subject_type = 'merchant'
+       AND subject_id = ?
+       AND appeal_type = 'merchant_display_restore'
+       ${statusWhere}
+     ORDER BY id DESC
+     LIMIT 1`,
+    params
+  );
+  return normalizeAppeal(rows[0] || null);
+}
+
+async function createMerchantDisplayAppeal({ merchantUserId, content, idempotencyKey }) {
+  await ensureMerchantSubject(merchantUserId);
+  const normalizedContent = String(content || '').trim().slice(0, 300);
+  if (!normalizedContent) throw new BillingError('请填写申诉说明', 400);
+  if (normalizedContent.length < 5) throw new BillingError('申诉说明请至少填写 5 个字', 400);
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [pendingRows] = await conn.query(
+      `SELECT *
+       FROM billing_appeals
+       WHERE subject_type = 'merchant'
+         AND subject_id = ?
+         AND appeal_type = 'merchant_display_restore'
+         AND status = 'pending'
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [merchantUserId]
+    );
+    if (pendingRows[0]) {
+      await conn.commit();
+      return { appeal: normalizeAppeal(pendingRows[0]), reused: true };
+    }
+
+    const [entitlementRows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE subject_type = 'merchant'
+         AND subject_id = ?
+       ORDER BY (status = 'active' AND expire_at > NOW()) DESC,
+                updated_at DESC,
+                id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [merchantUserId]
+    );
+    const entitlement = normalizeEntitlement(entitlementRows[0] || null);
+    assertAppealableEntitlement(entitlement);
+
+    const appealNo = generateNo('BA');
+    const [result] = await conn.query(
+      `INSERT INTO billing_appeals (
+         appeal_no, subject_type, subject_id, appeal_type, status,
+         entitlement_id, reason_code, reason_label, content, created_by
+       )
+       VALUES (?, 'merchant', ?, 'merchant_display_restore', 'pending',
+               ?, ?, ?, ?, ?)`,
+      [
+        appealNo,
+        merchantUserId,
+        entitlement.id,
+        entitlement.reason,
+        entitlement.reason_label,
+        normalizedContent,
+        merchantUserId,
+      ]
+    );
+    const appeal = {
+      id: result.insertId,
+      appeal_no: appealNo,
+      subject_type: 'merchant',
+      subject_id: merchantUserId,
+      appeal_type: 'merchant_display_restore',
+      status: 'pending',
+      entitlement_id: entitlement.id,
+      reason_code: entitlement.reason,
+      reason_label: entitlement.reason_label,
+      content: normalizedContent,
+      created_by: merchantUserId,
+    };
+
+    await insertAudit(conn, {
+      subject_type: 'merchant',
+      subject_id: merchantUserId,
+      actor_type: 'user',
+      actor_id: merchantUserId,
+      action: 'MERCHANT_DISPLAY_APPEAL_CREATED',
+      target_type: 'billing_appeal',
+      target_id: result.insertId,
+      after_json: appeal,
+      reason: normalizedContent,
+      request_id: idempotencyKey || null,
+    });
+    await insertEvent(conn, {
+      event_type: 'MERCHANT_DISPLAY_APPEAL_CREATED',
+      subject_type: 'merchant',
+      subject_id: merchantUserId,
+      aggregate_type: 'billing_appeal',
+      aggregate_id: result.insertId,
+      payload_json: appeal,
+    });
+
+    await conn.commit();
+    return { appeal: normalizeAppeal(appeal), reused: false };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function listMerchantDisplayAppeals({ status = '', keyword = '', page = 1, pageSize = 20 } = {}) {
+  const params = [];
+  let where = `ba.subject_type = 'merchant' AND ba.appeal_type = 'merchant_display_restore'`;
+  const normalizedStatus = String(status || '').trim();
+  if (normalizedStatus) {
+    if (!['pending', 'approved', 'rejected', 'cancelled'].includes(normalizedStatus)) {
+      throw new BillingError('申诉状态不正确', 400);
+    }
+    where += ' AND ba.status = ?';
+    params.push(normalizedStatus);
+  }
+  const normalizedKeyword = String(keyword || '').trim();
+  if (normalizedKeyword) {
+    where += ` AND (
+      ba.appeal_no LIKE ?
+      OR u.nickname LIKE ?
+      OR u.phone LIKE ?
+      OR mp.shop_name LIKE ?
+      OR ba.content LIKE ?
+    )`;
+    const kw = `%${normalizedKeyword}%`;
+    params.push(kw, kw, kw, kw, kw);
+  }
+  const pageNo = Math.max(1, parseInt(page, 10) || 1);
+  const safePageSize = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20));
+  const offset = (pageNo - 1) * safePageSize;
+  const [rows] = await db.query(
+    `SELECT ba.*, u.phone, u.nickname, mp.shop_name,
+            be.status AS entitlement_status,
+            be.readonly_mode AS entitlement_readonly_mode,
+            be.expire_at AS entitlement_expire_at
+     FROM billing_appeals ba
+     LEFT JOIN users u ON u.id = ba.subject_id
+     LEFT JOIN merchant_profiles mp ON mp.user_id = ba.subject_id
+     LEFT JOIN billing_entitlements be ON be.id = ba.entitlement_id
+     WHERE ${where}
+     ORDER BY ba.created_at DESC, ba.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, safePageSize, offset]
+  );
+  const [[countRow]] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM billing_appeals ba
+     LEFT JOIN users u ON u.id = ba.subject_id
+     LEFT JOIN merchant_profiles mp ON mp.user_id = ba.subject_id
+     WHERE ${where}`,
+    params
+  );
+  return {
+    appeals: rows.map((row) => ({
+      ...normalizeAppeal(row),
+      merchant: {
+        user_id: Number(row.subject_id || 0),
+        phone: row.phone || '',
+        nickname: row.nickname || '',
+        shop_name: row.shop_name || '',
+      },
+      entitlement: {
+        status: row.entitlement_status || '',
+        readonly_mode: Boolean(row.entitlement_readonly_mode),
+        expire_at: row.entitlement_expire_at || null,
+      },
+    })),
+    total: Number(countRow.total || 0),
+    page: pageNo,
+    pageSize: safePageSize,
+  };
+}
+
+async function approveMerchantDisplayAppeal({ appealId, adminId = null, reason }) {
+  const normalizedReason = String(reason || '').trim().slice(0, 300);
+  if (!normalizedReason) throw new BillingError('请填写通过原因', 400);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [appealRows] = await conn.query(
+      `SELECT *
+       FROM billing_appeals
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appealId]
+    );
+    const appeal = appealRows[0];
+    if (!appeal) throw new BillingError('申诉不存在', 404);
+    if (appeal.status !== 'pending') throw new BillingError('该申诉已处理', 409);
+    if (appeal.subject_type !== 'merchant' || appeal.appeal_type !== 'merchant_display_restore') {
+      throw new BillingError('申诉类型不支持', 400);
+    }
+
+    const [entitlementRows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE id = ?
+         AND subject_type = 'merchant'
+         AND subject_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appeal.entitlement_id, appeal.subject_id]
+    );
+    const entitlement = entitlementRows[0];
+    if (!entitlement) throw new BillingError('申诉关联权益不存在', 404);
+    if (new Date(entitlement.expire_at).getTime() <= Date.now()) {
+      throw new BillingError('该权益已到期，不能直接恢复', 409);
+    }
+
+    await conn.query(
+      `UPDATE billing_entitlements
+       SET status = 'active',
+           readonly_mode = 0,
+           reason = NULL
+       WHERE id = ?`,
+      [entitlement.id]
+    );
+    if (entitlement.subscription_id) {
+      await conn.query(
+        `UPDATE billing_subscriptions
+         SET status = 'active',
+             cancelled_at = NULL,
+             readonly_mode = 0,
+             reason = NULL
+         WHERE id = ?`,
+        [entitlement.subscription_id]
+      );
+    }
+    await conn.query(
+      `UPDATE billing_appeals
+       SET status = 'approved',
+           result_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = NOW()
+       WHERE id = ?`,
+      [normalizedReason, adminId, appeal.id]
+    );
+
+    const after = {
+      appeal_id: appeal.id,
+      entitlement_id: entitlement.id,
+      status: 'approved',
+      readonly_mode: false,
+      reason: null,
+      result_reason: normalizedReason,
+    };
+    await insertAudit(conn, {
+      subject_type: 'merchant',
+      subject_id: appeal.subject_id,
+      actor_type: 'admin',
+      actor_id: adminId,
+      action: 'ADMIN_APPROVE_MERCHANT_DISPLAY_APPEAL',
+      target_type: 'billing_appeal',
+      target_id: appeal.id,
+      before_json: {
+        appeal_status: appeal.status,
+        entitlement_status: entitlement.status,
+        entitlement_readonly_mode: Boolean(entitlement.readonly_mode),
+        entitlement_reason: entitlement.reason || null,
+      },
+      after_json: after,
+      reason: normalizedReason,
+    });
+    await insertEvent(conn, {
+      event_type: 'MERCHANT_DISPLAY_APPEAL_APPROVED',
+      subject_type: 'merchant',
+      subject_id: appeal.subject_id,
+      aggregate_type: 'billing_appeal',
+      aggregate_id: appeal.id,
+      payload_json: after,
+    });
+
+    await conn.commit();
+    return { appeal: normalizeAppeal({ ...appeal, status: 'approved', result_reason: normalizedReason }), resumed: true };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function rejectMerchantDisplayAppeal({ appealId, adminId = null, reason }) {
+  const normalizedReason = String(reason || '').trim().slice(0, 300);
+  if (!normalizedReason) throw new BillingError('请填写驳回原因', 400);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [appealRows] = await conn.query(
+      `SELECT *
+       FROM billing_appeals
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appealId]
+    );
+    const appeal = appealRows[0];
+    if (!appeal) throw new BillingError('申诉不存在', 404);
+    if (appeal.status !== 'pending') throw new BillingError('该申诉已处理', 409);
+
+    await conn.query(
+      `UPDATE billing_appeals
+       SET status = 'rejected',
+           result_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = NOW()
+       WHERE id = ?`,
+      [normalizedReason, adminId, appeal.id]
+    );
+    const after = {
+      appeal_id: appeal.id,
+      status: 'rejected',
+      result_reason: normalizedReason,
+    };
+    await insertAudit(conn, {
+      subject_type: 'merchant',
+      subject_id: appeal.subject_id,
+      actor_type: 'admin',
+      actor_id: adminId,
+      action: 'ADMIN_REJECT_MERCHANT_DISPLAY_APPEAL',
+      target_type: 'billing_appeal',
+      target_id: appeal.id,
+      before_json: { appeal_status: appeal.status },
+      after_json: after,
+      reason: normalizedReason,
+    });
+    await insertEvent(conn, {
+      event_type: 'MERCHANT_DISPLAY_APPEAL_REJECTED',
+      subject_type: 'merchant',
+      subject_id: appeal.subject_id,
+      aggregate_type: 'billing_appeal',
+      aggregate_id: appeal.id,
+      payload_json: after,
+    });
+
+    await conn.commit();
+    return { appeal: normalizeAppeal({ ...appeal, status: 'rejected', result_reason: normalizedReason }) };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
 }
 
 async function getMerchantBillingSnapshot(merchantUserId) {
@@ -765,18 +1166,35 @@ async function getMerchantBillingSnapshot(merchantUserId) {
      LIMIT 10`,
     [merchantUserId]
   );
+  const appealPromise = db.query(
+    `SELECT *
+     FROM billing_appeals
+     WHERE subject_type = 'merchant'
+       AND subject_id = ?
+       AND appeal_type = 'merchant_display_restore'
+     ORDER BY id DESC
+     LIMIT 5`,
+    [merchantUserId]
+  );
   const entitlement = await getCurrentEntitlement('merchant', merchantUserId);
-  const [[orders], [subscriptions], [payments], [audit_logs], [events]] = await Promise.all([
+  const [[orders], [subscriptions], [payments], [audit_logs], [events], [appeals]] = await Promise.all([
     orderPromise,
     subscriptionPromise,
     paymentPromise,
     auditPromise,
     eventPromise,
+    appealPromise,
   ]);
+  const currentAppeal =
+    appeals.find((item) => item.status === 'pending') ||
+    appeals[0] ||
+    null;
   return {
     subject: { type: 'merchant', id: merchantUserId },
     entitlement,
     shop_visible: entitlement.shop_visible,
+    current_appeal: normalizeAppeal(currentAppeal),
+    appeals: appeals.map(normalizeAppeal),
     orders,
     payments,
     subscriptions,
@@ -795,5 +1213,10 @@ module.exports = {
   getOrderForOwner,
   getMerchantOrderStatus,
   getCurrentEntitlement,
+  getLatestMerchantAppeal,
+  createMerchantDisplayAppeal,
+  listMerchantDisplayAppeals,
+  approveMerchantDisplayAppeal,
+  rejectMerchantDisplayAppeal,
   getMerchantBillingSnapshot,
 };

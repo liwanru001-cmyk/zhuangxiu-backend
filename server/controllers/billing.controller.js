@@ -89,6 +89,19 @@ async function getMyMerchantBilling(req, res) {
   }
 }
 
+async function createMerchantDisplayAppeal(req, res) {
+  try {
+    const result = await billingService.createMerchantDisplayAppeal({
+      merchantUserId: req.user.id,
+      content: req.body?.content,
+      idempotencyKey: getIdempotencyKey(req, `merchant-appeal-${req.user.id}`),
+    });
+    return success(res, result, result.reused ? '申诉已提交，请等待平台处理' : '申诉已提交');
+  } catch (err) {
+    return handleBillingError(res, err);
+  }
+}
+
 async function getEntitlement(req, res) {
   try {
     const subjectType = String(req.params.subjectType || '').trim();
@@ -115,5 +128,6 @@ module.exports = {
   manualPayMerchantOrder,
   getMerchantOrder,
   getMyMerchantBilling,
+  createMerchantDisplayAppeal,
   getEntitlement,
 };

@@ -1131,6 +1131,59 @@ app.post('/api/admin/billing/merchant-plan', adminAuth, async (req, res) => {
   }
 });
 
+app.get('/api/admin/billing/appeals', adminAuth, async (req, res) => {
+  try {
+    const result = await billingService.listMerchantDisplayAppeals({
+      status: req.query.status,
+      keyword: req.query.keyword,
+      page: req.query.page,
+      pageSize: req.query.pageSize,
+    });
+    return success(res, result);
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/admin/billing/appeals/:id/approve', adminAuth, async (req, res) => {
+  const appealId = Number(req.params.id);
+  if (!appealId) return error(res, '申诉不存在', 404);
+  try {
+    const result = await billingService.approveMerchantDisplayAppeal({
+      appealId,
+      adminId: req.admin?.id || null,
+      reason: req.body?.reason,
+    });
+    return success(res, result, '申诉已通过，商户展示已恢复');
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/admin/billing/appeals/:id/reject', adminAuth, async (req, res) => {
+  const appealId = Number(req.params.id);
+  if (!appealId) return error(res, '申诉不存在', 404);
+  try {
+    const result = await billingService.rejectMerchantDisplayAppeal({
+      appealId,
+      adminId: req.admin?.id || null,
+      reason: req.body?.reason,
+    });
+    return success(res, result, '申诉已驳回');
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
 app.get('/api/admin/billing/merchants', adminAuth, async (req, res) => {
   const params = [];
   let where = `EXISTS (

@@ -35,6 +35,12 @@ router.get(
   asyncHandler(billingController.getMyMerchantBilling)
 );
 
+router.post(
+  '/merchant/appeals',
+  asyncHandler(auth),
+  asyncHandler(billingController.createMerchantDisplayAppeal)
+);
+
 router.get(
   '/entitlements/:subjectType/:subjectId',
   asyncHandler(auth),
