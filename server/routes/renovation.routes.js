@@ -445,6 +445,8 @@ router.get(
 router.post(
   '/projects/:id/inspection-step-records',
   ...protectedRoute,
+  inspectionImageUpload.array('images', 3),
+  setUploadedFilePermissions,
   asyncHandler(controller.createProjectInspectionStepRecord)
 );
 router.put(

@@ -436,6 +436,7 @@ jobs:
             node scripts/run-migration.js migrations/20260705_company_evaluation_system.sql
             node scripts/run-migration.js migrations/20260705_project_showcases.sql
             node scripts/run-migration.js migrations/20260706_merchant_cases.sql
+            node scripts/run-migration.js migrations/20260706_billing_merchant_mvp.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true

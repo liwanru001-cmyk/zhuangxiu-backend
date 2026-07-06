@@ -7697,7 +7697,27 @@ async function getProjectInspectionStepRecords(req, res) {
      ORDER BY record.updated_at DESC, record.id DESC`,
     params
   );
-  return success(res, rows);
+  if (!rows.length) return success(res, []);
+  const recordIds = rows.map((item) => item.id);
+  const [images] = await db.query(
+    `SELECT id, record_id, image_url, uploaded_by, created_at
+     FROM project_inspection_step_record_images
+     WHERE record_id IN (${recordIds.map(() => '?').join(', ')})
+     ORDER BY id`,
+    recordIds
+  );
+  const imageMap = new Map();
+  for (const image of images) {
+    if (!imageMap.has(image.record_id)) imageMap.set(image.record_id, []);
+    imageMap.get(image.record_id).push(image);
+  }
+  return success(
+    res,
+    rows.map((item) => ({
+      ...item,
+      images: imageMap.get(item.id) || [],
+    }))
+  );
 }
 
 async function createProjectInspectionStepRecord(req, res) {
@@ -7715,11 +7735,14 @@ async function createProjectInspectionStepRecord(req, res) {
   const description = String(req.body.description || '').trim().slice(0, 500) || null;
   const targetUserId = req.body.target_user_id ? Number(req.body.target_user_id) : null;
   const requestedType = String(req.body.record_type || '').trim();
+  const files = req.files || [];
 
   if (!(await canAccessProject(projectId, req.user.id))) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, '项目不存在或无权限', 404);
   }
   if (!stageId || !stepKey || !stepTitle) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, '记录事项信息不完整');
   }
   if (progressItemId) {
@@ -7727,11 +7750,17 @@ async function createProjectInspectionStepRecord(req, res) {
       'SELECT id FROM project_progress_items WHERE id = ? AND project_id = ?',
       [progressItemId, projectId]
     );
-    if (!items[0]) return error(res, '进度事项不存在', 404);
+    if (!items[0]) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '进度事项不存在', 404);
+    }
   }
   if (targetUserId) {
     const targetMember = await requireActiveProjectMember(projectId, targetUserId);
-    if (!targetMember) return error(res, '指定成员不是项目成员');
+    if (!targetMember) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '指定成员不是项目成员');
+    }
   }
 
   const memberRole =
@@ -7741,6 +7770,14 @@ async function createProjectInspectionStepRecord(req, res) {
   const status = ownerSide
     ? (targetUserId ? 'pending_member_check' : 'recorded')
     : 'pending_owner_view';
+  if (!ownerSide && !description) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, '请填写核对说明');
+  }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.inspectionImageLimit) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, `现场照片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
+  }
 
   const [existingRows] = await db.query(
     `SELECT id FROM project_inspection_step_records
@@ -7765,22 +7802,46 @@ async function createProjectInspectionStepRecord(req, res) {
   );
 
   if (existingRows[0]) {
-    await db.query(
-      `UPDATE project_inspection_step_records
-       SET step_title = ?, step_action = ?, record_type = ?, status = ?,
-           description = ?, member_role = ?, target_user_id = ?
-       WHERE id = ?`,
-      [
-        stepTitle,
-        stepAction,
-        recordType,
-        status,
-        description,
-        memberRole,
-        targetUserId,
-        existingRows[0].id,
-      ]
-    );
+    const connection = await db.getConnection();
+    try {
+      await connection.beginTransaction();
+      await connection.query(
+        `UPDATE project_inspection_step_records
+         SET step_title = ?, step_action = ?, record_type = ?, status = ?,
+             description = ?, member_role = ?, target_user_id = ?
+         WHERE id = ?`,
+        [
+          stepTitle,
+          stepAction,
+          recordType,
+          status,
+          description,
+          memberRole,
+          targetUserId,
+          existingRows[0].id,
+        ]
+      );
+      if (files.length) {
+        const host = `${req.protocol}://${req.get('host')}`;
+        await connection.query(
+          `INSERT INTO project_inspection_step_record_images
+           (record_id, image_url, uploaded_by)
+           VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
+          files.flatMap((file) => [
+            existingRows[0].id,
+            `${host}/uploads/inspections/${file.filename}`,
+            req.user.id,
+          ])
+        );
+      }
+      await connection.commit();
+    } catch (updateError) {
+      await connection.rollback();
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      throw updateError;
+    } finally {
+      connection.release();
+    }
     if (targetUserId && status === 'pending_member_check') {
       await emitProjectEvent(ProjectEventType.INSPECTION_STEP_CHECK_REQUESTED, {
         projectId,
@@ -7811,34 +7872,60 @@ async function createProjectInspectionStepRecord(req, res) {
     return success(res, { id: existingRows[0].id, status }, '记录已更新');
   }
 
-  const [result] = await db.query(
-    `INSERT INTO project_inspection_step_records
-       (project_id, stage_id, progress_item_id, step_key, step_title,
-        step_action, record_type, status, description, created_by,
-        member_role, target_user_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      projectId,
-      stageId,
-      progressItemId,
-      stepKey,
-      stepTitle,
-      stepAction,
-      recordType,
-      status,
-      description,
-      req.user.id,
-      memberRole,
-      targetUserId,
-    ]
-  );
+  const connection = await db.getConnection();
+  let recordId;
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `INSERT INTO project_inspection_step_records
+         (project_id, stage_id, progress_item_id, step_key, step_title,
+          step_action, record_type, status, description, created_by,
+          member_role, target_user_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        projectId,
+        stageId,
+        progressItemId,
+        stepKey,
+        stepTitle,
+        stepAction,
+        recordType,
+        status,
+        description,
+        req.user.id,
+        memberRole,
+        targetUserId,
+      ]
+    );
+    recordId = result.insertId;
+    if (files.length) {
+      const host = `${req.protocol}://${req.get('host')}`;
+      await connection.query(
+        `INSERT INTO project_inspection_step_record_images
+         (record_id, image_url, uploaded_by)
+         VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
+        files.flatMap((file) => [
+          recordId,
+          `${host}/uploads/inspections/${file.filename}`,
+          req.user.id,
+        ])
+      );
+    }
+    await connection.commit();
+  } catch (insertError) {
+    await connection.rollback();
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    throw insertError;
+  } finally {
+    connection.release();
+  }
   if (targetUserId && status === 'pending_member_check') {
     await emitProjectEvent(ProjectEventType.INSPECTION_STEP_CHECK_REQUESTED, {
       projectId,
       actorId: req.user.id,
       targetUserIds: [targetUserId],
       entityType: 'inspection_step',
-      entityId: result.insertId,
+      entityId: recordId,
       title: '请核对现场事项',
       content: stepTitle,
       route: 'project_inspection',
@@ -7852,14 +7939,14 @@ async function createProjectInspectionStepRecord(req, res) {
       actorId: req.user.id,
       targetUserIds: ownerIds,
       entityType: 'inspection_step',
-      entityId: result.insertId,
+      entityId: recordId,
       title: '成员已提交核对记录',
       content: stepTitle,
       route: 'project_inspection',
       deepLink: { projectId, stepKey, stepTitle },
     });
   }
-  return success(res, { id: result.insertId, status }, '记录已保存');
+  return success(res, { id: recordId, status }, '记录已保存');
 }
 
 async function reviewProjectInspectionStepRecord(req, res) {

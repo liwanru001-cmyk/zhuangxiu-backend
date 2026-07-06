@@ -9,6 +9,9 @@ const {
   activeVerifiedMerchantStateSql,
 } = require('../utils/verified-merchant');
 const {
+  activeMerchantShopVisibleExistsSql,
+} = require('../utils/billing-entitlement');
+const {
   linkConsultationToProject,
   getConsultationProjectContext,
 } = require('../utils/project-context');
@@ -224,6 +227,7 @@ async function listPublicMerchants(req, res) {
       WHERE ur.user_id = u.id
         AND ${activeVerifiedMerchantExistsSql('ur')}
     )
+    AND ${activeMerchantShopVisibleExistsSql('mp.user_id')}
   `;
 
   const categoryGroup = String(req.query.category_group || '').trim();

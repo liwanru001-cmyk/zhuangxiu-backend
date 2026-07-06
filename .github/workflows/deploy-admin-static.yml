@@ -25,6 +25,9 @@ jobs:
         run: |
           set -euo pipefail
           test -f server/public/admin/index.html
+          test -f server/public/admin/admin.js
+          test -f server/public/admin/styles.css
+          test -f server/public/admin/modules/billing.js
           test ! -f server/public/admin/index.html.tmp
 
       - name: Wait for backend deploy on same commit
@@ -120,9 +123,10 @@ jobs:
           )
 
           remote="${SSH_USER}@${SSH_HOST}"
-          remote_admin_tmp="/tmp/yinnkhome-admin-index-${GITHUB_RUN_ID}.html"
+          remote_admin_tar="/tmp/yinnkhome-admin-${GITHUB_RUN_ID}.tar.gz"
 
-          scp "${scp_opts[@]}" server/public/admin/index.html "$remote:$remote_admin_tmp"
+          tar -C server/public/admin -czf /tmp/yinnkhome-admin.tar.gz .
+          scp "${scp_opts[@]}" /tmp/yinnkhome-admin.tar.gz "$remote:$remote_admin_tar"
           ssh "${ssh_opts[@]}" "$remote" \
             "set -euo pipefail
              runner=''
@@ -134,17 +138,26 @@ jobs:
                  exit 1
                fi
              fi
+             remote_admin_tmp=\"/tmp/yinnkhome-admin-${GITHUB_RUN_ID}\"
+             rm -rf \"\$remote_admin_tmp\"
+             mkdir -p \"\$remote_admin_tmp\"
+             tar -xzf '$remote_admin_tar' -C \"\$remote_admin_tmp\"
+             test -f \"\$remote_admin_tmp/index.html\"
+             test -f \"\$remote_admin_tmp/admin.js\"
+             test -f \"\$remote_admin_tmp/styles.css\"
+             test -f \"\$remote_admin_tmp/modules/billing.js\"
              \$runner mkdir -p '$ADMIN_PUBLIC_DIR'
-             cp '$remote_admin_tmp' /tmp/yinnkhome-admin-index-ready.html
-             \$runner cp /tmp/yinnkhome-admin-index-ready.html '$ADMIN_PUBLIC_DIR/index.html.tmp'
-             \$runner mv '$ADMIN_PUBLIC_DIR/index.html.tmp' '$ADMIN_PUBLIC_DIR/index.html'
-             rm -f '$remote_admin_tmp'
-             rm -f /tmp/yinnkhome-admin-index-ready.html
-             test -f '$ADMIN_PUBLIC_DIR/index.html'"
+             \$runner cp -a \"\$remote_admin_tmp/.\" '$ADMIN_PUBLIC_DIR/'
+             rm -rf \"\$remote_admin_tmp\"
+             rm -f '$remote_admin_tar'
+             test -f '$ADMIN_PUBLIC_DIR/index.html'
+             test -f '$ADMIN_PUBLIC_DIR/admin.js'
+             test -f '$ADMIN_PUBLIC_DIR/styles.css'
+             test -f '$ADMIN_PUBLIC_DIR/modules/billing.js'"
 
       - name: Verify admin static URL
         run: |
           set -euo pipefail
           admin_file="$(mktemp)"
           curl -fsS https://yinnkhome.com/admin/ -o "$admin_file"
-          grep -q '商家管理' "$admin_file"
+          grep -q '商户管理操作说明' "$admin_file"
