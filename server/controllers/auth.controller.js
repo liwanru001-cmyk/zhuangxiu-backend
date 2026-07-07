@@ -130,25 +130,16 @@ async function sendSmsCode(req, res) {
     return error(res, '该手机号未注册，请先注册', 404);
   }
 
-  // 2. 防刷：同手机号 60s 间隔
-  const [recentRows] = await db.query(
-    'SELECT id FROM sms_codes WHERE phone = ? AND scene = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND) AND used = 0',
+  // 2. 防刷：同手机号同场景 1 小时最多 8 次
+  const [hourlyRows] = await db.query(
+    'SELECT COUNT(*) as cnt FROM sms_codes WHERE phone = ? AND scene = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)',
     [phone, scene]
   );
-  if (recentRows.length > 0) {
-    return error(res, '请 60 秒后再试');
+  if (Number(hourlyRows[0].cnt || 0) >= 8) {
+    return error(res, '验证频繁，稍后再试', 429);
   }
 
-  // 3. 防刷：同手机号每日上限 5 次
-  const [dailyRows] = await db.query(
-    'SELECT COUNT(*) as cnt FROM sms_codes WHERE phone = ? AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)',
-    [phone]
-  );
-  if (dailyRows[0].cnt >= 5) {
-    return error(res, '今日发送次数已达上限，请明天再试');
-  }
-
-  // 4. 防刷：同 IP 每日上限 20 次
+  // 3. 防刷：同 IP 每日上限 20 次
   const [ipRows] = await db.query(
     'SELECT COUNT(*) as cnt FROM sms_codes WHERE ip = ? AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)',
     [ip]
@@ -157,13 +148,13 @@ async function sendSmsCode(req, res) {
     return error(res, 'IP 请求过于频繁');
   }
 
-  // 5. 虚拟号段拦截（简单规则）
+  // 4. 虚拟号段拦截（简单规则）
   const virtualPrefixes = ['170', '171', '162', '165', '167'];
   if (virtualPrefixes.some(p => phone.startsWith(p))) {
     return error(res, '不支持虚拟号码，请使用真实手机号');
   }
 
-  // 6. 生成验证码
+  // 5. 生成验证码
   const code = generateCode();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 分钟有效
 

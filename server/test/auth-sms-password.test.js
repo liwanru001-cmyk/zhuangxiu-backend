@@ -174,3 +174,29 @@ test('send sms reset password scene rejects an unknown phone', async () => {
   assert.equal(res.statusCode, 404);
   assert.match(res.payload.message, /未注册/);
 });
+
+test('send sms limits the same phone to eight sends per hour', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM users WHERE phone = \?/.test(sql)) {
+        assert.deepEqual(params, ['13800138000']);
+        return [[]];
+      }
+      if (/COUNT\(\*\) as cnt FROM sms_codes WHERE phone = \? AND scene = \?/.test(sql)) {
+        assert.deepEqual(params, ['13800138000', 'register']);
+        return [[{ cnt: 8 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.sendSmsCode({
+    body: { phone: '13800138000', scene: 'register' },
+    ip: '127.0.0.1',
+  }, res);
+
+  assert.equal(res.statusCode, 429);
+  assert.equal(res.payload.message, '验证频繁，稍后再试');
+});
