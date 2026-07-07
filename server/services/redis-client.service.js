@@ -8,6 +8,10 @@ function redisUrl() {
   return process.env.REDIS_URL || 'redis://127.0.0.1:6379';
 }
 
+function redisConnectTimeoutMs() {
+  return Number(process.env.REDIS_CONNECT_TIMEOUT_MS || 1500);
+}
+
 function canUseMemoryFallback() {
   return (
     process.env.NODE_ENV !== 'production' ||
@@ -20,7 +24,12 @@ async function getRedisClient() {
   if (disabled) return null;
   if (client?.isOpen) return client;
   if (!client) {
-    client = createClient({ url: redisUrl() });
+    client = createClient({
+      url: redisUrl(),
+      socket: {
+        connectTimeout: redisConnectTimeoutMs(),
+      },
+    });
     client.on('error', (err) => {
       if (process.env.NODE_ENV !== 'test') {
         console.error('[Redis] error:', err.message);
@@ -28,8 +37,18 @@ async function getRedisClient() {
     });
   }
   if (!connectPromise) {
-    connectPromise = client.connect().catch((err) => {
+    connectPromise = Promise.race([
+      client.connect(),
+      new Promise((_, reject) => {
+        setTimeout(
+          () => reject(new Error('Redis connection timed out')),
+          redisConnectTimeoutMs()
+        );
+      }),
+    ]).catch((err) => {
       connectPromise = null;
+      client?.disconnect?.().catch(() => {});
+      client = null;
       if (canUseMemoryFallback()) {
         disabled = true;
         if (process.env.NODE_ENV !== 'test') {
