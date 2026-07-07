@@ -54,13 +54,6 @@ app.use(
   })
 );
 
-// 短信发送额外限流
-app.use(['/api/auth/send-code', '/api/auth/send-sms'], rateLimit({
-  windowMs: 60 * 60 * 1000,
-  max: parseInt(process.env.SMS_IP_RATE_LIMIT_MAX) || 80,
-  message: { code: 429, message: '验证频繁，稍后再试' },
-}));
-
 // 路由
 app.use('/api/auth', authRoutes);
 app.use('/api/notes', noteRoutes);

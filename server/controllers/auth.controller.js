@@ -4,6 +4,7 @@ const { success, error } = require('../utils/response');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const aliyunSms = require('../services/aliyun-sms.service');
+const smsRateLimiter = require('../services/sms-rate-limiter.service');
 
 function generateCode() {
   return crypto.randomInt(100000, 999999).toString();
@@ -130,31 +131,25 @@ async function sendSmsCode(req, res) {
     return error(res, '该手机号未注册，请先注册', 404);
   }
 
-  // 2. 防刷：同手机号同场景 1 小时最多 8 次
-  const [hourlyRows] = await db.query(
-    'SELECT COUNT(*) as cnt FROM sms_codes WHERE phone = ? AND scene = ? AND created_at > DATE_SUB(NOW(), INTERVAL 1 HOUR)',
-    [phone, scene]
-  );
-  if (Number(hourlyRows[0].cnt || 0) >= 8) {
-    return error(res, '验证频繁，稍后再试', 429);
+  let limitResult;
+  try {
+    limitResult = await smsRateLimiter.enforceSendLimit({ req, phone, scene });
+  } catch (err) {
+    console.error('[SMS] rate limiter failed:', err.message);
+    return error(res, err.publicMessage || '短信风控服务暂不可用', err.statusCode || 503);
+  }
+  if (!limitResult.allowed) {
+    if (limitResult.retryAfter) res.set?.('Retry-After', String(limitResult.retryAfter));
+    return error(res, limitResult.message, limitResult.statusCode || 429);
   }
 
-  // 3. 防刷：同 IP 每日上限 20 次
-  const [ipRows] = await db.query(
-    'SELECT COUNT(*) as cnt FROM sms_codes WHERE ip = ? AND created_at > DATE_SUB(NOW(), INTERVAL 24 HOUR)',
-    [ip]
-  );
-  if (ipRows[0].cnt >= 20) {
-    return error(res, 'IP 请求过于频繁');
-  }
-
-  // 4. 虚拟号段拦截（简单规则）
+  // 2. 虚拟号段拦截（简单规则）
   const virtualPrefixes = ['170', '171', '162', '165', '167'];
   if (virtualPrefixes.some(p => phone.startsWith(p))) {
     return error(res, '不支持虚拟号码，请使用真实手机号');
   }
 
-  // 5. 生成验证码
+  // 3. 生成验证码
   const code = generateCode();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 分钟有效
 
@@ -195,6 +190,15 @@ async function consumeSmsCode(phone, code, scene) {
   }
 
   if (rows[0].code !== code) {
+    const failure = await smsRateLimiter.registerCodeFailure({
+      phone,
+      scene,
+      codeId: rows[0].id,
+    });
+    if (failure.exhausted) {
+      await db.query('UPDATE sms_codes SET used = 1 WHERE id = ?', [rows[0].id]);
+      return { errorMessage: '验证码错误次数过多，请重新获取' };
+    }
     return { errorMessage: '验证码错误' };
   }
 
@@ -202,6 +206,7 @@ async function consumeSmsCode(phone, code, scene) {
     return { errorMessage: '验证码已过期' };
   }
 
+  await smsRateLimiter.clearCodeFailures({ phone, scene, codeId: rows[0].id });
   await db.query('UPDATE sms_codes SET used = 1 WHERE id = ?', [rows[0].id]);
   return { ok: true };
 }

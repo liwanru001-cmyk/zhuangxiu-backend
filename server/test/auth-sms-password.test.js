@@ -1,6 +1,7 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
 
+process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
 
 function mockResponse() {
@@ -18,17 +19,37 @@ function mockResponse() {
   };
 }
 
-function loadController(dbMock) {
+function loadController(dbMock, serviceMocks = {}) {
   const dbPath = require.resolve('../config/db');
   const controllerPath = require.resolve('../controllers/auth.controller');
+  const limiterPath = require.resolve('../services/sms-rate-limiter.service');
+  const smsPath = require.resolve('../services/aliyun-sms.service');
   delete require.cache[dbPath];
   delete require.cache[controllerPath];
+  delete require.cache[limiterPath];
+  delete require.cache[smsPath];
   require.cache[dbPath] = {
     id: dbPath,
     filename: dbPath,
     loaded: true,
     exports: dbMock,
   };
+  if (serviceMocks.rateLimiter) {
+    require.cache[limiterPath] = {
+      id: limiterPath,
+      filename: limiterPath,
+      loaded: true,
+      exports: serviceMocks.rateLimiter,
+    };
+  }
+  if (serviceMocks.aliyunSms) {
+    require.cache[smsPath] = {
+      id: smsPath,
+      filename: smsPath,
+      loaded: true,
+      exports: serviceMocks.aliyunSms,
+    };
+  }
   return require('../controllers/auth.controller');
 }
 
@@ -175,21 +196,31 @@ test('send sms reset password scene rejects an unknown phone', async () => {
   assert.match(res.payload.message, /未注册/);
 });
 
-test('send sms limits the same phone to eight sends per hour', async () => {
+test('send sms rejects when Redis limiter blocks a frequent phone', async () => {
+  let aliyunCalled = false;
   const dbMock = {
     async query(sql, params) {
       if (/FROM users WHERE phone = \?/.test(sql)) {
         assert.deepEqual(params, ['13800138000']);
         return [[]];
       }
-      if (/COUNT\(\*\) as cnt FROM sms_codes WHERE phone = \? AND scene = \?/.test(sql)) {
-        assert.deepEqual(params, ['13800138000', 'register']);
-        return [[{ cnt: 8 }]];
-      }
       throw new Error(`unexpected query: ${sql}`);
     },
   };
-  const controller = loadController(dbMock);
+  const controller = loadController(dbMock, {
+    rateLimiter: {
+      async enforceSendLimit({ phone, scene }) {
+        assert.equal(phone, '13800138000');
+        assert.equal(scene, 'register');
+        return { allowed: false, message: '验证频繁，稍后再试', statusCode: 429 };
+      },
+    },
+    aliyunSms: {
+      async sendVerificationCode() {
+        aliyunCalled = true;
+      },
+    },
+  });
   const res = mockResponse();
 
   await controller.sendSmsCode({
@@ -199,4 +230,39 @@ test('send sms limits the same phone to eight sends per hour', async () => {
 
   assert.equal(res.statusCode, 429);
   assert.equal(res.payload.message, '验证频繁，稍后再试');
+  assert.equal(aliyunCalled, false);
+});
+
+test('sms verify invalidates a code after five wrong attempts', async () => {
+  const writes = [];
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM sms_codes/.test(sql)) {
+        return [[{ id: 9, code: '123456', expires_at: new Date(Date.now() + 60000), used: 0 }]];
+      }
+      if (/UPDATE sms_codes SET used = 1/.test(sql)) {
+        writes.push(params);
+        return [{}];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock, {
+    rateLimiter: {
+      async registerCodeFailure({ codeId }) {
+        assert.equal(codeId, 9);
+        return { count: 5, exhausted: true };
+      },
+      async clearCodeFailures() {
+        throw new Error('should not clear failures on wrong code');
+      },
+    },
+  });
+  const res = mockResponse();
+
+  await controller.verifySms({ body: { phone: '13800138000', code: '999999' } }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.equal(res.payload.message, '验证码错误次数过多，请重新获取');
+  assert.deepEqual(writes, [[9]]);
 });
