@@ -3,43 +3,43 @@ const { success, error } = require('../utils/response');
 
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
+const aliyunSms = require('../services/aliyun-sms.service');
 
 function generateCode() {
   return crypto.randomInt(100000, 999999).toString();
 }
 
-async function findOrCreateUser(phone) {
-  let [userRows] = await db.query(
+async function findUserByPhone(phone) {
+  const [userRows] = await db.query(
     'SELECT id, phone, password_hash, nickname, avatar, bio, city, role, admin_status FROM users WHERE phone = ?',
     [phone]
   );
-  let user = userRows[0];
+  return userRows[0] || null;
+}
 
-  if (!user) {
-    const [result] = await db.query(
-      `INSERT INTO users (phone, nickname, admin_status)
-       VALUES (?, CONVERT(0xE8A385E4BFAEE5B08FE8BEBEE4BABA USING utf8mb4), 'pending')`,
-      [phone]
-    );
-    user = {
-      id: result.insertId,
-      phone,
-      role: 'owner',
-      nickname: '装修小达人',
-      avatar: '',
-      bio: '',
-      city: '',
-      admin_status: 'pending',
-      password_hash: null,
-    };
-    await db.query(
-      `INSERT IGNORE INTO user_roles (user_id, role, is_default)
-       VALUES (?, 'owner', 1)`,
-      [result.insertId]
-    );
-  }
+async function createFormalUser(phone) {
+  const [result] = await db.query(
+    `INSERT INTO users (phone, nickname, admin_status)
+     VALUES (?, CONVERT(0xE8A385E4BFAEE5B08FE8BEBEE4BABA USING utf8mb4), 'approved')`,
+    [phone]
+  );
+  await db.query(
+    `INSERT IGNORE INTO user_roles (user_id, role, is_default)
+     VALUES (?, 'owner', 1)`,
+    [result.insertId]
+  );
 
-  return user;
+  return {
+    id: result.insertId,
+    phone,
+    role: 'owner',
+    nickname: '装修小达人',
+    avatar: '',
+    bio: '',
+    city: '',
+    admin_status: 'approved',
+    password_hash: null,
+  };
 }
 
 async function getUserRoles(userId, fallbackRole = 'owner') {
@@ -81,6 +81,23 @@ async function buildLoginResponse(user) {
   };
 }
 
+function validatePhone(phone) {
+  return /^1[3-9]\d{9}$/.test(String(phone || ''));
+}
+
+function validateCode(code) {
+  return /^\d{6}$/.test(String(code || ''));
+}
+
+function validatePassword(password) {
+  return /^(?=.*[A-Za-z])(?=.*\d)[A-Za-z\d\S]{8,}$/.test(String(password || ''));
+}
+
+function normalizeSmsScene(scene) {
+  const value = String(scene || 'register').trim();
+  return ['register', 'reset_password', 'login'].includes(value) ? value : null;
+}
+
 function guardAdminStatus(res, user) {
   if (user.admin_status === 'pending') {
     return error(res, '账号正在审核中，请等待管理员通过', 403);
@@ -93,18 +110,30 @@ function guardAdminStatus(res, user) {
 
 // 发送验证码（含防刷）
 async function sendSmsCode(req, res) {
-  const { phone, captchaToken } = req.body;
+  const { phone } = req.body;
+  const scene = normalizeSmsScene(req.body.scene);
   const ip = req.ip;
 
   // 1. 手机号格式
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
+  if (!validatePhone(phone)) {
     return error(res, '手机号格式不正确');
+  }
+  if (!scene) {
+    return error(res, '短信验证码场景不正确');
+  }
+
+  const existingUser = await findUserByPhone(phone);
+  if (scene === 'register' && existingUser) {
+    return error(res, '该手机号已注册，请使用密码登录', 409);
+  }
+  if (scene === 'reset_password' && !existingUser) {
+    return error(res, '该手机号未注册，请先注册', 404);
   }
 
   // 2. 防刷：同手机号 60s 间隔
   const [recentRows] = await db.query(
-    'SELECT id FROM sms_codes WHERE phone = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND) AND used = 0',
-    [phone]
+    'SELECT id FROM sms_codes WHERE phone = ? AND scene = ? AND created_at > DATE_SUB(NOW(), INTERVAL 60 SECOND) AND used = 0',
+    [phone, scene]
   );
   if (recentRows.length > 0) {
     return error(res, '请 60 秒后再试');
@@ -138,87 +167,141 @@ async function sendSmsCode(req, res) {
   const code = generateCode();
   const expiresAt = new Date(Date.now() + 5 * 60 * 1000); // 5 分钟有效
 
-  await db.query(
-    'INSERT INTO sms_codes (phone, code, ip, expires_at) VALUES (?, ?, ?, ?)',
-    [phone, code, ip, expiresAt]
+  const [insertResult] = await db.query(
+    'INSERT INTO sms_codes (phone, code, scene, ip, expires_at) VALUES (?, ?, ?, ?, ?)',
+    [phone, code, scene, ip, expiresAt]
   );
 
-  // TODO: 接入阿里云短信 API 发送
-  // await aliyunSms.send(phone, code);
-
-  console.log(`📱 [SMS] phone=${phone} code=${code} (开发环境)`);
-
-  return success(res, { expires_in: 300 }, '验证码已发送（开发环境请查看日志）');
-}
-
-// 验证码登录/注册
-async function login(req, res) {
-  const { phone, code } = req.body;
-
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
-    return error(res, '手机号格式不正确');
+  try {
+    await aliyunSms.sendVerificationCode(phone, code);
+  } catch (err) {
+    await db.query('UPDATE sms_codes SET used = 1 WHERE id = ?', [insertResult.insertId]);
+    console.error('[SMS] send failed:', err.message);
+    return error(res, '短信发送失败，请稍后再试', 502);
   }
 
-  // 验证验证码
+  return success(res, { expires_in: 300 }, '验证码已发送');
+}
+
+async function consumeSmsCode(phone, code, scene) {
+  if (!validatePhone(phone)) {
+    return { errorMessage: '手机号格式不正确' };
+  }
+  if (!validateCode(code)) {
+    return { errorMessage: '验证码格式不正确' };
+  }
+  if (!normalizeSmsScene(scene)) {
+    return { errorMessage: '短信验证码场景不正确' };
+  }
+
   const [rows] = await db.query(
-    'SELECT id, code, expires_at, used FROM sms_codes WHERE phone = ? AND used = 0 ORDER BY id DESC LIMIT 1',
-    [phone]
+    'SELECT id, code, expires_at, used FROM sms_codes WHERE phone = ? AND scene = ? AND used = 0 ORDER BY id DESC LIMIT 1',
+    [phone, scene]
   );
 
   if (rows.length === 0) {
-    return error(res, '请先获取验证码');
+    return { errorMessage: '请先获取验证码' };
   }
 
   if (rows[0].code !== code) {
-    return error(res, '验证码错误');
+    return { errorMessage: '验证码错误' };
   }
 
   if (new Date() > rows[0].expires_at) {
-    return error(res, '验证码已过期');
+    return { errorMessage: '验证码已过期' };
   }
 
-  // 标记已使用
   await db.query('UPDATE sms_codes SET used = 1 WHERE id = ?', [rows[0].id]);
+  return { ok: true };
+}
 
-  const user = await findOrCreateUser(phone);
+// 短信验证码注册正式账号
+async function verifySms(req, res) {
+  const { phone, code } = req.body;
+
+  const smsResult = await consumeSmsCode(phone, code, 'register');
+  if (!smsResult.ok) return error(res, smsResult.errorMessage);
+
+  const existingUser = await findUserByPhone(phone);
+  if (existingUser) {
+    return error(res, '该手机号已注册，请使用密码登录', 409);
+  }
+
+  const user = await createFormalUser(phone);
   const blocked = guardAdminStatus(res, user);
   if (blocked) return blocked;
   return success(res, await buildLoginResponse(user));
 }
 
-// 测试阶段密码登录。生产环境默认关闭，可通过 TEST_LOGIN_PASSWORD 显式开启。
+// 兼容旧验证码登录路径：现在用于短信注册。
+async function login(req, res) {
+  return verifySms(req, res);
+}
+
 async function passwordLogin(req, res) {
   const { phone, password } = req.body;
-  const testPassword = process.env.TEST_LOGIN_PASSWORD ||
-    (process.env.NODE_ENV !== 'production' ? '123456' : '');
 
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
+  if (!validatePhone(phone)) {
     return error(res, '手机号格式不正确');
   }
 
-  const user = await findOrCreateUser(phone);
+  const user = await findUserByPhone(phone);
+  if (!user) {
+    return error(res, '该手机号未注册，请先短信验证', 404);
+  }
   const blocked = guardAdminStatus(res, user);
   if (blocked) return blocked;
-  if (!user.password_hash && !testPassword) {
-    return error(res, '该账号尚未设置密码', 403);
+  if (!user.password_hash) {
+    return error(res, '该账号尚未设置密码，请先设置密码', 403);
   }
-  const passwordMatches = user.password_hash
-    ? await bcrypt.compare(password, user.password_hash)
-    : password === testPassword;
+  const passwordMatches = await bcrypt.compare(String(password || ''), user.password_hash);
   if (!passwordMatches) {
-    return error(res, user.password_hash ? '密码错误' : '测试密码错误');
+    return error(res, '手机号或密码错误', 401);
   }
   return success(res, await buildLoginResponse(user));
 }
 
-// 测试阶段申请密码账号。账号创建后需要管理后台审核通过才可登录。
-async function registerPasswordAccount(req, res) {
-  const { phone, password } = req.body;
-  if (!/^1[3-9]\d{9}$/.test(phone)) {
-    return error(res, '手机号格式不正确');
+async function setPassword(req, res) {
+  const { password } = req.body;
+
+  if (!validatePassword(password)) {
+    return error(res, '密码必须至少8位，并且包含字母和数字');
   }
-  if (!/^\d{6}$/.test(String(password || ''))) {
-    return error(res, '密码必须是 6 位数字');
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, req.user.id]);
+
+  return success(res, { password_set: true }, '密码设置成功');
+}
+
+async function resetPassword(req, res) {
+  const { phone, code, password } = req.body;
+
+  if (!validatePassword(password)) {
+    return error(res, '密码必须至少8位，并且包含字母和数字');
+  }
+
+  const smsResult = await consumeSmsCode(phone, code, 'reset_password');
+  if (!smsResult.ok) return error(res, smsResult.errorMessage);
+
+  const user = await findUserByPhone(phone);
+  if (!user) {
+    return error(res, '该手机号未注册，请先短信验证', 404);
+  }
+  const blocked = guardAdminStatus(res, user);
+  if (blocked) return blocked;
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  await db.query('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, user.id]);
+
+  return success(res, { password_reset: true }, '密码已重置，请使用新密码登录');
+}
+
+// 旧密码注册入口已关闭，注册必须先通过短信验证。
+async function registerPasswordAccount(req, res) {
+  const { phone } = req.body;
+  if (!validatePhone(phone)) {
+    return error(res, '手机号格式不正确');
   }
 
   const [existing] = await db.query(
@@ -235,22 +318,15 @@ async function registerPasswordAccount(req, res) {
     return error(res, '该手机号已注册，请直接登录', 409);
   }
 
-  const passwordHash = await bcrypt.hash(String(password), 10);
-  const [result] = await db.query(
-    `INSERT INTO users (phone, nickname, password_hash, admin_status)
-     VALUES (?, CONVERT(0xE8A385E4BFAEE5B08FE8BEBEE4BABA USING utf8mb4), ?, 'pending')`,
-    [phone, passwordHash]
-  );
-  await db.query(
-    `INSERT IGNORE INTO user_roles (user_id, role, is_default)
-     VALUES (?, 'owner', 1)`,
-    [result.insertId]
-  );
-  return success(
-    res,
-    { id: result.insertId, admin_status: 'pending' },
-    '账号申请已提交，请等待管理员审核'
-  );
+  return error(res, '请先通过短信验证码注册账号', 400);
 }
 
-module.exports = { sendSmsCode, login, passwordLogin, registerPasswordAccount };
+module.exports = {
+  sendSmsCode,
+  verifySms,
+  login,
+  passwordLogin,
+  setPassword,
+  resetPassword,
+  registerPasswordAccount,
+};

@@ -55,7 +55,7 @@ app.use(
 );
 
 // 短信发送额外限流
-app.use('/api/auth/send-code', rateLimit({
+app.use(['/api/auth/send-code', '/api/auth/send-sms'], rateLimit({
   windowMs: 24 * 60 * 60 * 1000,
   max: parseInt(process.env.SMS_RATE_LIMIT_MAX) || 5,
   message: { code: 429, message: '今日发送次数已达上限' },

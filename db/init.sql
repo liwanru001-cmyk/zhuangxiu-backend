@@ -178,11 +178,13 @@ CREATE TABLE IF NOT EXISTS sms_codes (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     phone CHAR(11) NOT NULL,
     code CHAR(6) NOT NULL,
+    scene VARCHAR(32) NOT NULL DEFAULT 'register',
     ip VARCHAR(45) NOT NULL,
     used TINYINT DEFAULT 0,
     expires_at DATETIME NOT NULL,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     INDEX idx_phone (phone),
+    INDEX idx_phone_scene_created (phone, scene, created_at),
     INDEX idx_expires (expires_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

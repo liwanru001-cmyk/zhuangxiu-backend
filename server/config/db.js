@@ -72,6 +72,7 @@ pool.getConnection()
   });
 
 async function ensureAppTables() {
+  await ensureSmsCodesTable();
   await ensureUserAdminStatusColumn();
   await ensureUserAvatarChangedAtColumn();
   await ensureRenovationProjectNameColumn();
@@ -1550,6 +1551,40 @@ async function ensureProjectCaseShareTables() {
       KEY idx_case_share_owner (owner_id, status, updated_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+}
+
+async function ensureSmsCodesTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS sms_codes (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      phone CHAR(11) NOT NULL,
+      code CHAR(6) NOT NULL,
+      scene VARCHAR(32) NOT NULL DEFAULT 'register',
+      ip VARCHAR(45) NOT NULL,
+      used TINYINT(1) NOT NULL DEFAULT 0,
+      expires_at DATETIME NOT NULL,
+      created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_phone (phone),
+      KEY idx_phone_scene_created (phone, scene, created_at),
+      KEY idx_phone_created (phone, created_at),
+      KEY idx_expires (expires_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const [sceneColumns] = await pool.query(`
+    SELECT COLUMN_NAME
+    FROM INFORMATION_SCHEMA.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'sms_codes'
+      AND COLUMN_NAME = 'scene'
+  `);
+  if (sceneColumns.length === 0) {
+    await pool.query(`
+      ALTER TABLE sms_codes
+        ADD COLUMN scene VARCHAR(32) NOT NULL DEFAULT 'register' AFTER code,
+        ADD INDEX idx_phone_scene_created (phone, scene, created_at)
+    `);
+  }
 }
 
 async function ensureUserAdminStatusColumn() {

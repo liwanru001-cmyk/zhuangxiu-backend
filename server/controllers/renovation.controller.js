@@ -7332,7 +7332,7 @@ async function createProjectInspection(req, res) {
     responsibleMember = await requireActiveProjectMember(projectId, responsibleUserId);
     if (!responsibleMember) {
       await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
-      return error(res, '整改责任人不是项目成员');
+      return error(res, '整改成员不是项目成员');
     }
   }
   let progressItem = null;
@@ -7462,14 +7462,14 @@ async function reviewProjectInspection(req, res) {
   }
   if (result === 'rework' && !remark) return error(res, '请填写整改要求');
   if (result === 'rework' && !responsibleUserId) {
-    return error(res, '请选择整改责任人');
+    return error(res, '请选择整改成员');
   }
   if (result === 'rework' && responsibleUserId) {
     const responsibleMember = await requireActiveProjectMember(
       projectId,
       responsibleUserId
     );
-    if (!responsibleMember) return error(res, '整改责任人不是项目成员');
+    if (!responsibleMember) return error(res, '整改成员不是项目成员');
   }
 
   const connection = await db.getConnection();
@@ -7606,7 +7606,7 @@ async function reviewProjectInspection(req, res) {
     return success(
       res,
       { status: result, progress },
-      result === 'passed' ? '验收已通过，任务已完成' : '已要求整改'
+      result === 'passed' ? '验收已通过，任务已完成' : '已通知整改'
     );
   } catch (reviewError) {
     await connection.rollback();
@@ -7766,8 +7766,19 @@ async function createProjectInspectionStepRecord(req, res) {
   const memberRole =
     (await getProjectMemberRole(projectId, req.user.id)) || req.user.role || 'owner';
   const ownerSide = isOwnerSideRole(memberRole);
+  const isReworkRequest = requestedType === 'rework_request';
+  if (isReworkRequest && !ownerSide) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, '只有业主方可以发起整改', 403);
+  }
+  if (isReworkRequest && (!targetUserId || !description)) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, '请填写整改说明并选择整改成员');
+  }
   const recordType = requestedType || (ownerSide ? 'self_checked' : 'member_checked');
-  const status = ownerSide
+  const status = isReworkRequest
+    ? 'rework'
+    : ownerSide
     ? (targetUserId ? 'pending_member_check' : 'recorded')
     : 'pending_owner_view';
   if (!ownerSide && !description) {
@@ -7808,7 +7819,9 @@ async function createProjectInspectionStepRecord(req, res) {
       await connection.query(
         `UPDATE project_inspection_step_records
          SET step_title = ?, step_action = ?, record_type = ?, status = ?,
-             description = ?, member_role = ?, target_user_id = ?
+             description = ?, review_remark = ?, reviewed_by = ?,
+             reviewed_at = CASE WHEN ? THEN NOW() ELSE reviewed_at END,
+             member_role = ?, target_user_id = ?
          WHERE id = ?`,
         [
           stepTitle,
@@ -7816,6 +7829,9 @@ async function createProjectInspectionStepRecord(req, res) {
           recordType,
           status,
           description,
+          isReworkRequest ? description : null,
+          isReworkRequest ? req.user.id : null,
+          isReworkRequest ? 1 : 0,
           memberRole,
           targetUserId,
           existingRows[0].id,
@@ -7842,6 +7858,19 @@ async function createProjectInspectionStepRecord(req, res) {
     } finally {
       connection.release();
     }
+    if (isReworkRequest) {
+      await emitProjectEvent(ProjectEventType.INSPECTION_REWORK_REQUIRED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: [targetUserId],
+        entityType: 'inspection_step',
+        entityId: existingRows[0].id,
+        title: '现场记录需要整改',
+        content: description || stepTitle,
+        route: 'project_inspection',
+        deepLink: { projectId, stepRecordId: existingRows[0].id },
+      });
+    }
     if (targetUserId && status === 'pending_member_check') {
       await emitProjectEvent(ProjectEventType.INSPECTION_STEP_CHECK_REQUESTED, {
         projectId,
@@ -7850,7 +7879,7 @@ async function createProjectInspectionStepRecord(req, res) {
         entityType: 'inspection_step',
         entityId: existingRows[0].id,
         title: '请核对现场事项',
-        content: stepTitle,
+        content: description || stepTitle,
         route: 'project_inspection',
         deepLink: { projectId, stepKey, stepTitle },
       });
@@ -7879,9 +7908,11 @@ async function createProjectInspectionStepRecord(req, res) {
     const [result] = await connection.query(
       `INSERT INTO project_inspection_step_records
          (project_id, stage_id, progress_item_id, step_key, step_title,
-          step_action, record_type, status, description, created_by,
-          member_role, target_user_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+          step_action, record_type, status, description, review_remark,
+          created_by, member_role, target_user_id, reviewed_by, reviewed_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${
+         isReworkRequest ? 'NOW()' : 'NULL'
+       })`,
       [
         projectId,
         stageId,
@@ -7892,9 +7923,11 @@ async function createProjectInspectionStepRecord(req, res) {
         recordType,
         status,
         description,
+        isReworkRequest ? description : null,
         req.user.id,
         memberRole,
         targetUserId,
+        isReworkRequest ? req.user.id : null,
       ]
     );
     recordId = result.insertId;
@@ -7919,6 +7952,19 @@ async function createProjectInspectionStepRecord(req, res) {
   } finally {
     connection.release();
   }
+  if (isReworkRequest) {
+    await emitProjectEvent(ProjectEventType.INSPECTION_REWORK_REQUIRED, {
+      projectId,
+      actorId: req.user.id,
+      targetUserIds: [targetUserId],
+      entityType: 'inspection_step',
+      entityId: recordId,
+      title: '现场记录需要整改',
+      content: description || stepTitle,
+      route: 'project_inspection',
+      deepLink: { projectId, stepRecordId: recordId },
+    });
+  }
   if (targetUserId && status === 'pending_member_check') {
     await emitProjectEvent(ProjectEventType.INSPECTION_STEP_CHECK_REQUESTED, {
       projectId,
@@ -7927,7 +7973,7 @@ async function createProjectInspectionStepRecord(req, res) {
       entityType: 'inspection_step',
       entityId: recordId,
       title: '请核对现场事项',
-      content: stepTitle,
+      content: description || stepTitle,
       route: 'project_inspection',
       deepLink: { projectId, stepKey, stepTitle },
     });
@@ -7968,14 +8014,14 @@ async function reviewProjectInspectionStepRecord(req, res) {
   }
   if (result === 'rework' && !remark) return error(res, '请填写整改要求');
   if (result === 'rework' && !responsibleUserId) {
-    return error(res, '请选择整改责任人');
+    return error(res, '请选择整改成员');
   }
   if (responsibleUserId) {
     const responsibleMember = await requireActiveProjectMember(
       projectId,
       responsibleUserId
     );
-    if (!responsibleMember) return error(res, '整改责任人不是项目成员');
+    if (!responsibleMember) return error(res, '整改成员不是项目成员');
   }
 
   const connection = await db.getConnection();
@@ -8023,7 +8069,7 @@ async function reviewProjectInspectionStepRecord(req, res) {
     return success(
       res,
       { id: recordId, status: result },
-      result === 'recorded' ? '记录已查看' : '已要求整改'
+      result === 'recorded' ? '已确认归档' : '已通知继续整改'
     );
   } catch (reviewError) {
     await connection.rollback();
@@ -8070,7 +8116,7 @@ async function submitProjectInspectionStepRework(req, res) {
     if (Number(rows[0].target_user_id) !== Number(req.user.id)) {
       await connection.rollback();
       await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
-      return error(res, '只有整改责任人可以提交处理记录', 403);
+      return error(res, '只有整改成员可以提交处理记录', 403);
     }
     await connection.query(
       `UPDATE project_inspection_step_records
