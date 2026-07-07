@@ -26,6 +26,7 @@ const USER_INTERACTION_QUOTAS = {
 
 const profileSelect = `
   SELECT u.id, u.phone, u.nickname, u.avatar, u.bio, u.city, u.role,
+         (u.password_hash IS NOT NULL AND u.password_hash != '') AS has_password,
          (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
           WHERE ur.user_id = u.id) AS roles,
          (SELECT COUNT(*) FROM notes n
@@ -39,6 +40,14 @@ const profileSelect = `
          u.created_at
   FROM users u
   WHERE u.id = ?`;
+
+const VALID_PUBLIC_DISPLAY_ROLES = [
+  'owner',
+  'designer',
+  'merchant',
+  'project_manager',
+  'project_supervisor',
+];
 
 async function verifyPassword(userId, password) {
   const [rows] = await db.query(
@@ -103,6 +112,12 @@ async function getProfile(req, res) {
   const userId = req.params.id || req.user.id;
   const [rows] = await db.query(profileSelect, [userId]);
   if (rows.length === 0) return error(res, '用户不存在', 404);
+  const ownedRoles = normalizeRoleList(rows[0].roles, rows[0].role);
+  const displaySettings = await getPublicProfileDisplaySettingsData(
+    userId,
+    ownedRoles,
+    rows[0].role
+  );
   const designerProfile = await getDesignerProfileData(userId);
   const projectManagerProfile = await getProjectManagerProfileData(userId);
   const merchantProfile = await getMerchantProfileData(userId);
@@ -118,12 +133,136 @@ async function getProfile(req, res) {
   }
   return success(res, {
     ...rows[0],
+    roles: ownedRoles,
+    public_display_roles: displaySettings.display_roles,
+    primary_display_role: displaySettings.primary_display_role,
+    public_profile_display_configured: displaySettings.configured,
     designer_profile: designerProfile,
     project_manager_profile: projectManagerProfile,
     merchant_profile: merchantProfile,
     is_self: Boolean(isSelf),
     is_following: isFollowing,
   });
+}
+
+function normalizeRoleList(rawRoles, fallbackRole = 'owner') {
+  const values = Array.isArray(rawRoles) ? rawRoles : parseJsonArray(rawRoles);
+  const roles = values
+    .map((item) => String(item || '').trim())
+    .filter((item) => VALID_PUBLIC_DISPLAY_ROLES.includes(item));
+  const fallback = VALID_PUBLIC_DISPLAY_ROLES.includes(fallbackRole)
+    ? fallbackRole
+    : 'owner';
+  if (!roles.includes(fallback)) roles.unshift(fallback);
+  return [...new Set(roles)];
+}
+
+function normalizePublicDisplaySettings(row, ownedRoles, fallbackRole = 'owner') {
+  const owned = normalizeRoleList(ownedRoles, fallbackRole);
+  const configured = Boolean(row);
+  const rawDisplayRoles = row ? parseJsonArray(row.display_roles) : owned;
+  const displayRoles = rawDisplayRoles
+    .map((item) => String(item || '').trim())
+    .filter((item) => owned.includes(item));
+  const safeDisplayRoles = [...new Set(displayRoles)];
+  const fallback = owned.includes(fallbackRole) ? fallbackRole : owned[0] || 'owner';
+  if (!configured && safeDisplayRoles.length === 0) safeDisplayRoles.push(fallback);
+  let primary = row?.primary_display_role || fallback;
+  if (!safeDisplayRoles.includes(primary)) primary = safeDisplayRoles[0] || fallback;
+  return {
+    primary_display_role: primary,
+    display_roles: safeDisplayRoles,
+    role_sort: row ? parseJsonArray(row.role_sort) : safeDisplayRoles,
+    configured,
+  };
+}
+
+async function getOwnedRoles(userId) {
+  const [rows] = await db.query(
+    `SELECT u.role,
+            (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
+             WHERE ur.user_id = u.id) AS roles
+     FROM users u
+     WHERE u.id = ?
+     LIMIT 1`,
+    [userId]
+  );
+  if (!rows[0]) return null;
+  return {
+    currentRole: rows[0].role || 'owner',
+    roles: normalizeRoleList(rows[0].roles, rows[0].role),
+  };
+}
+
+async function getPublicProfileDisplaySettingsData(userId, ownedRoles, fallbackRole = 'owner') {
+  const [rows] = await db.query(
+    `SELECT primary_display_role, display_roles, role_sort
+     FROM user_public_profile_settings
+     WHERE user_id = ?
+     LIMIT 1`,
+    [userId]
+  );
+  return normalizePublicDisplaySettings(rows[0] || null, ownedRoles, fallbackRole);
+}
+
+async function getPublicProfileDisplaySettings(req, res) {
+  const owned = await getOwnedRoles(req.user.id);
+  if (!owned) return error(res, '用户不存在', 404);
+  const settings = await getPublicProfileDisplaySettingsData(
+    req.user.id,
+    owned.roles,
+    owned.currentRole
+  );
+  return success(res, {
+    owned_roles: owned.roles,
+    current_role: owned.currentRole,
+    ...settings,
+  });
+}
+
+async function updatePublicProfileDisplaySettings(req, res) {
+  const owned = await getOwnedRoles(req.user.id);
+  if (!owned) return error(res, '用户不存在', 404);
+  const displayRoles = normalizeStringList(req.body?.display_roles, 10)
+    .filter((role) => VALID_PUBLIC_DISPLAY_ROLES.includes(role));
+  const uniqueRoles = [...new Set(displayRoles)].filter((role) =>
+    owned.roles.includes(role)
+  );
+  if (uniqueRoles.length === 0) {
+    return error(res, '请至少选择一个对外展示身份');
+  }
+  const primaryRole = String(req.body?.primary_display_role || '').trim();
+  if (!uniqueRoles.includes(primaryRole)) {
+    return error(res, '主展示身份必须在已选择的展示身份中');
+  }
+  await db.query(
+    `INSERT INTO user_public_profile_settings (
+       user_id, primary_display_role, display_roles, role_sort
+     )
+     VALUES (?, ?, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       primary_display_role = VALUES(primary_display_role),
+       display_roles = VALUES(display_roles),
+       role_sort = VALUES(role_sort)`,
+    [
+      req.user.id,
+      primaryRole,
+      JSON.stringify(uniqueRoles),
+      JSON.stringify(uniqueRoles),
+    ]
+  );
+  return success(
+    res,
+    {
+      owned_roles: owned.roles,
+      current_role: owned.currentRole,
+      primary_display_role: primaryRole,
+      display_roles: uniqueRoles,
+      role_sort: uniqueRoles,
+      configured: true,
+    },
+    '主页展示身份已保存'
+  );
 }
 
 async function getMerchantProfileData(userId) {
@@ -1627,6 +1766,8 @@ async function submitFeedback(req, res) {
 
 module.exports = {
   getProfile,
+  getPublicProfileDisplaySettings,
+  updatePublicProfileDisplaySettings,
   updateProfile,
   updateRole,
   uploadAvatar,

@@ -3381,8 +3381,16 @@ async function getProjectCheckIns(req, res) {
   if (!role) return error(res, '项目不存在或无权限', 404);
   await ensureProjectCheckInCircleSharesTable();
 
-  const where = 'checkin.project_id = ? AND checkin.user_id = ?';
-  const params = [projectId, req.user.id];
+  const where = `checkin.project_id = ?
+    AND (
+      checkin.user_id = ?
+      OR EXISTS (
+        SELECT 1 FROM project_checkin_shares share_access
+        WHERE share_access.checkin_id = checkin.id
+          AND share_access.shared_with_user_id = ?
+      )
+    )`;
+  const params = [projectId, req.user.id, req.user.id];
   const [rows] = await db.query(
     `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
             checkin.description, checkin.checkin_date,
@@ -3538,6 +3546,19 @@ async function createProjectCheckIn(req, res) {
         ])
       );
     }
+    if (sharedMemberIds.length) {
+      await emitProjectEvent(ProjectEventType.SITE_CHECK_IN_SHARED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: sharedMemberIds,
+        entityType: 'site_check_in',
+        entityId: result.insertId,
+        title: '工地打卡分享',
+        content: description || '项目成员分享了一条工地打卡记录',
+        route: 'site_check_in',
+        deepLink: { projectId, checkInId: result.insertId },
+      }, connection);
+    }
     await connection.commit();
     return success(res, { id: result.insertId }, '工地打卡已保存');
   } catch (checkInError) {
@@ -3556,11 +3577,12 @@ async function updateProjectCheckInShares(req, res) {
   const projectId = Number(req.params.id);
   const checkInId = Number(req.params.checkInId);
   const sharedMemberIds = parseAssigneeIds(req.body.shared_member_ids);
+  const shareNote = String(req.body.share_note || '').trim().slice(0, 200);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
 
   const [rows] = await db.query(
-    'SELECT id, user_id FROM project_checkins WHERE id = ? AND project_id = ? LIMIT 1',
+    'SELECT id, user_id, description FROM project_checkins WHERE id = ? AND project_id = ? LIMIT 1',
     [checkInId, projectId]
   );
   const checkIn = rows[0];
@@ -3582,6 +3604,20 @@ async function updateProjectCheckInShares(req, res) {
       return error(res, '分享成员包含非项目成员');
     }
   }
+  let newlySharedMemberIds = sharedMemberIds;
+  if (sharedMemberIds.length) {
+    const [existingShares] = await db.query(
+      `SELECT shared_with_user_id
+       FROM project_checkin_shares
+       WHERE checkin_id = ?
+         AND shared_with_user_id IN (${sharedMemberIds.map(() => '?').join(', ')})`,
+      [checkInId, ...sharedMemberIds]
+    );
+    const existingShareIds = new Set(
+      existingShares.map((item) => Number(item.shared_with_user_id))
+    );
+    newlySharedMemberIds = sharedMemberIds.filter((userId) => !existingShareIds.has(Number(userId)));
+  }
 
   const connection = await db.getConnection();
   try {
@@ -3602,6 +3638,19 @@ async function updateProjectCheckInShares(req, res) {
        WHERE id = ?`,
       [checkInId, checkInId]
     );
+    if (newlySharedMemberIds.length) {
+      await emitProjectEvent(ProjectEventType.SITE_CHECK_IN_SHARED, {
+        projectId,
+        actorId: req.user.id,
+        targetUserIds: newlySharedMemberIds,
+        entityType: 'site_check_in',
+        entityId: checkInId,
+        title: '工地打卡分享',
+        content: shareNote || checkIn.description || '项目成员分享了一条工地打卡记录',
+        route: 'site_check_in',
+        deepLink: { projectId, checkInId },
+      }, connection);
+    }
     await connection.commit();
     return success(res, null, '分享设置已更新');
   } catch (shareError) {
@@ -6446,6 +6495,13 @@ async function deleteProjectTask(req, res) {
   if (Number(children[0].total) > 0) {
     return error(res, '该事项下已有子事项，请先删除子事项后再删除事项', 409);
   }
+  const [inspections] = await db.query(
+    'SELECT id FROM project_inspections WHERE project_id = ? AND task_id = ? LIMIT 1',
+    [projectId, taskId]
+  );
+  if (inspections[0]) {
+    return error(res, '该事项已有验收记录，不能删除，可调整名称或状态', 409);
+  }
   const [result] = await db.query(
     'DELETE FROM renovation_tasks WHERE id = ? AND project_id = ?',
     [taskId, projectId]
@@ -6562,7 +6618,6 @@ function sanitizeProgressItemBody(body) {
   const plannedStart = body.planned_start || null;
   const plannedEnd = body.planned_end || null;
   const actualFinish = body.actual_finish || null;
-  const status = String(body.status || 'pending');
   const remark = String(body.remark || '').trim().slice(0, 1000) || null;
   const isKeyNode = body.is_key_node ? 1 : 0;
   const requiresInspection = body.requires_inspection ? 1 : 0;
@@ -6578,7 +6633,7 @@ function sanitizeProgressItemBody(body) {
     plannedStart,
     plannedEnd,
     actualFinish,
-    status,
+    status: 'pending',
     remark,
     isKeyNode,
     requiresInspection,
@@ -6590,9 +6645,6 @@ function sanitizeProgressItemBody(body) {
 function validateProgressItem(item) {
   if (!item.title) return '请填写子事项名称';
   if (!stages.some((stage) => stage.id === item.stageId)) return '项目阶段不正确';
-  if (!['pending', 'in_progress', 'completed', 'delayed'].includes(item.status)) {
-    return '子事项状态不正确';
-  }
   if (
     item.plannedStart &&
     item.plannedEnd &&
@@ -6614,7 +6666,6 @@ const progressItemAdjustmentFields = [
   { key: 'plannedStart', label: '计划开始', column: 'planned_start' },
   { key: 'plannedEnd', label: '计划结束', column: 'planned_end' },
   { key: 'actualFinish', label: '实际完成', column: 'actual_finish' },
-  { key: 'status', label: '状态', column: 'status' },
   { key: 'remark', label: '事项备注', column: 'remark' },
   { key: 'isKeyNode', label: '关键节点', column: 'is_key_node' },
   { key: 'requiresInspection', label: '需要验收', column: 'requires_inspection' },
@@ -6626,7 +6677,6 @@ const progressItemNotificationFields = new Set([
   'planned_start',
   'planned_end',
   'actual_finish',
-  'status',
   'requires_inspection',
   'remark',
 ]);
@@ -6777,6 +6827,7 @@ async function createProjectProgressItem(req, res) {
     userId: req.user.id,
     role: memberRole,
   });
+  await recomputeProjectProgressDerivedStatuses(projectId);
   return success(res, { id: result.insertId }, '子事项已创建');
 }
 
@@ -6805,6 +6856,7 @@ async function updateProjectProgressItem(req, res) {
     task_id: req.body.task_id ?? existingRows[0].task_id,
     parent_id: req.body.parent_id ?? existingRows[0].parent_id,
     template_key: req.body.template_key ?? existingRows[0].template_key,
+    status: existingRows[0].status,
     requires_inspection:
       req.body.requires_inspection ?? existingRows[0].requires_inspection,
     inspection_template_key:
@@ -6836,7 +6888,7 @@ async function updateProjectProgressItem(req, res) {
   const [result] = await db.query(
     `UPDATE project_progress_items
      SET stage_id = ?, task_id = ?, parent_id = ?, title = ?, planned_start = ?,
-         planned_end = ?, actual_finish = ?, status = ?, remark = ?,
+         planned_end = ?, actual_finish = ?, remark = ?,
          is_key_node = ?, template_key = ?, requires_inspection = ?,
          inspection_template_key = ?, sort_order = ?
      WHERE id = ? AND project_id = ?`,
@@ -6848,7 +6900,6 @@ async function updateProjectProgressItem(req, res) {
       item.plannedStart,
       item.plannedEnd,
       item.actualFinish,
-      item.status,
       item.remark,
       item.isKeyNode,
       item.templateKey,
@@ -6889,6 +6940,7 @@ async function updateProjectProgressItem(req, res) {
       });
     }
   }
+  await recomputeProjectProgressDerivedStatuses(projectId);
   return success(res, { updated: true }, '子事项已更新');
 }
 
@@ -6923,10 +6975,23 @@ async function deleteProjectProgressItem(req, res) {
       for (const child of children) ids.push(child.id);
     }
 
-    await connection.query(
-      'UPDATE project_inspections SET progress_item_id = NULL WHERE project_id = ? AND progress_item_id IN (?)',
+    const [inspectionRows] = await connection.query(
+      'SELECT id FROM project_inspections WHERE project_id = ? AND progress_item_id IN (?) LIMIT 1',
       [projectId, ids]
     );
+    if (inspectionRows[0]) {
+      await connection.rollback();
+      return error(res, '该子事项已有验收记录，不能删除，可调整名称或状态', 409);
+    }
+    const [stepRecordRows] = await connection.query(
+      'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND progress_item_id IN (?) LIMIT 1',
+      [projectId, ids]
+    );
+    if (stepRecordRows[0]) {
+      await connection.rollback();
+      return error(res, '该子事项已有验收记录，不能删除，可调整名称或状态', 409);
+    }
+
     await recordProjectProgressItemAdjustment(connection, {
       projectId,
       itemId,

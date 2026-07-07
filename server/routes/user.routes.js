@@ -138,6 +138,8 @@ const merchantCaseImageUpload = multer({
 });
 
 router.get('/profile', asyncHandler(auth), asyncHandler(userController.getProfile));
+router.get('/profile-display-settings', asyncHandler(auth), asyncHandler(userController.getPublicProfileDisplaySettings));
+router.put('/profile-display-settings', asyncHandler(auth), asyncHandler(userController.updatePublicProfileDisplaySettings));
 router.get('/profile/:id', asyncHandler(userController.getProfile));
 router.get('/designer-profile', asyncHandler(auth), asyncHandler(userController.getDesignerProfile));
 router.put('/designer-profile', asyncHandler(auth), asyncHandler(userController.upsertDesignerProfile));
