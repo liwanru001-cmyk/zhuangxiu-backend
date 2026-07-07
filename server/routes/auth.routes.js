@@ -17,5 +17,6 @@ router.post('/register-password', asyncHandler(authController.registerPasswordAc
 router.post('/password-register', asyncHandler(authController.registerPasswordAccount));
 router.post('/password-login', asyncHandler(authController.passwordLogin));
 router.post('/login-password', asyncHandler(authController.passwordLogin));
+router.post('/test-login', asyncHandler(authController.testLogin));
 
 module.exports = router;

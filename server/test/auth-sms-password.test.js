@@ -146,6 +146,76 @@ test('password login does not create an account for an unknown phone', async () 
   assert.match(res.payload.message, /未注册/);
 });
 
+test('test login creates an owner account when enabled', async () => {
+  const previousPassword = process.env.TEST_LOGIN_PASSWORD;
+  process.env.TEST_LOGIN_PASSWORD = '123456';
+  const writes = [];
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM users WHERE phone = \?/.test(sql)) {
+        assert.deepEqual(params, ['13800138000']);
+        return [[]];
+      }
+      if (/INSERT INTO users/.test(sql)) {
+        writes.push({ type: 'insert-user', params });
+        return [{ insertId: 52 }];
+      }
+      if (/INSERT IGNORE INTO user_roles/.test(sql)) {
+        writes.push({ type: 'insert-role', params });
+        return [{}];
+      }
+      if (/SELECT role FROM user_roles/.test(sql)) {
+        return [[{ role: 'owner' }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  try {
+    await controller.testLogin({ body: { phone: '13800138000', password: '123456' } }, res);
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.TEST_LOGIN_PASSWORD;
+    } else {
+      process.env.TEST_LOGIN_PASSWORD = previousPassword;
+    }
+  }
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.user.phone, '13800138000');
+  assert.equal(writes.some((item) => item.type === 'insert-user'), true);
+});
+
+test('test login rejects wrong password before creating an account', async () => {
+  const previousPassword = process.env.TEST_LOGIN_PASSWORD;
+  process.env.TEST_LOGIN_PASSWORD = '123456';
+  let queried = false;
+  const dbMock = {
+    async query() {
+      queried = true;
+      throw new Error('should not query db for wrong test password');
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  try {
+    await controller.testLogin({ body: { phone: '13800138000', password: 'bad' } }, res);
+  } finally {
+    if (previousPassword === undefined) {
+      delete process.env.TEST_LOGIN_PASSWORD;
+    } else {
+      process.env.TEST_LOGIN_PASSWORD = previousPassword;
+    }
+  }
+
+  assert.equal(res.statusCode, 401);
+  assert.match(res.payload.message, /错误/);
+  assert.equal(queried, false);
+});
+
 test('send sms register scene rejects an existing phone', async () => {
   const dbMock = {
     async query(sql, params) {

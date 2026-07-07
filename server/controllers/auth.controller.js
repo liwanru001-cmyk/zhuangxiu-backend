@@ -257,6 +257,30 @@ async function passwordLogin(req, res) {
   return success(res, await buildLoginResponse(user));
 }
 
+async function testLogin(req, res) {
+  const { phone, password } = req.body;
+  const testPassword = String(process.env.TEST_LOGIN_PASSWORD || '');
+
+  if (!testPassword) {
+    return error(res, '测试登录未启用', 404);
+  }
+  if (!validatePhone(phone)) {
+    return error(res, '手机号格式不正确');
+  }
+  if (String(password || '') !== testPassword) {
+    return error(res, '手机号或密码错误', 401);
+  }
+
+  let user = await findUserByPhone(phone);
+  if (!user) {
+    user = await createFormalUser(phone);
+  }
+
+  const blocked = guardAdminStatus(res, user);
+  if (blocked) return blocked;
+  return success(res, await buildLoginResponse(user));
+}
+
 async function setPassword(req, res) {
   const { password } = req.body;
 
@@ -322,6 +346,7 @@ module.exports = {
   verifySms,
   login,
   passwordLogin,
+  testLogin,
   setPassword,
   resetPassword,
   registerPasswordAccount,
