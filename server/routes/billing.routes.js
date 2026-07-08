@@ -35,6 +35,36 @@ router.get(
   asyncHandler(billingController.getMyMerchantBilling)
 );
 
+router.get(
+  '/company/plans',
+  asyncHandler(auth),
+  asyncHandler(billingController.listCompanyPlans)
+);
+
+router.get(
+  '/company/:companyId/me',
+  asyncHandler(auth),
+  asyncHandler(billingController.getMyCompanyBilling)
+);
+
+router.post(
+  '/company/:companyId/orders',
+  asyncHandler(auth),
+  asyncHandler(billingController.createCompanyDisplayOrder)
+);
+
+router.post(
+  '/company/:companyId/orders/:id/manual-pay',
+  asyncHandler(auth),
+  asyncHandler(billingController.manualPayCompanyOrder)
+);
+
+router.get(
+  '/company/:companyId/orders/:id',
+  asyncHandler(auth),
+  asyncHandler(billingController.getCompanyOrder)
+);
+
 router.post(
   '/merchant/appeals',
   asyncHandler(auth),

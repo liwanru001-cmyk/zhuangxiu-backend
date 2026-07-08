@@ -2,6 +2,7 @@ const crypto = require('crypto');
 const db = require('../config/db');
 
 const MERCHANT_PLAN_CODE = 'merchant_display_monthly';
+const COMPANY_PLAN_CODE = 'company_display_monthly';
 
 class BillingError extends Error {
   constructor(message, statusCode = 400) {
@@ -42,6 +43,31 @@ async function assertMerchantProfile(userId, executor = db) {
   return rows[0];
 }
 
+async function assertCompanyProfile(companyId, executor = db) {
+  const [rows] = await executor.query(
+    `SELECT id, name, status, verification_status
+     FROM companies
+     WHERE id = ?
+       AND status <> 'deleted'
+     LIMIT 1`,
+    [companyId]
+  );
+  const company = rows[0];
+  if (!company) {
+    throw new BillingError('装修公司不存在', 404);
+  }
+  if (company.status !== 'active') {
+    throw new BillingError('装修公司未启用，不能开通付费展示', 400);
+  }
+  if (company.verification_status !== 'verified') {
+    throw new BillingError('装修公司必须认证通过后才能开通付费展示', 403);
+  }
+  if (!String(company.name || '').trim()) {
+    throw new BillingError('装修公司名称不能为空', 400);
+  }
+  return company;
+}
+
 async function ensureMerchantSubject(userId, executor = db) {
   await assertMerchantProfile(userId, executor);
   await executor.query(
@@ -49,6 +75,16 @@ async function ensureMerchantSubject(userId, executor = db) {
      VALUES ('merchant', ?, 'active')
      ON DUPLICATE KEY UPDATE status = 'active'`,
     [userId]
+  );
+}
+
+async function ensureCompanySubject(companyId, executor = db) {
+  await assertCompanyProfile(companyId, executor);
+  await executor.query(
+    `INSERT INTO billing_subjects (subject_type, subject_id, status)
+     VALUES ('company', ?, 'active')
+     ON DUPLICATE KEY UPDATE status = 'active'`,
+    [companyId]
   );
 }
 
@@ -76,6 +112,47 @@ async function getMerchantDisplayPlan(executor = db) {
     throw new BillingError('商家展示套餐未初始化，请先执行 billing migration', 500);
   }
   return rows[0];
+}
+
+async function getCompanyDisplayPlan(executor = db) {
+  const [rows] = await executor.query(
+    `SELECT p.id AS plan_id,
+            pv.id AS plan_version_id,
+            pv.name,
+            pv.price_cents,
+            pv.currency,
+            pv.duration_days,
+            pv.feature_json,
+            pv.limit_json
+     FROM billing_plans p
+     JOIN billing_plan_versions pv ON pv.plan_id = p.id
+     WHERE p.code = ?
+       AND p.subject_type = 'company'
+       AND p.status = 'active'
+       AND pv.status = 'published'
+     ORDER BY pv.version DESC
+     LIMIT 1`,
+    [COMPANY_PLAN_CODE]
+  );
+  if (!rows[0]) {
+    throw new BillingError('装修公司展示套餐未初始化，请先执行 billing migration', 500);
+  }
+  return rows[0];
+}
+
+async function getCompanyDisplayPlanForApp() {
+  const plan = await getCompanyDisplayPlan();
+  return {
+    plan_id: Number(plan.plan_id),
+    plan_version_id: Number(plan.plan_version_id),
+    code: COMPANY_PLAN_CODE,
+    name: plan.name || '装修公司展示套餐',
+    price_cents: Number(plan.price_cents || 0),
+    currency: plan.currency || 'CNY',
+    duration_days: Number(plan.duration_days || 30),
+    feature: safeJson(plan.feature_json),
+    limit: safeJson(plan.limit_json),
+  };
 }
 
 async function getMerchantDisplayPlanForApp() {
@@ -362,6 +439,84 @@ async function createMerchantDisplayOrder({
   };
 }
 
+async function createCompanyDisplayOrder({
+  companyId,
+  operatorUserId,
+  actorType = 'admin',
+  paymentChannel = 'manual',
+  idempotencyKey,
+}) {
+  await ensureCompanySubject(companyId);
+  const plan = await getCompanyDisplayPlan();
+
+  if (idempotencyKey) {
+    const [existing] = await db.query(
+      `SELECT id, order_no, status, amount_cents, currency, payment_channel, created_at, paid_at
+       FROM billing_orders
+       WHERE idempotency_key = ?
+       LIMIT 1`,
+      [idempotencyKey]
+    );
+    if (existing[0]) return { order: existing[0], reused: true };
+  }
+
+  const orderNo = generateNo('BO');
+  const [result] = await db.query(
+    `INSERT INTO billing_orders (
+       order_no, subject_type, subject_id, order_type, item_type, item_id,
+       item_version_id, amount_cents, currency, payment_channel, status,
+       idempotency_key, metadata_json, created_by
+     )
+     VALUES (?, 'company', ?, 'subscription', 'plan', ?, ?, ?, ?, ?, 'pending_payment', ?, ?, ?)`,
+    [
+      orderNo,
+      companyId,
+      plan.plan_id,
+      plan.plan_version_id,
+      plan.price_cents,
+      plan.currency,
+      paymentChannel,
+      idempotencyKey || null,
+      JSON.stringify({ plan_code: COMPANY_PLAN_CODE }),
+      operatorUserId || null,
+    ]
+  );
+
+  await db.query(
+    `INSERT INTO billing_audit_logs (
+       subject_type, subject_id, actor_type, actor_id, action,
+       target_type, target_id, after_json, reason
+     )
+     VALUES ('company', ?, ?, ?, 'ORDER_CREATED', 'billing_order', ?, ?, 'company_display_order')`,
+    [
+      companyId,
+      actorType,
+      operatorUserId || null,
+      result.insertId,
+      JSON.stringify({
+        order_no: orderNo,
+        amount_cents: plan.price_cents,
+        payment_channel: paymentChannel,
+      }),
+    ]
+  );
+
+  return {
+    order: {
+      id: result.insertId,
+      order_no: orderNo,
+      status: 'pending_payment',
+      amount_cents: plan.price_cents,
+      currency: plan.currency,
+      payment_channel: paymentChannel,
+      item_type: 'plan',
+      item_id: plan.plan_id,
+      item_version_id: plan.plan_version_id,
+    },
+    reused: false,
+  };
+}
+
 async function insertAudit(conn, payload) {
   await conn.query(
     `INSERT INTO billing_audit_logs (
@@ -416,6 +571,18 @@ async function getOrderForOwner(orderId, merchantUserId) {
   return rows[0] || null;
 }
 
+async function getCompanyOrderForOwner(orderId, companyId) {
+  const [rows] = await db.query(
+    `SELECT id, order_no, subject_type, subject_id, status, amount_cents,
+            currency, payment_channel, paid_at
+     FROM billing_orders
+     WHERE id = ? AND subject_type = 'company' AND subject_id = ?
+     LIMIT 1`,
+    [orderId, companyId]
+  );
+  return rows[0] || null;
+}
+
 async function getMerchantOrderStatus(orderId, merchantUserId) {
   const [orderRows] = await db.query(
     `SELECT id, order_no, subject_type, subject_id, status, amount_cents,
@@ -450,6 +617,43 @@ async function getMerchantOrderStatus(orderId, merchantUserId) {
     subscription: subscriptionRows[0] || null,
     entitlement,
     shop_visible: entitlement.shop_visible,
+  };
+}
+
+async function getCompanyOrderStatus(orderId, companyId) {
+  const [orderRows] = await db.query(
+    `SELECT id, order_no, subject_type, subject_id, status, amount_cents,
+            currency, payment_channel, paid_at, closed_at, created_at, updated_at
+     FROM billing_orders
+     WHERE id = ? AND subject_type = 'company' AND subject_id = ?
+     LIMIT 1`,
+    [orderId, companyId]
+  );
+  const order = orderRows[0];
+  if (!order) return null;
+  const [paymentRows] = await db.query(
+    `SELECT id, payment_no, status, amount_cents, currency, payment_channel, paid_at, created_at
+     FROM billing_payments
+     WHERE order_id = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [orderId]
+  );
+  const [subscriptionRows] = await db.query(
+    `SELECT id, subscription_no, status, started_at, expire_at, readonly_mode, reason
+     FROM billing_subscriptions
+     WHERE source_order_id = ?
+     ORDER BY id DESC
+     LIMIT 1`,
+    [orderId]
+  );
+  const entitlement = await getCurrentEntitlement('company', companyId);
+  return {
+    order,
+    payment: paymentRows[0] || null,
+    subscription: subscriptionRows[0] || null,
+    entitlement,
+    company_visible: entitlement.company_visible,
   };
 }
 
@@ -660,6 +864,224 @@ async function payMerchantOrderManual({
   }
 }
 
+async function payCompanyOrderManual({
+  orderId,
+  companyId,
+  operatorUserId,
+  actorType = 'admin',
+  idempotencyKey,
+}) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    await assertCompanyProfile(companyId, conn);
+    const [orderRows] = await conn.query(
+      `SELECT o.*, pv.duration_days, pv.feature_json, pv.limit_json, pv.plan_id
+       FROM billing_orders o
+       JOIN billing_plan_versions pv ON pv.id = o.item_version_id
+       WHERE o.id = ?
+         AND o.subject_type = 'company'
+         AND o.subject_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [orderId, companyId]
+    );
+    const order = orderRows[0];
+    if (!order) throw new BillingError('订单不存在或无权操作', 404);
+    if (order.status === 'paid') {
+      const [entitlementRows] = await conn.query(
+        `SELECT *
+         FROM billing_entitlements
+         WHERE subject_type = 'company'
+           AND subject_id = ?
+           AND status = 'active'
+         ORDER BY expire_at DESC, id DESC
+         LIMIT 1`,
+        [companyId]
+      );
+      await conn.commit();
+      return { order, entitlement: normalizeEntitlement(entitlementRows[0] || null), reused: true };
+    }
+    if (order.status !== 'pending_payment') {
+      throw new BillingError('当前订单状态不允许支付', 409);
+    }
+
+    if (idempotencyKey) {
+      const [paymentRows] = await conn.query(
+        `SELECT id
+         FROM billing_payments
+         WHERE payment_channel = 'manual'
+           AND idempotency_key = ?
+         LIMIT 1`,
+        [idempotencyKey]
+      );
+      if (paymentRows[0]) {
+        throw new BillingError('该支付请求已处理，请刷新订单状态', 409);
+      }
+    }
+
+    const paymentNo = generateNo('BP');
+    const [paymentResult] = await conn.query(
+      `INSERT INTO billing_payments (
+         payment_no, order_id, subject_type, subject_id, payment_channel,
+         amount_cents, currency, status, provider_transaction_id,
+         idempotency_key, paid_at, raw_payload_json
+       )
+       VALUES (?, ?, 'company', ?, 'manual', ?, ?, 'succeeded', ?, ?, NOW(), ?)`,
+      [
+        paymentNo,
+        order.id,
+        companyId,
+        order.amount_cents,
+        order.currency,
+        `manual-${paymentNo}`,
+        idempotencyKey || null,
+        JSON.stringify({ source: 'company_mvp_manual_pay' }),
+      ]
+    );
+
+    await conn.query(
+      `UPDATE billing_orders
+       SET status = 'paid', paid_at = NOW()
+       WHERE id = ?`,
+      [order.id]
+    );
+
+    await conn.query(
+      `UPDATE billing_subscriptions
+       SET status = 'expired', readonly_mode = 1, reason = 'replaced'
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+         AND status = 'active'
+         AND is_primary = 1`,
+      [companyId]
+    );
+
+    const subscriptionNo = generateNo('BS');
+    const expireAt = new Date();
+    expireAt.setDate(expireAt.getDate() + Number(order.duration_days || 30));
+    const [subscriptionResult] = await conn.query(
+      `INSERT INTO billing_subscriptions (
+         subscription_no, subject_type, subject_id, plan_id, plan_version_id,
+         source_order_id, status, is_primary, started_at, expire_at,
+         readonly_mode, reason
+       )
+       VALUES (?, 'company', ?, ?, ?, ?, 'active', 1, NOW(), ?, 0, NULL)`,
+      [
+        subscriptionNo,
+        companyId,
+        order.plan_id,
+        order.item_version_id,
+        order.id,
+        expireAt,
+      ]
+    );
+
+    const featureJson = safeJson(order.feature_json);
+    const limitJson = safeJson(order.limit_json);
+    await conn.query(
+      `UPDATE billing_entitlements
+       SET status = 'inactive', readonly_mode = 1, reason = 'recalculated'
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+         AND status = 'active'`,
+      [companyId]
+    );
+    const [entitlementResult] = await conn.query(
+      `INSERT INTO billing_entitlements (
+         subject_type, subject_id, subscription_id, source_type, source_id,
+         status, entitlement_version, feature_json, limit_json,
+         readonly_mode, reason, expire_at, calculated_at
+       )
+       VALUES ('company', ?, ?, 'subscription', ?, 'active', 1, ?, ?, 0, NULL, ?, NOW())`,
+      [
+        companyId,
+        subscriptionResult.insertId,
+        subscriptionResult.insertId,
+        JSON.stringify(featureJson),
+        JSON.stringify(limitJson),
+        expireAt,
+      ]
+    );
+
+    await conn.query(
+      `UPDATE companies
+       SET paid_display_status = 'active',
+           paid_display_starts_at = COALESCE(paid_display_starts_at, NOW()),
+           paid_display_ends_at = ?
+       WHERE id = ?`,
+      [expireAt, companyId]
+    );
+
+    const after = {
+      order_id: order.id,
+      payment_id: paymentResult.insertId,
+      subscription_id: subscriptionResult.insertId,
+      entitlement_id: entitlementResult.insertId,
+      expire_at: expireAt,
+      feature: featureJson,
+      limit: limitJson,
+    };
+
+    await insertAudit(conn, {
+      subject_type: 'company',
+      subject_id: companyId,
+      actor_type: actorType,
+      actor_id: operatorUserId || null,
+      action: 'PAYMENT_SUCCESS_ACTIVATE_COMPANY',
+      target_type: 'billing_order',
+      target_id: order.id,
+      after_json: after,
+      reason: 'company_display_subscription_paid',
+      request_id: idempotencyKey || null,
+    });
+
+    await insertEvent(conn, {
+      event_type: 'PAYMENT_SUCCESS',
+      subject_type: 'company',
+      subject_id: companyId,
+      aggregate_type: 'billing_order',
+      aggregate_id: order.id,
+      payload_json: after,
+    });
+    await insertEvent(conn, {
+      event_type: 'ENTITLEMENT_RECALCULATED',
+      subject_type: 'company',
+      subject_id: companyId,
+      aggregate_type: 'billing_entitlement',
+      aggregate_id: entitlementResult.insertId,
+      payload_json: after,
+    });
+
+    await conn.commit();
+    return {
+      order: { ...order, status: 'paid' },
+      payment: { id: paymentResult.insertId, payment_no: paymentNo, status: 'succeeded' },
+      subscription: {
+        id: subscriptionResult.insertId,
+        subscription_no: subscriptionNo,
+        status: 'active',
+        expire_at: expireAt,
+      },
+      entitlement: {
+        id: entitlementResult.insertId,
+        status: 'active',
+        feature: featureJson,
+        limit: limitJson,
+        expire_at: expireAt,
+        readonly_mode: false,
+        company_visible: Boolean(featureJson.company_visible),
+      },
+      reused: false,
+    };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 function normalizeEntitlement(row) {
   if (!row) {
     return {
@@ -671,6 +1093,7 @@ function normalizeEntitlement(row) {
       reason_label: null,
       expire_at: null,
       shop_visible: false,
+      company_visible: false,
     };
   }
   const feature = safeJson(row.feature_json);
@@ -690,6 +1113,11 @@ function normalizeEntitlement(row) {
       row.status === 'active' &&
       !row.readonly_mode &&
       Boolean(feature.shop_visible) &&
+      !expired,
+    company_visible:
+      row.status === 'active' &&
+      !row.readonly_mode &&
+      Boolean(feature.company_visible) &&
       !expired,
   };
 }
@@ -741,19 +1169,19 @@ function assertAppealableEntitlement(entitlement) {
 }
 
 async function getCurrentEntitlement(subjectType, subjectId) {
-  if (subjectType !== 'merchant') {
-    throw new BillingError('当前 MVP 只支持 merchant 主体', 400);
+  if (!['merchant', 'company'].includes(subjectType)) {
+    throw new BillingError('当前 MVP 只支持 merchant/company 主体', 400);
   }
   const [rows] = await db.query(
     `SELECT *
      FROM billing_entitlements
-     WHERE subject_type = 'merchant'
+     WHERE subject_type = ?
        AND subject_id = ?
      ORDER BY (status = 'active' AND expire_at > NOW()) DESC,
               updated_at DESC,
               id DESC
      LIMIT 1`,
-    [subjectId]
+    [subjectType, subjectId]
   );
   return normalizeEntitlement(rows[0] || null);
 }
@@ -1203,20 +1631,88 @@ async function getMerchantBillingSnapshot(merchantUserId) {
   };
 }
 
+async function getCompanyBillingSnapshot(companyId) {
+  const orderPromise = db.query(
+    `SELECT id, order_no, status, amount_cents, currency, payment_channel, paid_at, created_at
+     FROM billing_orders
+     WHERE subject_type = 'company' AND subject_id = ?
+     ORDER BY id DESC
+     LIMIT 5`,
+    [companyId]
+  );
+  const subscriptionPromise = db.query(
+    `SELECT id, subscription_no, status, is_primary, started_at, expire_at, readonly_mode, reason
+     FROM billing_subscriptions
+     WHERE subject_type = 'company' AND subject_id = ?
+     ORDER BY id DESC
+     LIMIT 5`,
+    [companyId]
+  );
+  const paymentPromise = db.query(
+    `SELECT id, payment_no, order_id, status, amount_cents, currency, payment_channel, paid_at, created_at
+     FROM billing_payments
+     WHERE subject_type = 'company' AND subject_id = ?
+     ORDER BY id DESC
+     LIMIT 5`,
+    [companyId]
+  );
+  const auditPromise = db.query(
+    `SELECT id, action, target_type, target_id, reason, after_json, created_at
+     FROM billing_audit_logs
+     WHERE subject_type = 'company' AND subject_id = ?
+     ORDER BY id DESC
+     LIMIT 50`,
+    [companyId]
+  );
+  const eventPromise = db.query(
+    `SELECT id, event_id, event_type, event_version, aggregate_type, aggregate_id, status, retry_count, created_at
+     FROM billing_events
+     WHERE subject_type = 'company' AND subject_id = ?
+     ORDER BY id DESC
+     LIMIT 10`,
+    [companyId]
+  );
+  const entitlement = await getCurrentEntitlement('company', companyId);
+  const [[orders], [subscriptions], [payments], [audit_logs], [events]] = await Promise.all([
+    orderPromise,
+    subscriptionPromise,
+    paymentPromise,
+    auditPromise,
+    eventPromise,
+  ]);
+  return {
+    subject: { type: 'company', id: companyId },
+    entitlement,
+    company_visible: entitlement.company_visible,
+    orders,
+    payments,
+    subscriptions,
+    audit_logs,
+    events,
+  };
+}
+
 module.exports = {
   BillingError,
+  getCompanyDisplayPlan,
+  getCompanyDisplayPlanForApp,
   getMerchantDisplayPlanForApp,
   getMerchantDisplayPlanForAdmin,
   publishMerchantDisplayPlanVersion,
+  createCompanyDisplayOrder,
   createMerchantDisplayOrder,
+  payCompanyOrderManual,
   payMerchantOrderManual,
   getOrderForOwner,
+  getCompanyOrderForOwner,
   getMerchantOrderStatus,
+  getCompanyOrderStatus,
   getCurrentEntitlement,
   getLatestMerchantAppeal,
   createMerchantDisplayAppeal,
   listMerchantDisplayAppeals,
   approveMerchantDisplayAppeal,
   rejectMerchantDisplayAppeal,
+  getCompanyBillingSnapshot,
   getMerchantBillingSnapshot,
 };

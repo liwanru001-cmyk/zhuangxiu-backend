@@ -4,6 +4,7 @@ const menus = [
   { key: 'users', label: '用户管理', icon: '👤', subtitle: '管理用户账号、新建账户审核与身份信息' },
   { key: 'companies', label: '公司管理', icon: '🏢', subtitle: '查看装修市场公司、业务分类、成员与项目关联' },
   { key: 'billing', label: '商户管理', icon: '💰', subtitle: '管理商户订单、支付、订阅、展示权益和操作记录' },
+  { key: 'companyBilling', label: '装修公司管理', icon: '🏬', subtitle: '管理装修公司认证后的付费展示、上线状态和操作记录' },
   { key: 'shares', label: '分享管理', icon: '🧩', subtitle: '审核用户发布的公开分享内容' },
   { key: 'projectTips', label: '日志信息编辑', icon: '💡', subtitle: '管理装修日志里展示的信息轮播和项目功能说明' },
   { key: 'supportFeedback', label: '问题反馈', icon: '❓', subtitle: '编辑常见问题，查看用户提交的问题反馈' },
@@ -40,7 +41,9 @@ let selectedCompanyId = null;
 let companyTab = 'companies';
 let merchants = [];
 let billingMerchants = [];
+let billingCompanies = [];
 let selectedBillingMerchantId = null;
+let selectedBillingCompanyId = null;
 let billingExceptions = { payment_not_activated: [], event_failures: [] };
 let merchantPlan = null;
 let billingTab = 'merchants';
@@ -125,6 +128,7 @@ function switchMenu(key) {
   else if (key === 'users') renderUsers();
   else if (key === 'companies') renderCompanies();
   else if (key === 'billing') renderBilling();
+  else if (key === 'companyBilling') renderCompanyBilling();
   else if (key === 'shares') renderShares();
   else if (key === 'projectTips') renderProjectTips();
   else if (key === 'supportFeedback') renderSupportFeedback();
@@ -142,6 +146,10 @@ function refreshCurrent() {
   }
   else if (activeMenu === 'billing') {
     refreshBillingTab();
+  }
+  else if (activeMenu === 'companyBilling') {
+    loadBillingCompanies(page);
+    if (selectedBillingCompanyId) viewBillingCompany(selectedBillingCompanyId, false);
   }
   else if (activeMenu === 'shares') loadShares(page);
   else if (activeMenu === 'projectTips') loadProjectTips();

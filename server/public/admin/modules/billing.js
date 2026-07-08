@@ -187,6 +187,60 @@ function renderBillingTabContent() {
   loadBillingMerchants(1);
 }
 
+function renderCompanyBilling() {
+  selectedBillingCompanyId = null;
+  selectedBillingDetailData = null;
+  page = 1;
+  document.getElementById('page-content').innerHTML = billingCompaniesTabHtml();
+  loadBillingCompanies(1);
+}
+
+function billingCompaniesTabHtml() {
+  return `
+    <div class="toolbar">
+      <input id="billingCompanySearch" placeholder="搜索公司/手机号/城市" onkeydown="if(event.key==='Enter')loadBillingCompanies(1)">
+      <select id="billingCompanyVerification" onchange="loadBillingCompanies(1)">
+        <option value="">全部认证状态</option>
+        <option value="verified">已认证</option>
+        <option value="pending">待审核</option>
+        <option value="unverified">未认证</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <select id="billingCompanyStatus" onchange="loadBillingCompanies(1)">
+        <option value="">全部展示状态</option>
+        <option value="visible">展示中</option>
+        <option value="not_visible">未展示</option>
+        <option value="expired">已到期</option>
+      </select>
+      <button class="primary-btn" onclick="loadBillingCompanies(1)">查询</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>装修公司展示</h3>
+          <p>找装修列表只展示已认证且已开通展示权益的公司。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>公司</th><th>认证</th><th>展示状态</th><th>订阅</th><th>最近订单</th><th>到期时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="billing-company-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="billing-company-page-info"></span>
+        <button id="billing-company-btn-prev" onclick="loadBillingCompanies(page-1)">‹ 上一页</button>
+        <button id="billing-company-btn-next" onclick="loadBillingCompanies(page+1)">下一页 ›</button>
+      </div>
+    </div>
+    <div id="billing-company-detail" class="item-panel"></div>
+  `;
+}
+
 function billingSummaryTabHtml() {
   return `
     <div class="toolbar">
@@ -964,6 +1018,65 @@ function billingMerchantRow(item) {
   `;
 }
 
+async function loadBillingCompanies(p) {
+  page = Math.max(1, p || 1);
+  const kw = document.getElementById('billingCompanySearch')?.value.trim() || '';
+  const billingStatus = document.getElementById('billingCompanyStatus')?.value || '';
+  const verificationStatus = document.getElementById('billingCompanyVerification')?.value || '';
+  const params = new URLSearchParams({ page, pageSize: 20 });
+  if (kw) params.set('keyword', kw);
+  if (billingStatus) params.set('billing_status', billingStatus);
+  if (verificationStatus) params.set('verification_status', verificationStatus);
+
+  const body = document.getElementById('billing-company-body');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/billing/companies?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    billingCompanies = j.data.companies || [];
+    total = j.data.total || 0;
+    body.innerHTML = billingCompanies.map(billingCompanyRow).join('') ||
+      '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">暂无装修公司数据</td></tr>';
+    const totalPages = Math.ceil(total / 20) || 1;
+    document.getElementById('billing-company-page-info').textContent = `共 ${total} 条 · ${page}/${totalPages}`;
+    document.getElementById('billing-company-btn-prev').disabled = page <= 1;
+    document.getElementById('billing-company-btn-next').disabled = page >= totalPages;
+    if (selectedBillingCompanyId) viewBillingCompany(selectedBillingCompanyId, false);
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function billingCompanyRow(item) {
+  const visible = Boolean(item.company_visible);
+  const verified = item.verification_status === 'verified';
+  return `
+    <tr>
+      <td>
+        <div class="share-title">${esc(item.name) || '-'}</div>
+        <div class="muted mono">ID ${item.id} · ${esc(item.city || '-')} · ${esc(item.contact_phone || '-')}</div>
+      </td>
+      <td><span class="badge ${verified ? 'status-approved' : 'status-hidden'}">${companyVerificationLabel(item.verification_status)}</span></td>
+      <td><span class="badge ${visible ? 'status-approved' : 'status-hidden'}">${visible ? '展示中' : '未展示'}</span></td>
+      <td><span class="badge ${billingStatusClass(item.subscription_status)}">${billingStatusLabel(item.subscription_status)}</span></td>
+      <td>
+        <div>${esc(orderStatusLabel(item.latest_order_status))}</div>
+        <div class="muted">${fmtTime(item.latest_order_at)}</div>
+      </td>
+      <td>${item.subscription_expire_at ? fmtTime(item.subscription_expire_at) : '<span class="muted">-</span>'}</td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="viewBillingCompany(${item.id})">详情</button>
+          ${visible
+            ? `<button class="danger-btn" onclick="suspendCompanyDisplay(${item.id})">暂停展示</button>`
+            : `<button class="success-btn" onclick="manualActivateCompany(${item.id})" ${verified ? '' : 'disabled'}>手动开通</button>`}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
 async function viewBillingMerchant(userId, scroll = true) {
   selectedBillingMerchantId = Number(userId);
   const detail = document.getElementById('billing-detail');
@@ -979,6 +1092,162 @@ async function viewBillingMerchant(userId, scroll = true) {
   } catch (e) {
     detail.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '加载失败')}</div>`;
   }
+}
+
+async function viewBillingCompany(companyId, scroll = true) {
+  selectedBillingCompanyId = Number(companyId);
+  const detail = document.getElementById('billing-company-detail');
+  if (!detail) return;
+  detail.innerHTML = '<div class="placeholder">正在加载装修公司详情...</div>';
+  try {
+    const j = await adminFetch(`/billing/companies/${companyId}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    billingDetailTab = 'overview';
+    selectedBillingDetailData = j.data || {};
+    detail.innerHTML = billingCompanyDetailHtml(selectedBillingDetailData);
+    if (scroll) detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    detail.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '加载失败')}</div>`;
+  }
+}
+
+function billingCompanyDetailHtml(data) {
+  const company = data.company || {};
+  const billing = data.billing || {};
+  const entitlement = billing.entitlement || {};
+  return `
+    <div class="card">
+      ${billingCompanyDetailHeaderHtml(company, billing, entitlement)}
+      ${billingCompanyDetailTabsHtml()}
+      ${billingCompanyDetailTabPanelHtml(company, billing, entitlement)}
+    </div>
+  `;
+}
+
+function billingCompanyDetailHeaderHtml(company, billing, entitlement) {
+  const entitlementActiveUntil = entitlement.expire_at ? new Date(entitlement.expire_at).getTime() : 0;
+  const hasActiveEntitlement = entitlement.status === 'active' && entitlementActiveUntil > Date.now();
+  const visible = Boolean(billing.company_visible);
+  const actionButtons = visible
+    ? `<button class="danger-btn" onclick="suspendCompanyDisplay(${Number(company.id || 0)})">暂停展示</button>`
+    : hasActiveEntitlement
+    ? `<button class="success-btn" onclick="resumeCompanyDisplay(${Number(company.id || 0)})">恢复展示</button>`
+    : `<button class="success-btn" onclick="manualActivateCompany(${Number(company.id || 0)})" ${company.verification_status === 'verified' ? '' : 'disabled'}>手动开通/续期</button>`;
+  const renewalButton = hasActiveEntitlement
+    ? `<button class="action-btn" onclick="manualActivateCompany(${Number(company.id || 0)})">手动开通/续期</button>`
+    : '';
+  const closeButton = hasActiveEntitlement
+    ? `<button class="danger-btn" onclick="closeCompanyDisplay(${Number(company.id || 0)})">关闭权益</button>`
+    : '';
+  return `
+    <div class="card-title">
+      <div>
+        <h3>${esc(company.name || '装修公司详情')}</h3>
+        <p>ID ${esc(company.id)} · ${esc(company.city || '-')} · ${visible ? '展示中' : '未展示'}</p>
+      </div>
+      <div class="row-actions">
+        ${actionButtons}
+        ${renewalButton}
+        ${closeButton}
+      </div>
+    </div>
+  `;
+}
+
+function billingCompanyDetailTabsHtml() {
+  const tabs = [
+    ['overview', '概览'],
+    ['orders', '订单'],
+    ['payments', '支付'],
+    ['entitlements', '订阅与权益'],
+    ['audit', '审计日志'],
+    ['events', '事件'],
+  ];
+  return `
+    <div class="tabs subtabs">
+      ${tabs.map(([key, label]) => `<button class="${billingDetailTab === key ? 'active' : ''}" onclick="switchCompanyBillingDetailTab('${key}')">${label}</button>`).join('')}
+    </div>
+  `;
+}
+
+function switchCompanyBillingDetailTab(tab) {
+  billingDetailTab = tab;
+  const detail = document.getElementById('billing-company-detail');
+  if (detail && selectedBillingDetailData) {
+    detail.innerHTML = billingCompanyDetailHtml(selectedBillingDetailData);
+  }
+}
+
+function billingCompanyDetailTabPanelHtml(company, billing, entitlement) {
+  if (billingDetailTab === 'orders') {
+    return billingSectionTable('订单', ['ID', '订单号', '状态', '金额', '渠道', '支付时间'], billing.orders || [], row => [
+      row.id,
+      row.order_no,
+      orderStatusLabel(row.status),
+      moneyText(row.amount_cents, row.currency),
+      row.payment_channel,
+      fmtTime(row.paid_at || row.created_at),
+    ]);
+  }
+  if (billingDetailTab === 'payments') {
+    return billingSectionTable('支付', ['ID', '支付号', '订单', '状态', '金额', '渠道', '支付时间'], billing.payments || [], row => [
+      row.id,
+      row.payment_no,
+      row.order_id,
+      paymentStatusLabel(row.status),
+      moneyText(row.amount_cents, row.currency),
+      row.payment_channel,
+      fmtTime(row.paid_at || row.created_at),
+    ]);
+  }
+  if (billingDetailTab === 'entitlements') {
+    return `
+      ${billingEntitlementSummaryHtml(entitlement)}
+      ${billingSectionTable('订阅', ['ID', '订阅号', '状态', '主订阅', '开始', '到期', '原因'], billing.subscriptions || [], row => [
+        row.id,
+        row.subscription_no,
+        billingStatusLabel(row.status),
+        row.is_primary ? '是' : '否',
+        fmtTime(row.started_at),
+        fmtTime(row.expire_at),
+        row.reason || '-',
+      ])}
+    `;
+  }
+  if (billingDetailTab === 'audit') {
+    return billingSectionTable('审计', ['ID', '动作', '对象', '原因', '凭证', '时间'], billing.audit_logs || [], row => [
+      row.id,
+      row.action,
+      `${row.target_type || '-'} #${row.target_id || '-'}`,
+      row.reason || '-',
+      auditVoucherText(row.after_json),
+      fmtTime(row.created_at),
+    ]);
+  }
+  if (billingDetailTab === 'events') {
+    return billingSectionTable('事件', ['ID', '事件', '版本', '对象', '状态', '重试', '时间'], billing.events || [], row => [
+      row.id,
+      row.event_type,
+      row.event_version || 1,
+      `${row.aggregate_type || '-'} #${row.aggregate_id || '-'}`,
+      eventStatusLabel(row.status),
+      row.retry_count || 0,
+      fmtTime(row.created_at),
+    ]);
+  }
+  return `
+    <div class="detail-grid">
+      <div class="detail-cell"><span>认证状态</span><strong>${companyVerificationLabel(company.verification_status)}</strong></div>
+      <div class="detail-cell"><span>当前权益</span><strong>${billing.company_visible ? '公司可见' : '公司不可见'}</strong></div>
+      <div class="detail-cell"><span>权益到期</span><strong>${entitlement.expire_at ? fmtTime(entitlement.expire_at) : '-'}</strong></div>
+      <div class="detail-cell"><span>只读模式</span><strong>${entitlement.readonly_mode ? '是' : '否'}</strong></div>
+      <div class="detail-cell"><span>订单数量</span><strong>${(billing.orders || []).length} 条</strong></div>
+      <div class="detail-cell"><span>支付记录</span><strong>${(billing.payments || []).length} 条</strong></div>
+      <div class="detail-cell"><span>订阅记录</span><strong>${(billing.subscriptions || []).length} 条</strong></div>
+      <div class="detail-cell"><span>审计记录</span><strong>${(billing.audit_logs || []).length} 条</strong></div>
+      <div class="detail-cell"><span>最近事件</span><strong>${(billing.events || []).length} 条</strong></div>
+    </div>
+  `;
 }
 
 async function manualActivateMerchant(userId) {
@@ -1039,6 +1308,62 @@ async function closeMerchantDisplay(userId) {
   });
 }
 
+async function manualActivateCompany(companyId) {
+  openBillingActionModal({
+    type: 'companyManualActivate',
+    companyId,
+    title: '手动开通装修公司展示',
+    summary: '只允许已认证通过的装修公司开通。提交后会创建订单、支付、订阅、权益和审计记录。',
+    submitText: '确认开通',
+    fields: [
+      { name: 'reason', label: '开通原因', type: 'textarea', placeholder: '例如：线下收款补单、首批人工开通、客服补偿', required: true },
+      { name: 'amount_yuan', label: '线下收款金额（元）', type: 'number', placeholder: '没有收款请填 0', required: true, value: '0' },
+      { name: 'voucher_note', label: '凭证说明', type: 'textarea', placeholder: '例如：微信收款单号、银行流水号、客服补偿单号', required: true },
+    ],
+  });
+}
+
+async function suspendCompanyDisplay(companyId) {
+  openBillingActionModal({
+    type: 'companySuspend',
+    companyId,
+    title: '暂停装修公司展示',
+    summary: '暂停后找装修列表不可见，但订单和公司资料保留。',
+    submitText: '确认暂停',
+    danger: true,
+    fields: [
+      { name: 'reason', label: '暂停原因', type: 'textarea', placeholder: '例如：资料异常、退款处理中、客服人工暂停', required: true },
+    ],
+  });
+}
+
+async function resumeCompanyDisplay(companyId) {
+  openBillingActionModal({
+    type: 'companyResume',
+    companyId,
+    title: '恢复装修公司展示',
+    summary: '恢复后装修公司会重新进入找装修公开列表。',
+    submitText: '确认恢复',
+    fields: [
+      { name: 'reason', label: '恢复原因', type: 'textarea', placeholder: '例如：问题已处理、客服恢复展示', required: true },
+    ],
+  });
+}
+
+async function closeCompanyDisplay(companyId) {
+  openBillingActionModal({
+    type: 'companyClose',
+    companyId,
+    title: '关闭装修公司展示权益',
+    summary: '关闭后订阅取消，展示权益立即失效，装修公司不再进入找装修公开列表。',
+    submitText: '确认关闭',
+    danger: true,
+    fields: [
+      { name: 'reason', label: '关闭原因', type: 'textarea', placeholder: '例如：合同终止、退款完成、违规关闭、客服人工关闭', required: true },
+    ],
+  });
+}
+
 async function refreshBillingAfterMerchantAction(userId) {
   const tasks = [];
   if (document.getElementById('billing-exceptions')) tasks.push(loadBillingExceptions());
@@ -1046,6 +1371,11 @@ async function refreshBillingAfterMerchantAction(userId) {
   if (document.getElementById('billing-appeal-body')) tasks.push(loadBillingAppeals(billingAppealPage));
   await Promise.all(tasks);
   if (document.getElementById('billing-detail')) await viewBillingMerchant(userId, false);
+}
+
+async function refreshBillingAfterCompanyAction(companyId) {
+  if (document.getElementById('billing-company-body')) await loadBillingCompanies(page);
+  if (document.getElementById('billing-company-detail')) await viewBillingCompany(companyId, false);
 }
 
 function openBillingActionModal(config) {
@@ -1138,6 +1468,44 @@ async function submitBillingActionModal() {
 }
 
 async function executeBillingAction(action, values) {
+  if (action.type === 'companyManualActivate') {
+    const j = await adminFetch(`/billing/companies/${action.companyId}/manual-activate`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        reason: values.reason,
+        amount_cents: values.amount_cents,
+        voucher_note: values.voucher_note,
+      }),
+    });
+    if (j.code !== 200) throw new Error(j.message || '开通失败');
+    toast('装修公司展示已开通');
+    await refreshBillingAfterCompanyAction(action.companyId);
+    return;
+  }
+  if (action.type === 'companySuspend' || action.type === 'companyResume') {
+    const endpoint = action.type === 'companySuspend' ? 'suspend' : 'resume';
+    const j = await adminFetch(`/billing/companies/${action.companyId}/${endpoint}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reason: values.reason }),
+    });
+    if (j.code !== 200) throw new Error(j.message || (action.type === 'companySuspend' ? '暂停失败' : '恢复失败'));
+    toast(action.type === 'companySuspend' ? '装修公司展示已暂停' : '装修公司展示已恢复');
+    await refreshBillingAfterCompanyAction(action.companyId);
+    return;
+  }
+  if (action.type === 'companyClose') {
+    const j = await adminFetch(`/billing/companies/${action.companyId}/close`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reason: values.reason }),
+    });
+    if (j.code !== 200) throw new Error(j.message || '关闭失败');
+    toast('装修公司展示权益已关闭');
+    await refreshBillingAfterCompanyAction(action.companyId);
+    return;
+  }
   if (action.type === 'manualActivate') {
     const j = await adminFetch(`/billing/merchants/${action.userId}/manual-activate`, {
       method: 'POST',
@@ -1526,14 +1894,15 @@ function billingDetailTabPanelHtml(merchant, billing, entitlement) {
 function billingEntitlementSummaryHtml(entitlement) {
   const feature = entitlement.feature || entitlement.feature_json || {};
   const limit = entitlement.limit || entitlement.limit_json || {};
+  const isCompanyFeature = Object.prototype.hasOwnProperty.call(feature, 'company_visible');
   return `
     <div class="detail-grid">
       <div class="detail-cell"><span>权益状态</span><strong>${billingStatusLabel(entitlement.status)}</strong></div>
       <div class="detail-cell"><span>到期时间</span><strong>${entitlement.expire_at ? fmtTime(entitlement.expire_at) : '-'}</strong></div>
-      <div class="detail-cell"><span>店铺展示</span><strong>${feature.shop_visible === false ? '关闭' : '开启'}</strong></div>
+      <div class="detail-cell"><span>${isCompanyFeature ? '公司展示' : '店铺展示'}</span><strong>${(isCompanyFeature ? feature.company_visible : feature.shop_visible) === false ? '关闭' : '开启'}</strong></div>
       <div class="detail-cell"><span>搜索展示</span><strong>${feature.search_visible === false ? '关闭' : '开启'}</strong></div>
-      <div class="detail-cell"><span>地图展示</span><strong>${feature.map_visible === false ? '关闭' : '开启'}</strong></div>
-      <div class="detail-cell"><span>产品展示</span><strong>${feature.product_showcase === false ? '关闭' : '开启'}</strong></div>
+      <div class="detail-cell"><span>${isCompanyFeature ? '评价展示' : '地图展示'}</span><strong>${(isCompanyFeature ? feature.review_showcase : feature.map_visible) === false ? '关闭' : '开启'}</strong></div>
+      <div class="detail-cell"><span>${isCompanyFeature ? '案例展示' : '产品展示'}</span><strong>${(isCompanyFeature ? feature.case_showcase : feature.product_showcase) === false ? '关闭' : '开启'}</strong></div>
       <div class="detail-cell"><span>产品数量</span><strong>${esc(limit.product_limit ?? '-')}</strong></div>
       <div class="detail-cell"><span>案例数量</span><strong>${esc(limit.case_limit ?? '-')}</strong></div>
     </div>

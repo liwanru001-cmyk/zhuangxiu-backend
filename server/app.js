@@ -1747,6 +1747,433 @@ app.post('/api/admin/billing/merchants/:id/close', adminAuth, async (req, res) =
   }
 });
 
+app.get('/api/admin/billing/companies', adminAuth, async (req, res) => {
+  const params = [];
+  let where = `c.status <> 'deleted'`;
+
+  if (req.query.keyword) {
+    where += ` AND (c.name LIKE ? OR c.contact_phone LIKE ? OR c.city LIKE ?)`;
+    const kw = `%${req.query.keyword}%`;
+    params.push(kw, kw, kw);
+  }
+
+  const verificationStatus = String(req.query.verification_status || '').trim();
+  if (verificationStatus) {
+    if (!['unverified', 'pending', 'verified', 'rejected'].includes(verificationStatus)) {
+      return error(res, '认证状态不正确');
+    }
+    where += ` AND c.verification_status = ?`;
+    params.push(verificationStatus);
+  }
+
+  const billingStatus = String(req.query.billing_status || '').trim();
+  if (billingStatus) {
+    if (!['visible', 'not_visible', 'expired'].includes(billingStatus)) {
+      return error(res, 'Billing 状态不正确');
+    }
+    const visibleExists = `EXISTS (
+      SELECT 1 FROM billing_entitlements be
+      WHERE be.subject_type = 'company'
+        AND be.subject_id = c.id
+        AND be.status = 'active'
+        AND be.readonly_mode = 0
+        AND be.expire_at > NOW()
+        AND JSON_UNQUOTE(JSON_EXTRACT(be.feature_json, '$.company_visible')) = 'true'
+    )`;
+    if (billingStatus === 'visible') {
+      where += ` AND ${visibleExists}`;
+    } else if (billingStatus === 'expired') {
+      where += ` AND EXISTS (
+        SELECT 1 FROM billing_entitlements be
+        WHERE be.subject_type = 'company'
+          AND be.subject_id = c.id
+          AND be.expire_at <= NOW()
+      )`;
+    } else {
+      where += ` AND NOT ${visibleExists}`;
+    }
+  }
+
+  const pageNo = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (pageNo - 1) * pageSize;
+
+  const [rows] = await db.query(
+    `SELECT c.id, c.name, c.city, c.contact_phone, c.status,
+            c.verification_status, c.paid_display_status,
+            c.paid_display_starts_at, c.paid_display_ends_at,
+            (
+              SELECT bo.status
+              FROM billing_orders bo
+              WHERE bo.subject_type = 'company' AND bo.subject_id = c.id
+              ORDER BY bo.id DESC
+              LIMIT 1
+            ) AS latest_order_status,
+            (
+              SELECT bo.created_at
+              FROM billing_orders bo
+              WHERE bo.subject_type = 'company' AND bo.subject_id = c.id
+              ORDER BY bo.id DESC
+              LIMIT 1
+            ) AS latest_order_at,
+            (
+              SELECT bs.status
+              FROM billing_subscriptions bs
+              WHERE bs.subject_type = 'company' AND bs.subject_id = c.id
+              ORDER BY bs.id DESC
+              LIMIT 1
+            ) AS subscription_status,
+            (
+              SELECT bs.expire_at
+              FROM billing_subscriptions bs
+              WHERE bs.subject_type = 'company' AND bs.subject_id = c.id
+              ORDER BY bs.id DESC
+              LIMIT 1
+            ) AS subscription_expire_at,
+            EXISTS (
+              SELECT 1 FROM billing_entitlements be
+              WHERE be.subject_type = 'company'
+                AND be.subject_id = c.id
+                AND be.status = 'active'
+                AND be.readonly_mode = 0
+                AND be.expire_at > NOW()
+                AND JSON_UNQUOTE(JSON_EXTRACT(be.feature_json, '$.company_visible')) = 'true'
+            ) AS company_visible
+     FROM companies c
+     WHERE ${where}
+     ORDER BY COALESCE(latest_order_at, c.updated_at, c.created_at) DESC, c.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const [[countRow]] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM companies c
+     WHERE ${where}`,
+    params
+  );
+
+  return success(res, {
+    companies: rows.map((row) => ({
+      id: Number(row.id),
+      name: row.name || '',
+      city: row.city || '',
+      contact_phone: row.contact_phone || '',
+      status: row.status || '',
+      verification_status: row.verification_status || 'unverified',
+      paid_display_status: row.paid_display_status || 'none',
+      paid_display_starts_at: row.paid_display_starts_at,
+      paid_display_ends_at: row.paid_display_ends_at,
+      company_visible: Boolean(row.company_visible),
+      latest_order_status: row.latest_order_status || '',
+      latest_order_at: row.latest_order_at,
+      subscription_status: row.subscription_status || '',
+      subscription_expire_at: row.subscription_expire_at,
+    })),
+    total: Number(countRow.total || 0),
+    page: pageNo,
+    pageSize,
+  });
+});
+
+app.get('/api/admin/billing/companies/:id', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!companyId) return error(res, '装修公司不存在', 404);
+
+  const [companyRows] = await db.query(
+    `SELECT id, owner_user_id, name, city, contact_phone, status,
+            verification_status, paid_display_status,
+            paid_display_starts_at, paid_display_ends_at
+     FROM companies
+     WHERE id = ?
+       AND status <> 'deleted'
+     LIMIT 1`,
+    [companyId]
+  );
+  const company = companyRows[0];
+  if (!company) return error(res, '装修公司不存在', 404);
+
+  const snapshot = await billingService.getCompanyBillingSnapshot(companyId);
+  return success(res, {
+    company: {
+      id: Number(company.id),
+      owner_user_id: company.owner_user_id ? Number(company.owner_user_id) : null,
+      name: company.name || '',
+      city: company.city || '',
+      contact_phone: company.contact_phone || '',
+      status: company.status || '',
+      verification_status: company.verification_status || 'unverified',
+      paid_display_status: company.paid_display_status || 'none',
+      paid_display_starts_at: company.paid_display_starts_at,
+      paid_display_ends_at: company.paid_display_ends_at,
+    },
+    billing: snapshot,
+  });
+});
+
+app.post('/api/admin/billing/companies/:id/manual-activate', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!companyId) return error(res, '装修公司不存在', 404);
+
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  if (!reason) return error(res, '请填写手动开通原因');
+  const amountCents = Math.round(Number(req.body?.amount_cents || 0));
+  if (!Number.isFinite(amountCents) || amountCents < 0) return error(res, '补单金额不正确');
+  const voucherNote = String(req.body?.voucher_note || '').trim().slice(0, 300);
+  if (!voucherNote) return error(res, '请填写线下收款凭证说明');
+
+  const idempotencyBase = `admin-manual-company-${companyId}-${Date.now()}`;
+  try {
+    const created = await billingService.createCompanyDisplayOrder({
+      companyId,
+      operatorUserId: 0,
+      actorType: 'admin',
+      paymentChannel: 'manual',
+      idempotencyKey: `${idempotencyBase}-order`,
+    });
+    const activated = await billingService.payCompanyOrderManual({
+      orderId: created.order.id,
+      companyId,
+      operatorUserId: 0,
+      actorType: 'admin',
+      idempotencyKey: `${idempotencyBase}-payment`,
+    });
+    await db.query(
+      `INSERT INTO billing_audit_logs (
+         subject_type, subject_id, actor_type, actor_id, action,
+         target_type, target_id, after_json, reason
+       )
+       VALUES ('company', ?, 'admin', NULL, 'ADMIN_MANUAL_ACTIVATE_COMPANY',
+               'billing_order', ?, ?, ?)`,
+      [
+        companyId,
+        created.order.id,
+        JSON.stringify({
+          order_id: created.order.id,
+          subscription_id: activated.subscription?.id || null,
+          entitlement_id: activated.entitlement?.id || null,
+          manual_compensation: {
+            amount_cents: amountCents,
+            currency: 'CNY',
+            voucher_note: voucherNote,
+          },
+        }),
+        reason,
+      ]
+    );
+    return success(res, activated, '装修公司展示已手动开通');
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/admin/billing/companies/:id/suspend', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!companyId) return error(res, '装修公司不存在', 404);
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  if (!reason) return error(res, '请填写暂停原因');
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+         AND status = 'active'
+         AND expire_at > NOW()
+       ORDER BY expire_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    const entitlement = rows[0];
+    if (!entitlement) {
+      await conn.rollback();
+      return error(res, '没有可暂停的有效展示权益', 404);
+    }
+    await conn.query(
+      `UPDATE billing_entitlements
+       SET readonly_mode = 1,
+           reason = 'manual_suspend'
+       WHERE id = ?`,
+      [entitlement.id]
+    );
+    await conn.query(
+      `UPDATE companies
+       SET paid_display_status = 'suspended'
+       WHERE id = ?`,
+      [companyId]
+    );
+    await conn.query(
+      `INSERT INTO billing_audit_logs (
+         subject_type, subject_id, actor_type, actor_id, action,
+         target_type, target_id, before_json, after_json, reason
+       )
+       VALUES ('company', ?, 'admin', NULL, 'ADMIN_SUSPEND_COMPANY_DISPLAY',
+               'billing_entitlement', ?, ?, ?, ?)`,
+      [
+        companyId,
+        entitlement.id,
+        JSON.stringify({ readonly_mode: Boolean(entitlement.readonly_mode), reason: entitlement.reason || null }),
+        JSON.stringify({ readonly_mode: true, reason: 'manual_suspend' }),
+        reason,
+      ]
+    );
+    await conn.commit();
+    return success(res, { suspended: true }, '装修公司展示已暂停');
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/admin/billing/companies/:id/resume', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!companyId) return error(res, '装修公司不存在', 404);
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  if (!reason) return error(res, '请填写恢复原因');
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+         AND status = 'active'
+         AND expire_at > NOW()
+       ORDER BY expire_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    const entitlement = rows[0];
+    if (!entitlement) {
+      await conn.rollback();
+      return error(res, '没有可恢复的有效展示权益', 404);
+    }
+    await conn.query(
+      `UPDATE billing_entitlements
+       SET readonly_mode = 0,
+           reason = NULL
+       WHERE id = ?`,
+      [entitlement.id]
+    );
+    await conn.query(
+      `UPDATE companies
+       SET paid_display_status = 'active'
+       WHERE id = ?`,
+      [companyId]
+    );
+    await conn.query(
+      `INSERT INTO billing_audit_logs (
+         subject_type, subject_id, actor_type, actor_id, action,
+         target_type, target_id, before_json, after_json, reason
+       )
+       VALUES ('company', ?, 'admin', NULL, 'ADMIN_RESUME_COMPANY_DISPLAY',
+               'billing_entitlement', ?, ?, ?, ?)`,
+      [
+        companyId,
+        entitlement.id,
+        JSON.stringify({ readonly_mode: Boolean(entitlement.readonly_mode), reason: entitlement.reason || null }),
+        JSON.stringify({ readonly_mode: false, reason: null }),
+        reason,
+      ]
+    );
+    await conn.commit();
+    return success(res, { resumed: true }, '装修公司展示已恢复');
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+});
+
+app.post('/api/admin/billing/companies/:id/close', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!companyId) return error(res, '装修公司不存在', 404);
+  const reason = String(req.body?.reason || '').trim().slice(0, 200);
+  if (!reason) return error(res, '请填写关闭原因');
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [rows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+         AND status = 'active'
+         AND expire_at > NOW()
+       ORDER BY expire_at DESC, id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    const entitlement = rows[0];
+    if (!entitlement) {
+      await conn.rollback();
+      return error(res, '没有可关闭的有效展示权益', 404);
+    }
+    await conn.query(
+      `UPDATE billing_entitlements
+       SET status = 'inactive',
+           readonly_mode = 1,
+           reason = 'refund_closed'
+       WHERE id = ?`,
+      [entitlement.id]
+    );
+    if (entitlement.subscription_id) {
+      await conn.query(
+        `UPDATE billing_subscriptions
+         SET status = 'cancelled',
+             cancelled_at = NOW(),
+             readonly_mode = 1,
+             reason = 'refund_closed'
+         WHERE id = ?`,
+        [entitlement.subscription_id]
+      );
+    }
+    await conn.query(
+      `UPDATE companies
+       SET paid_display_status = 'none',
+           paid_display_ends_at = NOW()
+       WHERE id = ?`,
+      [companyId]
+    );
+    await conn.query(
+      `INSERT INTO billing_audit_logs (
+         subject_type, subject_id, actor_type, actor_id, action,
+         target_type, target_id, before_json, after_json, reason
+       )
+       VALUES ('company', ?, 'admin', NULL, 'ADMIN_CLOSE_COMPANY_DISPLAY',
+               'billing_entitlement', ?, ?, ?, ?)`,
+      [
+        companyId,
+        entitlement.id,
+        JSON.stringify({ status: entitlement.status, readonly_mode: Boolean(entitlement.readonly_mode), reason: entitlement.reason || null }),
+        JSON.stringify({ status: 'inactive', readonly_mode: true, reason: 'refund_closed' }),
+        reason,
+      ]
+    );
+    await conn.commit();
+    return success(res, { closed: true }, '装修公司展示权益已关闭');
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+});
+
 app.get('/api/admin/billing/summary', adminAuth, async (req, res) => {
   const range = String(req.query.range || 'today').trim();
   const today = new Date();

@@ -58,12 +58,12 @@ test('merchant display plan for app parses feature and limit json', async () => 
   assert.deepEqual(plan.limit, { product_limit: 50, case_limit: 20 });
 });
 
-test('current entitlement rejects non-merchant subjects in MVP', async () => {
+test('current entitlement rejects unsupported subjects in MVP', async () => {
   const billingService = loadBillingService({ async query() { throw new Error('should not query'); } });
 
   await assert.rejects(
-    () => billingService.getCurrentEntitlement('company', 7),
-    (err) => err instanceof billingService.BillingError && /只支持 merchant/.test(err.message)
+    () => billingService.getCurrentEntitlement('designer', 7),
+    (err) => err instanceof billingService.BillingError && /只支持 merchant\/company/.test(err.message)
   );
 });
 
@@ -72,7 +72,7 @@ test('current entitlement only marks shop visible when active, not readonly, and
   const dbMock = {
     async query(sql, params) {
       assert.match(sql, /FROM billing_entitlements/);
-      assert.deepEqual(params, [42]);
+      assert.deepEqual(params, ['merchant', 42]);
       return [[{
         id: 11,
         status: 'active',
@@ -126,7 +126,7 @@ test('current entitlement exposes close reason even when entitlement is inactive
   const dbMock = {
     async query(sql, params) {
       assert.match(sql, /ORDER BY \(status = 'active' AND expire_at > NOW\(\)\) DESC/);
-      assert.deepEqual(params, [42]);
+      assert.deepEqual(params, ['merchant', 42]);
       return [[{
         id: 13,
         status: 'inactive',
@@ -145,6 +145,57 @@ test('current entitlement exposes close reason even when entitlement is inactive
   assert.equal(entitlement.shop_visible, false);
   assert.equal(entitlement.reason, 'refund_closed');
   assert.equal(entitlement.reason_label, '后台已关闭展示权益');
+});
+
+test('current entitlement marks company visible from company feature', async () => {
+  const future = new Date(Date.now() + 86400000).toISOString();
+  const dbMock = {
+    async query(sql, params) {
+      assert.match(sql, /WHERE subject_type = \?/);
+      assert.deepEqual(params, ['company', 7]);
+      return [[{
+        id: 21,
+        status: 'active',
+        feature_json: JSON.stringify({ company_visible: true }),
+        limit_json: '{}',
+        readonly_mode: 0,
+        reason: null,
+        expire_at: future,
+      }]];
+    },
+  };
+  const billingService = loadBillingService(dbMock);
+
+  const entitlement = await billingService.getCurrentEntitlement('company', 7);
+
+  assert.equal(entitlement.company_visible, true);
+  assert.equal(entitlement.shop_visible, false);
+});
+
+test('create company display order requires verified active company', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      assert.match(sql, /FROM companies/);
+      assert.deepEqual(params, [7]);
+      return [[{
+        id: 7,
+        name: '待认证装修公司',
+        status: 'active',
+        verification_status: 'pending',
+      }]];
+    },
+  };
+  const billingService = loadBillingService(dbMock);
+
+  await assert.rejects(
+    () => billingService.createCompanyDisplayOrder({
+      companyId: 7,
+      operatorUserId: 0,
+      paymentChannel: 'manual',
+      idempotencyKey: 'company-order',
+    }),
+    (err) => err instanceof billingService.BillingError && err.statusCode === 403
+  );
 });
 
 test('create merchant display order requires merchant profile and role', async () => {

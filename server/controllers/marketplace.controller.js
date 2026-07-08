@@ -1,6 +1,7 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
 const { requireProjectContext } = require('../utils/project-context');
+const { activeCompanyVisibleExistsSql } = require('../utils/billing-entitlement');
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -434,6 +435,7 @@ async function listCompaniesFromNewTables(req, pageSpec) {
   if (filterSql) where += ` ${filterSql}`;
   if (publicOnly) {
     where += ` AND c.verification_status = 'verified'`;
+    where += ` AND ${activeCompanyVisibleExistsSql('c.id')}`;
   }
   if (req.query.city) {
     where += ` AND REPLACE(c.city, '市', '') = REPLACE(?, '市', '')`;
@@ -1187,6 +1189,7 @@ async function getPublicCompany(req, res) {
      WHERE c.id = ?
        AND c.status = 'active'
        AND c.verification_status = 'verified'
+       AND ${activeCompanyVisibleExistsSql('c.id')}
      GROUP BY c.id`,
     [id]
   );
@@ -1203,7 +1206,10 @@ async function listPublicCompanyCaseShares(req, res) {
 
   const [companyRows] = await db.query(
     `SELECT id FROM companies
-     WHERE id = ? AND status = 'active' AND verification_status = 'verified'
+     WHERE id = ?
+       AND status = 'active'
+       AND verification_status = 'verified'
+       AND ${activeCompanyVisibleExistsSql('companies.id')}
      LIMIT 1`,
     [companyId]
   );
@@ -1282,7 +1288,10 @@ async function listPublicCompanyReviews(req, res) {
 
   const [companyRows] = await db.query(
     `SELECT id FROM companies
-     WHERE id = ? AND status = 'active' AND verification_status = 'verified'
+     WHERE id = ?
+       AND status = 'active'
+       AND verification_status = 'verified'
+       AND ${activeCompanyVisibleExistsSql('companies.id')}
      LIMIT 1`,
     [companyId]
   );
@@ -1694,7 +1703,10 @@ async function getCompanyEvaluationSummary(req, res) {
   if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
   const [companyRows] = await db.query(
     `SELECT id FROM companies
-     WHERE id = ? AND status <> 'deleted'
+     WHERE id = ?
+       AND status = 'active'
+       AND verification_status = 'verified'
+       AND ${activeCompanyVisibleExistsSql('companies.id')}
      LIMIT 1`,
     [companyId]
   );

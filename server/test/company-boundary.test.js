@@ -39,6 +39,9 @@ test('public company search only queries verified companies and never merchant p
       queries.push({ sql, params });
       assert.match(sql, /c\.status = 'active'/);
       assert.match(sql, /c\.verification_status = 'verified'/);
+      assert.match(sql, /be\.subject_type = 'company'/);
+      assert.match(sql, /be\.subject_id = c\.id/);
+      assert.match(sql, /company_visible/);
       assert.doesNotMatch(sql, /c\.paid_display_status = 'active'/);
       assert.doesNotMatch(sql, /paid_display_starts_at IS NULL/);
       assert.doesNotMatch(sql, /paid_display_ends_at IS NULL/);
@@ -100,6 +103,8 @@ test('public company detail requires an active verified company', async () => {
       queries.push({ sql, params });
       assert.match(sql, /c\.status = 'active'/);
       assert.match(sql, /c\.verification_status = 'verified'/);
+      assert.match(sql, /be\.subject_type = 'company'/);
+      assert.match(sql, /be\.subject_id = c\.id/);
       assert.doesNotMatch(sql, /c\.paid_display_status = 'active'/);
       assert.doesNotMatch(sql, /paid_display_starts_at IS NULL/);
       assert.doesNotMatch(sql, /paid_display_ends_at IS NULL/);
@@ -125,6 +130,8 @@ test('public company case shares require verified company and approved project c
       if (queries.length === 1) {
         assert.match(sql, /status = 'active'/);
         assert.match(sql, /verification_status = 'verified'/);
+        assert.match(sql, /be\.subject_type = 'company'/);
+        assert.match(sql, /be\.subject_id = companies\.id/);
         assert.deepEqual(params, [9]);
         return [[{ id: 9 }]];
       }
@@ -187,6 +194,8 @@ test('public company reviews require verified company and return review list', a
       if (queries.length === 1) {
         assert.match(sql, /status = 'active'/);
         assert.match(sql, /verification_status = 'verified'/);
+        assert.match(sql, /be\.subject_type = 'company'/);
+        assert.match(sql, /be\.subject_id = companies\.id/);
         assert.deepEqual(params, [9]);
         return [[{ id: 9 }]];
       }
