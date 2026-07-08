@@ -46,9 +46,15 @@ let selectedBillingMerchantId = null;
 let selectedBillingCompanyId = null;
 let billingExceptions = { payment_not_activated: [], event_failures: [] };
 let merchantPlan = null;
+let companyPlan = null;
 let billingTab = 'merchants';
+let companyBillingTab = 'companies';
 let billingOrderPage = 1;
 let billingOrderTotal = 0;
+let companyBillingOrderPage = 1;
+let companyBillingOrderTotal = 0;
+let companyBillingAppealPage = 1;
+let companyBillingAppealTotal = 0;
 let billingAppealPage = 1;
 let billingAppealTotal = 0;
 let billingDetailTab = 'overview';
@@ -148,8 +154,7 @@ function refreshCurrent() {
     refreshBillingTab();
   }
   else if (activeMenu === 'companyBilling') {
-    loadBillingCompanies(page);
-    if (selectedBillingCompanyId) viewBillingCompany(selectedBillingCompanyId, false);
+    refreshCompanyBillingTab();
   }
   else if (activeMenu === 'shares') loadShares(page);
   else if (activeMenu === 'projectTips') loadProjectTips();

@@ -278,6 +278,94 @@ async function getMerchantDisplayPlanForAdmin() {
   };
 }
 
+async function getCompanyDisplayPlanForAdmin() {
+  const [rows] = await db.query(
+    `SELECT p.id AS plan_id,
+            p.code,
+            p.name AS plan_name,
+            p.status AS plan_status,
+            pv.id AS plan_version_id,
+            pv.version,
+            pv.name AS version_name,
+            pv.price_cents,
+            pv.currency,
+            pv.duration_days,
+            pv.feature_json,
+            pv.limit_json,
+            pv.status AS version_status,
+            pv.published_at,
+            pv.created_at
+     FROM billing_plans p
+     LEFT JOIN billing_plan_versions pv
+       ON pv.plan_id = p.id
+      AND pv.version = (
+        SELECT MAX(version)
+        FROM billing_plan_versions
+        WHERE plan_id = p.id
+      )
+     WHERE p.code = ?
+     LIMIT 1`,
+    [COMPANY_PLAN_CODE]
+  );
+  const row = rows[0];
+  if (!row) throw new BillingError('装修公司展示套餐未初始化，请先执行 billing migration', 500);
+  const [versionRows] = await db.query(
+    `SELECT pv.id AS plan_version_id,
+            pv.version,
+            pv.name,
+            pv.price_cents,
+            pv.currency,
+            pv.duration_days,
+            pv.feature_json,
+            pv.limit_json,
+            pv.status,
+            pv.published_at,
+            pv.created_at,
+            COUNT(DISTINCT bo.id) AS order_count,
+            COUNT(DISTINCT bs.id) AS subscription_count
+     FROM billing_plan_versions pv
+     LEFT JOIN billing_orders bo ON bo.item_version_id = pv.id
+     LEFT JOIN billing_subscriptions bs ON bs.plan_version_id = pv.id
+     WHERE pv.plan_id = ?
+     GROUP BY pv.id
+     ORDER BY pv.version DESC`,
+    [row.plan_id]
+  );
+  return {
+    plan_id: Number(row.plan_id),
+    plan_version_id: row.plan_version_id ? Number(row.plan_version_id) : null,
+    code: row.code,
+    plan_name: row.plan_name || '',
+    plan_status: row.plan_status || 'inactive',
+    version: row.version ? Number(row.version) : 0,
+    version_name: row.version_name || row.plan_name || '',
+    price_cents: Number(row.price_cents || 0),
+    currency: row.currency || 'CNY',
+    duration_days: Number(row.duration_days || 30),
+    feature: safeJson(row.feature_json),
+    limit: safeJson(row.limit_json),
+    version_status: row.version_status || '',
+    published_at: row.published_at,
+    created_at: row.created_at,
+    versions: versionRows.map((item) => ({
+      plan_version_id: Number(item.plan_version_id),
+      version: Number(item.version || 0),
+      name: item.name || '',
+      price_cents: Number(item.price_cents || 0),
+      currency: item.currency || 'CNY',
+      duration_days: Number(item.duration_days || 30),
+      feature: safeJson(item.feature_json),
+      limit: safeJson(item.limit_json),
+      status: item.status || '',
+      published_at: item.published_at,
+      created_at: item.created_at,
+      order_count: Number(item.order_count || 0),
+      subscription_count: Number(item.subscription_count || 0),
+      is_current: Number(item.plan_version_id) === Number(row.plan_version_id),
+    })),
+  };
+}
+
 async function publishMerchantDisplayPlanVersion({
   name,
   priceCents,
@@ -353,6 +441,89 @@ async function publishMerchantDisplayPlanVersion({
     );
     await conn.commit();
     return getMerchantDisplayPlanForAdmin();
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function publishCompanyDisplayPlanVersion({
+  name,
+  priceCents,
+  durationDays,
+  enabled,
+  feature,
+  limit,
+}) {
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [planRows] = await conn.query(
+      `SELECT id, status
+       FROM billing_plans
+       WHERE code = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [COMPANY_PLAN_CODE]
+    );
+    const plan = planRows[0];
+    if (!plan) throw new BillingError('装修公司展示套餐未初始化，请先执行 billing migration', 500);
+
+    await conn.query(
+      `UPDATE billing_plans
+       SET name = ?, status = ?
+       WHERE id = ?`,
+      [name, enabled ? 'active' : 'inactive', plan.id]
+    );
+
+    const [[versionRow]] = await conn.query(
+      `SELECT COALESCE(MAX(version), 0) AS current_version
+       FROM billing_plan_versions
+       WHERE plan_id = ?`,
+      [plan.id]
+    );
+    const nextVersion = Number(versionRow.current_version || 0) + 1;
+    const [result] = await conn.query(
+      `INSERT INTO billing_plan_versions (
+         plan_id, version, name, price_cents, currency, duration_days,
+         feature_json, limit_json, status, published_at
+       )
+       VALUES (?, ?, ?, ?, 'CNY', ?, ?, ?, 'published', NOW())`,
+      [
+        plan.id,
+        nextVersion,
+        `${name} v${nextVersion}`,
+        priceCents,
+        durationDays,
+        JSON.stringify(feature),
+        JSON.stringify(limit),
+      ]
+    );
+    await conn.query(
+      `INSERT INTO billing_audit_logs (
+         actor_type, actor_id, action, target_type, target_id,
+         after_json, reason
+       )
+       VALUES ('admin', NULL, 'ADMIN_PUBLISH_COMPANY_PLAN_VERSION',
+               'billing_plan_version', ?, ?, 'company_plan_config')`,
+      [
+        result.insertId,
+        JSON.stringify({
+          plan_id: plan.id,
+          version: nextVersion,
+          name,
+          price_cents: priceCents,
+          duration_days: durationDays,
+          enabled,
+          feature,
+          limit,
+        }),
+      ]
+    );
+    await conn.commit();
+    return getCompanyDisplayPlanForAdmin();
   } catch (err) {
     await conn.rollback();
     throw err;
@@ -1156,12 +1327,12 @@ function normalizeAppeal(row) {
   };
 }
 
-function assertAppealableEntitlement(entitlement) {
+function assertAppealableEntitlement(entitlement, visibleField = 'shop_visible', visibleMessage = '店铺当前正在展示，无需申诉') {
   if (!entitlement || !entitlement.id) {
     throw new BillingError('当前没有可申诉的关闭记录', 400);
   }
-  if (entitlement.shop_visible) {
-    throw new BillingError('店铺当前正在展示，无需申诉', 409);
+  if (entitlement[visibleField]) {
+    throw new BillingError(visibleMessage, 409);
   }
   if (!['manual_suspend', 'refund_closed'].includes(entitlement.reason)) {
     throw new BillingError('当前状态不支持申诉，请按页面提示处理', 400);
@@ -1311,6 +1482,110 @@ async function createMerchantDisplayAppeal({ merchantUserId, content, idempotenc
   }
 }
 
+async function createCompanyDisplayAppeal({ companyId, operatorUserId, content, idempotencyKey }) {
+  await ensureCompanySubject(companyId);
+  const normalizedContent = String(content || '').trim().slice(0, 300);
+  if (!normalizedContent) throw new BillingError('请填写申诉说明', 400);
+  if (normalizedContent.length < 5) throw new BillingError('申诉说明请至少填写 5 个字', 400);
+
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [pendingRows] = await conn.query(
+      `SELECT *
+       FROM billing_appeals
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+         AND appeal_type = 'company_display_restore'
+         AND status = 'pending'
+       ORDER BY id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    if (pendingRows[0]) {
+      await conn.commit();
+      return { appeal: normalizeAppeal(pendingRows[0]), reused: true };
+    }
+
+    const [entitlementRows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE subject_type = 'company'
+         AND subject_id = ?
+       ORDER BY (status = 'active' AND expire_at > NOW()) DESC,
+                updated_at DESC,
+                id DESC
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    const entitlement = normalizeEntitlement(entitlementRows[0] || null);
+    assertAppealableEntitlement(entitlement, 'company_visible', '装修公司当前正在展示，无需申诉');
+
+    const appealNo = generateNo('BA');
+    const [result] = await conn.query(
+      `INSERT INTO billing_appeals (
+         appeal_no, subject_type, subject_id, appeal_type, status,
+         entitlement_id, reason_code, reason_label, content, created_by
+       )
+       VALUES (?, 'company', ?, 'company_display_restore', 'pending',
+               ?, ?, ?, ?, ?)`,
+      [
+        appealNo,
+        companyId,
+        entitlement.id,
+        entitlement.reason,
+        entitlement.reason_label,
+        normalizedContent,
+        operatorUserId,
+      ]
+    );
+    const appeal = {
+      id: result.insertId,
+      appeal_no: appealNo,
+      subject_type: 'company',
+      subject_id: companyId,
+      appeal_type: 'company_display_restore',
+      status: 'pending',
+      entitlement_id: entitlement.id,
+      reason_code: entitlement.reason,
+      reason_label: entitlement.reason_label,
+      content: normalizedContent,
+      created_by: operatorUserId,
+    };
+
+    await insertAudit(conn, {
+      subject_type: 'company',
+      subject_id: companyId,
+      actor_type: 'user',
+      actor_id: operatorUserId,
+      action: 'COMPANY_DISPLAY_APPEAL_CREATED',
+      target_type: 'billing_appeal',
+      target_id: result.insertId,
+      after_json: appeal,
+      reason: normalizedContent,
+      request_id: idempotencyKey || null,
+    });
+    await insertEvent(conn, {
+      event_type: 'COMPANY_DISPLAY_APPEAL_CREATED',
+      subject_type: 'company',
+      subject_id: companyId,
+      aggregate_type: 'billing_appeal',
+      aggregate_id: result.insertId,
+      payload_json: appeal,
+    });
+
+    await conn.commit();
+    return { appeal: normalizeAppeal(appeal), reused: false };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 async function listMerchantDisplayAppeals({ status = '', keyword = '', page = 1, pageSize = 20 } = {}) {
   const params = [];
   let where = `ba.subject_type = 'merchant' AND ba.appeal_type = 'merchant_display_restore'`;
@@ -1380,6 +1655,73 @@ async function listMerchantDisplayAppeals({ status = '', keyword = '', page = 1,
   };
 }
 
+async function listCompanyDisplayAppeals({ status = '', keyword = '', page = 1, pageSize = 20 } = {}) {
+  const params = [];
+  let where = `ba.subject_type = 'company' AND ba.appeal_type = 'company_display_restore'`;
+  const normalizedStatus = String(status || '').trim();
+  if (normalizedStatus) {
+    if (!['pending', 'approved', 'rejected', 'cancelled'].includes(normalizedStatus)) {
+      throw new BillingError('申诉状态不正确', 400);
+    }
+    where += ' AND ba.status = ?';
+    params.push(normalizedStatus);
+  }
+  const normalizedKeyword = String(keyword || '').trim();
+  if (normalizedKeyword) {
+    where += ` AND (
+      ba.appeal_no LIKE ?
+      OR c.name LIKE ?
+      OR c.contact_phone LIKE ?
+      OR c.city LIKE ?
+      OR ba.content LIKE ?
+    )`;
+    const kw = `%${normalizedKeyword}%`;
+    params.push(kw, kw, kw, kw, kw);
+  }
+  const pageNo = Math.max(1, parseInt(page, 10) || 1);
+  const safePageSize = Math.min(100, Math.max(1, parseInt(pageSize, 10) || 20));
+  const offset = (pageNo - 1) * safePageSize;
+  const [rows] = await db.query(
+    `SELECT ba.*, c.name, c.city, c.contact_phone,
+            be.status AS entitlement_status,
+            be.readonly_mode AS entitlement_readonly_mode,
+            be.expire_at AS entitlement_expire_at
+     FROM billing_appeals ba
+     LEFT JOIN companies c ON c.id = ba.subject_id
+     LEFT JOIN billing_entitlements be ON be.id = ba.entitlement_id
+     WHERE ${where}
+     ORDER BY ba.created_at DESC, ba.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, safePageSize, offset]
+  );
+  const [[countRow]] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM billing_appeals ba
+     LEFT JOIN companies c ON c.id = ba.subject_id
+     WHERE ${where}`,
+    params
+  );
+  return {
+    appeals: rows.map((row) => ({
+      ...normalizeAppeal(row),
+      company: {
+        id: Number(row.subject_id || 0),
+        name: row.name || '',
+        city: row.city || '',
+        contact_phone: row.contact_phone || '',
+      },
+      entitlement: {
+        status: row.entitlement_status || '',
+        readonly_mode: Boolean(row.entitlement_readonly_mode),
+        expire_at: row.entitlement_expire_at || null,
+      },
+    })),
+    total: Number(countRow.total || 0),
+    page: pageNo,
+    pageSize: safePageSize,
+  };
+}
+
 async function approveMerchantDisplayAppeal({ appealId, adminId = null, reason }) {
   const normalizedReason = String(reason || '').trim().slice(0, 300);
   if (!normalizedReason) throw new BillingError('请填写通过原因', 400);
@@ -1416,7 +1758,6 @@ async function approveMerchantDisplayAppeal({ appealId, adminId = null, reason }
     if (new Date(entitlement.expire_at).getTime() <= Date.now()) {
       throw new BillingError('该权益已到期，不能直接恢复', 409);
     }
-
     await conn.query(
       `UPDATE billing_entitlements
        SET status = 'active',
@@ -1490,6 +1831,139 @@ async function approveMerchantDisplayAppeal({ appealId, adminId = null, reason }
   }
 }
 
+async function approveCompanyDisplayAppeal({ appealId, adminId = null, reason }) {
+  const normalizedReason = String(reason || '').trim().slice(0, 300);
+  if (!normalizedReason) throw new BillingError('请填写通过原因', 400);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [appealRows] = await conn.query(
+      `SELECT *
+       FROM billing_appeals
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appealId]
+    );
+    const appeal = appealRows[0];
+    if (!appeal) throw new BillingError('申诉不存在', 404);
+    if (appeal.status !== 'pending') throw new BillingError('该申诉已处理', 409);
+    if (appeal.subject_type !== 'company' || appeal.appeal_type !== 'company_display_restore') {
+      throw new BillingError('申诉类型不支持', 400);
+    }
+
+    const [entitlementRows] = await conn.query(
+      `SELECT *
+       FROM billing_entitlements
+       WHERE id = ?
+         AND subject_type = 'company'
+         AND subject_id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appeal.entitlement_id, appeal.subject_id]
+    );
+    const entitlement = entitlementRows[0];
+    if (!entitlement) throw new BillingError('申诉关联权益不存在', 404);
+    if (new Date(entitlement.expire_at).getTime() <= Date.now()) {
+      throw new BillingError('该权益已到期，不能直接恢复', 409);
+    }
+    const [companyRows] = await conn.query(
+      `SELECT verification_status, status
+       FROM companies
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appeal.subject_id]
+    );
+    const company = companyRows[0];
+    if (!company || company.status === 'deleted') {
+      throw new BillingError('装修公司不存在', 404);
+    }
+    if (company.verification_status !== 'verified') {
+      throw new BillingError('装修公司必须认证通过后才能恢复展示', 409);
+    }
+
+    await conn.query(
+      `UPDATE billing_entitlements
+       SET status = 'active',
+           readonly_mode = 0,
+           reason = NULL
+       WHERE id = ?`,
+      [entitlement.id]
+    );
+    if (entitlement.subscription_id) {
+      await conn.query(
+        `UPDATE billing_subscriptions
+         SET status = 'active',
+             cancelled_at = NULL,
+             readonly_mode = 0,
+             reason = NULL
+         WHERE id = ?`,
+        [entitlement.subscription_id]
+      );
+    }
+    await conn.query(
+      `UPDATE companies
+       SET paid_display_status = 'active',
+           paid_display_starts_at = COALESCE(paid_display_starts_at, NOW()),
+           paid_display_ends_at = ?
+       WHERE id = ?`,
+      [entitlement.expire_at, appeal.subject_id]
+    );
+    await conn.query(
+      `UPDATE billing_appeals
+       SET status = 'approved',
+           result_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = NOW()
+       WHERE id = ?`,
+      [normalizedReason, adminId, appeal.id]
+    );
+
+    const after = {
+      appeal_id: appeal.id,
+      entitlement_id: entitlement.id,
+      status: 'approved',
+      readonly_mode: false,
+      reason: null,
+      result_reason: normalizedReason,
+    };
+    await insertAudit(conn, {
+      subject_type: 'company',
+      subject_id: appeal.subject_id,
+      actor_type: 'admin',
+      actor_id: adminId,
+      action: 'ADMIN_APPROVE_COMPANY_DISPLAY_APPEAL',
+      target_type: 'billing_appeal',
+      target_id: appeal.id,
+      before_json: {
+        appeal_status: appeal.status,
+        entitlement_status: entitlement.status,
+        entitlement_readonly_mode: Boolean(entitlement.readonly_mode),
+        entitlement_reason: entitlement.reason || null,
+      },
+      after_json: after,
+      reason: normalizedReason,
+    });
+    await insertEvent(conn, {
+      event_type: 'COMPANY_DISPLAY_APPEAL_APPROVED',
+      subject_type: 'company',
+      subject_id: appeal.subject_id,
+      aggregate_type: 'billing_appeal',
+      aggregate_id: appeal.id,
+      payload_json: after,
+    });
+
+    await conn.commit();
+    return { appeal: normalizeAppeal({ ...appeal, status: 'approved', result_reason: normalizedReason }), resumed: true };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
 async function rejectMerchantDisplayAppeal({ appealId, adminId = null, reason }) {
   const normalizedReason = String(reason || '').trim().slice(0, 300);
   if (!normalizedReason) throw new BillingError('请填写驳回原因', 400);
@@ -1537,6 +2011,72 @@ async function rejectMerchantDisplayAppeal({ appealId, adminId = null, reason })
     await insertEvent(conn, {
       event_type: 'MERCHANT_DISPLAY_APPEAL_REJECTED',
       subject_type: 'merchant',
+      subject_id: appeal.subject_id,
+      aggregate_type: 'billing_appeal',
+      aggregate_id: appeal.id,
+      payload_json: after,
+    });
+
+    await conn.commit();
+    return { appeal: normalizeAppeal({ ...appeal, status: 'rejected', result_reason: normalizedReason }) };
+  } catch (err) {
+    await conn.rollback();
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+async function rejectCompanyDisplayAppeal({ appealId, adminId = null, reason }) {
+  const normalizedReason = String(reason || '').trim().slice(0, 300);
+  if (!normalizedReason) throw new BillingError('请填写驳回原因', 400);
+  const conn = await db.getConnection();
+  try {
+    await conn.beginTransaction();
+    const [appealRows] = await conn.query(
+      `SELECT *
+       FROM billing_appeals
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [appealId]
+    );
+    const appeal = appealRows[0];
+    if (!appeal) throw new BillingError('申诉不存在', 404);
+    if (appeal.status !== 'pending') throw new BillingError('该申诉已处理', 409);
+    if (appeal.subject_type !== 'company' || appeal.appeal_type !== 'company_display_restore') {
+      throw new BillingError('申诉类型不支持', 400);
+    }
+
+    await conn.query(
+      `UPDATE billing_appeals
+       SET status = 'rejected',
+           result_reason = ?,
+           reviewed_by = ?,
+           reviewed_at = NOW()
+       WHERE id = ?`,
+      [normalizedReason, adminId, appeal.id]
+    );
+    const after = {
+      appeal_id: appeal.id,
+      status: 'rejected',
+      result_reason: normalizedReason,
+    };
+    await insertAudit(conn, {
+      subject_type: 'company',
+      subject_id: appeal.subject_id,
+      actor_type: 'admin',
+      actor_id: adminId,
+      action: 'ADMIN_REJECT_COMPANY_DISPLAY_APPEAL',
+      target_type: 'billing_appeal',
+      target_id: appeal.id,
+      before_json: { appeal_status: appeal.status },
+      after_json: after,
+      reason: normalizedReason,
+    });
+    await insertEvent(conn, {
+      event_type: 'COMPANY_DISPLAY_APPEAL_REJECTED',
+      subject_type: 'company',
       subject_id: appeal.subject_id,
       aggregate_type: 'billing_appeal',
       aggregate_id: appeal.id,
@@ -1672,18 +2212,35 @@ async function getCompanyBillingSnapshot(companyId) {
      LIMIT 10`,
     [companyId]
   );
+  const appealPromise = db.query(
+    `SELECT *
+     FROM billing_appeals
+     WHERE subject_type = 'company'
+       AND subject_id = ?
+       AND appeal_type = 'company_display_restore'
+     ORDER BY id DESC
+     LIMIT 50`,
+    [companyId]
+  );
   const entitlement = await getCurrentEntitlement('company', companyId);
-  const [[orders], [subscriptions], [payments], [audit_logs], [events]] = await Promise.all([
+  const [[orders], [subscriptions], [payments], [audit_logs], [events], [appeals]] = await Promise.all([
     orderPromise,
     subscriptionPromise,
     paymentPromise,
     auditPromise,
     eventPromise,
+    appealPromise,
   ]);
+  const currentAppeal =
+    appeals.find((item) => item.status === 'pending') ||
+    appeals[0] ||
+    null;
   return {
     subject: { type: 'company', id: companyId },
     entitlement,
     company_visible: entitlement.company_visible,
+    current_appeal: normalizeAppeal(currentAppeal),
+    appeals: appeals.map(normalizeAppeal),
     orders,
     payments,
     subscriptions,
@@ -1697,7 +2254,9 @@ module.exports = {
   getCompanyDisplayPlan,
   getCompanyDisplayPlanForApp,
   getMerchantDisplayPlanForApp,
+  getCompanyDisplayPlanForAdmin,
   getMerchantDisplayPlanForAdmin,
+  publishCompanyDisplayPlanVersion,
   publishMerchantDisplayPlanVersion,
   createCompanyDisplayOrder,
   createMerchantDisplayOrder,
@@ -1709,9 +2268,13 @@ module.exports = {
   getCompanyOrderStatus,
   getCurrentEntitlement,
   getLatestMerchantAppeal,
+  createCompanyDisplayAppeal,
   createMerchantDisplayAppeal,
+  listCompanyDisplayAppeals,
   listMerchantDisplayAppeals,
+  approveCompanyDisplayAppeal,
   approveMerchantDisplayAppeal,
+  rejectCompanyDisplayAppeal,
   rejectMerchantDisplayAppeal,
   getCompanyBillingSnapshot,
   getMerchantBillingSnapshot,

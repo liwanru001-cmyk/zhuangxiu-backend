@@ -191,8 +191,129 @@ function renderCompanyBilling() {
   selectedBillingCompanyId = null;
   selectedBillingDetailData = null;
   page = 1;
-  document.getElementById('page-content').innerHTML = billingCompaniesTabHtml();
+  document.getElementById('page-content').innerHTML = `
+    <div class="billing-header">
+      ${companyBillingTabsHtml()}
+      <button class="ghost-btn" onclick="openCompanyBillingGuideModal()">操作说明</button>
+    </div>
+    <div id="company-billing-tab-content"></div>
+  `;
+  renderCompanyBillingTabContent();
+}
+
+function companyBillingTabsHtml() {
+  return `
+    <div class="tabs">
+      <button class="${companyBillingTab === 'summary' ? 'active' : ''}" onclick="switchCompanyBillingTab('summary')">财务概览</button>
+      <button class="${companyBillingTab === 'companies' ? 'active' : ''}" onclick="switchCompanyBillingTab('companies')">装修公司列表</button>
+      <button class="${companyBillingTab === 'appeals' ? 'active' : ''}" onclick="switchCompanyBillingTab('appeals')">申诉记录</button>
+      <button class="${companyBillingTab === 'orders' ? 'active' : ''}" onclick="switchCompanyBillingTab('orders')">订单记录</button>
+      <button class="${companyBillingTab === 'exceptions' ? 'active' : ''}" onclick="switchCompanyBillingTab('exceptions')">异常处理</button>
+      <button class="${companyBillingTab === 'plan' ? 'active' : ''}" onclick="switchCompanyBillingTab('plan')">套餐配置</button>
+    </div>
+  `;
+}
+
+function switchCompanyBillingTab(tab) {
+  companyBillingTab = tab;
+  page = 1;
+  selectedBillingCompanyId = null;
+  selectedBillingDetailData = null;
+  renderCompanyBilling();
+}
+
+function refreshCompanyBillingTab() {
+  if (companyBillingTab === 'plan') {
+    loadCompanyPlanConfig();
+  } else if (companyBillingTab === 'exceptions') {
+    loadCompanyBillingExceptions();
+  } else if (companyBillingTab === 'orders') {
+    loadCompanyBillingOrders(companyBillingOrderPage);
+  } else if (companyBillingTab === 'appeals') {
+    loadCompanyBillingAppeals(companyBillingAppealPage);
+  } else if (companyBillingTab === 'summary') {
+    loadCompanyBillingSummary();
+  } else {
+    loadBillingCompanies(page);
+    if (selectedBillingCompanyId) viewBillingCompany(selectedBillingCompanyId, false);
+  }
+}
+
+function renderCompanyBillingTabContent() {
+  const box = document.getElementById('company-billing-tab-content');
+  if (!box) return;
+  if (companyBillingTab === 'plan') {
+    box.innerHTML = `<div id="company-plan-config"></div>`;
+    loadCompanyPlanConfig();
+    return;
+  }
+  if (companyBillingTab === 'exceptions') {
+    box.innerHTML = `<div id="company-billing-exceptions"></div>`;
+    loadCompanyBillingExceptions();
+    return;
+  }
+  if (companyBillingTab === 'orders') {
+    box.innerHTML = companyBillingOrdersTabHtml();
+    loadCompanyBillingOrders(1);
+    return;
+  }
+  if (companyBillingTab === 'appeals') {
+    box.innerHTML = companyBillingAppealsTabHtml();
+    loadCompanyBillingAppeals(1);
+    return;
+  }
+  if (companyBillingTab === 'summary') {
+    box.innerHTML = companyBillingSummaryTabHtml();
+    setCompanyBillingSummaryRange('today');
+    return;
+  }
+  box.innerHTML = billingCompaniesTabHtml();
   loadBillingCompanies(1);
+}
+
+function openCompanyBillingGuideModal() {
+  const modal = document.getElementById('billing-guide-modal');
+  const body = document.getElementById('billing-guide-content');
+  if (body) body.innerHTML = companyBillingGuideHtml();
+  if (modal) modal.classList.add('show');
+}
+
+function companyBillingGuideHtml() {
+  return `
+    <section>
+      <h4>1. 怎么开通装修公司展示</h4>
+      <ol>
+        <li>装修公司必须先认证通过，才允许开通付费展示。</li>
+        <li>第一版支持后台线下收款后手动开通。</li>
+        <li>开通成功后，公司会进入找装修列表和搜索展示。</li>
+      </ol>
+    </section>
+    <section>
+      <h4>2. 怎么关闭权益 / 处理退款</h4>
+      <ol>
+        <li>进入装修公司详情，点击「关闭权益 / 退款」。</li>
+        <li>填写关闭原因、退款金额、退款或关闭凭证说明。</li>
+        <li>确认后，订阅取消、权益失效，公司立即下架。</li>
+      </ol>
+    </section>
+    <section>
+      <h4>3. 怎么处理装修公司申诉</h4>
+      <ol>
+        <li>进入「申诉记录」，优先处理「待处理」申诉。</li>
+        <li>点击「公司详情」核对关闭原因、权益状态、审计日志。</li>
+        <li>确认公司仍然认证通过且问题已处理后，点击「通过恢复」。</li>
+        <li>资料仍不符合要求时点击「驳回」，填写清楚驳回原因。</li>
+      </ol>
+    </section>
+    <section>
+      <h4>4. 怎么查订单和异常</h4>
+      <ol>
+        <li>订单记录可按订单号、公司名称、联系电话和时间筛选。</li>
+        <li>异常处理用于查看支付成功但未开通、事件失败或死信。</li>
+        <li>需要人工补开时，从异常行进入公司详情后手动开通。</li>
+      </ol>
+    </section>
+  `;
 }
 
 function billingCompaniesTabHtml() {
@@ -340,6 +461,105 @@ function openBillingExceptions(type) {
   }, 120);
 }
 
+function companyBillingSummaryTabHtml() {
+  return `
+    <div class="toolbar">
+      <select id="companyBillingSummaryRange" onchange="onCompanyBillingSummaryRangeChange()">
+        <option value="today">今天</option>
+        <option value="yesterday">昨天</option>
+        <option value="last7">近7天</option>
+        <option value="custom">自定义</option>
+      </select>
+      <input id="companyBillingSummaryDateFrom" type="date" disabled>
+      <input id="companyBillingSummaryDateTo" type="date" disabled>
+      <button class="primary-btn" onclick="loadCompanyBillingSummary()">刷新</button>
+    </div>
+    <div id="company-billing-summary-content"></div>
+  `;
+}
+
+function setCompanyBillingSummaryRange(range) {
+  const select = document.getElementById('companyBillingSummaryRange');
+  if (select) select.value = range;
+  onCompanyBillingSummaryRangeChange();
+}
+
+function onCompanyBillingSummaryRangeChange() {
+  const range = document.getElementById('companyBillingSummaryRange')?.value || 'today';
+  const custom = range === 'custom';
+  const from = document.getElementById('companyBillingSummaryDateFrom');
+  const to = document.getElementById('companyBillingSummaryDateTo');
+  if (from) from.disabled = !custom;
+  if (to) to.disabled = !custom;
+  loadCompanyBillingSummary();
+}
+
+async function loadCompanyBillingSummary() {
+  const box = document.getElementById('company-billing-summary-content');
+  if (!box) return;
+  const range = document.getElementById('companyBillingSummaryRange')?.value || 'today';
+  const params = new URLSearchParams({ range });
+  if (range === 'custom') {
+    const dateFrom = document.getElementById('companyBillingSummaryDateFrom')?.value || '';
+    const dateTo = document.getElementById('companyBillingSummaryDateTo')?.value || '';
+    if (dateFrom) params.set('date_from', dateFrom);
+    if (dateTo) params.set('date_to', dateTo);
+  }
+  box.innerHTML = '<div class="placeholder">正在加载财务概览...</div>';
+  try {
+    const j = await adminFetch(`/billing/company-summary?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    box.innerHTML = companyBillingSummaryHtml(j.data || {});
+  } catch (e) {
+    box.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '财务概览加载失败')}</div>`;
+  }
+}
+
+function companyBillingSummaryHtml(data) {
+  const orders = data.orders || {};
+  const payments = data.payments || {};
+  const refunds = data.refunds || {};
+  const active = data.active || {};
+  const exceptions = data.exceptions || {};
+  const range = data.range || {};
+  return `
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>财务概览</h3>
+          <p>${esc(range.date_from || '-')} 至 ${esc(range.date_to || '-')} · 装修公司付费展示运行状态</p>
+        </div>
+        <button class="ghost-btn" onclick="loadCompanyBillingSummary()">刷新</button>
+      </div>
+      <div class="detail-grid">
+        <div class="detail-cell"><span>订单数</span><strong>${esc(orders.total || 0)}</strong></div>
+        <div class="detail-cell"><span>已支付订单</span><strong>${esc(orders.paid || 0)}</strong></div>
+        <div class="detail-cell"><span>待支付订单</span><strong>${esc(orders.pending_payment || 0)}</strong></div>
+        <div class="detail-cell"><span>已退款订单</span><strong>${esc(orders.refunded || 0)}</strong></div>
+        <div class="detail-cell"><span>支付成功金额</span><strong>${moneyText(payments.successful_amount_cents, 'CNY')}</strong></div>
+        <div class="detail-cell"><span>退款金额</span><strong>${moneyText(refunds.amount_cents, 'CNY')}</strong></div>
+        <div class="detail-cell"><span>有效订阅</span><strong>${esc(active.subscriptions || 0)}</strong></div>
+        <div class="detail-cell"><span>展示中公司</span><strong>${esc(active.visible_companies || 0)}</strong></div>
+        <button class="detail-cell" onclick="openCompanyBillingExceptions('payment')" style="text-align:left;cursor:pointer;">
+          <span>支付成功未开通</span><strong>${esc(exceptions.payment_not_activated || 0)}</strong>
+        </button>
+        <button class="detail-cell" onclick="openCompanyBillingExceptions('event')" style="text-align:left;cursor:pointer;">
+          <span>事件失败 / 死信</span><strong>${esc(exceptions.event_failures || 0)}</strong>
+        </button>
+      </div>
+    </div>
+  `;
+}
+
+function openCompanyBillingExceptions(type) {
+  companyBillingTab = 'exceptions';
+  renderCompanyBilling();
+  setTimeout(() => {
+    const target = document.getElementById(type === 'event' ? 'company-billing-event-exceptions' : 'company-billing-payment-exceptions');
+    if (target) target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }, 120);
+}
+
 function billingOrdersTabHtml() {
   return `
     <div class="toolbar">
@@ -431,6 +651,91 @@ function billingAppealsTabHtml() {
   `;
 }
 
+function companyBillingOrdersTabHtml() {
+  return `
+    <div class="toolbar">
+      <input id="companyBillingOrderSearch" placeholder="搜索订单号/公司/电话/城市" onkeydown="if(event.key==='Enter')loadCompanyBillingOrders(1)">
+      <select id="companyBillingOrderStatus" onchange="loadCompanyBillingOrders(1)">
+        <option value="">全部订单状态</option>
+        <option value="pending_payment">待支付</option>
+        <option value="paid">已支付</option>
+        <option value="refunded">已退款</option>
+        <option value="closed">已关闭</option>
+      </select>
+      <select id="companyBillingOrderChannel" onchange="loadCompanyBillingOrders(1)">
+        <option value="">全部支付渠道</option>
+        <option value="manual">manual</option>
+        <option value="wechat_pay">微信支付</option>
+        <option value="alipay">支付宝</option>
+        <option value="apple_iap">Apple IAP</option>
+        <option value="google_play">Google Play</option>
+        <option value="stripe">Stripe</option>
+      </select>
+      <input id="companyBillingOrderDateFrom" type="date" onchange="loadCompanyBillingOrders(1)">
+      <input id="companyBillingOrderDateTo" type="date" onchange="loadCompanyBillingOrders(1)">
+      <button class="primary-btn" onclick="loadCompanyBillingOrders(1)">查询</button>
+      <button class="ghost-btn" onclick="exportCompanyBillingOrdersCsv()">导出 CSV</button>
+      <button class="ghost-btn" onclick="resetCompanyBillingOrderFilters()">重置</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>订单记录</h3>
+          <p>查看装修公司展示订单，适合运营、客服和财务按订单查账。</p>
+        </div>
+      </div>
+      <div id="company-billing-order-list-detail"></div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>订单</th><th>装修公司</th><th>状态</th><th>金额</th><th>渠道</th><th>支付</th><th>订阅</th><th>创建时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="company-billing-order-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="company-billing-order-page-info"></span>
+        <button id="company-billing-order-btn-prev" onclick="loadCompanyBillingOrders(companyBillingOrderPage-1)">‹ 上一页</button>
+        <button id="company-billing-order-btn-next" onclick="loadCompanyBillingOrders(companyBillingOrderPage+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+}
+
+function companyBillingAppealsTabHtml() {
+  return `
+    <div class="toolbar">
+      <input id="companyBillingAppealSearch" placeholder="搜索申诉号/公司/电话/内容" onkeydown="if(event.key==='Enter')loadCompanyBillingAppeals(1)">
+      <select id="companyBillingAppealStatus" onchange="loadCompanyBillingAppeals(1)">
+        <option value="">全部申诉状态</option>
+        <option value="pending">待处理</option>
+        <option value="approved">已通过</option>
+        <option value="rejected">已驳回</option>
+        <option value="cancelled">已取消</option>
+      </select>
+      <button onclick="loadCompanyBillingAppeals(1)">查询</button>
+    </div>
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>申诉</th><th>装修公司</th><th>关闭原因</th><th>申诉内容</th><th>状态</th><th>时间</th><th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="company-billing-appeal-body"></tbody>
+      </table>
+      <div class="pagination">
+        <span id="company-billing-appeal-page-info"></span>
+        <button id="company-billing-appeal-btn-prev" onclick="loadCompanyBillingAppeals(companyBillingAppealPage-1)">‹ 上一页</button>
+        <button id="company-billing-appeal-btn-next" onclick="loadCompanyBillingAppeals(companyBillingAppealPage+1)">下一页 ›</button>
+      </div>
+    </div>
+    <div id="company-billing-appeal-detail" class="item-panel"></div>
+  `;
+}
+
 async function loadBillingAppeals(p) {
   billingAppealPage = Math.max(1, p || 1);
   const keyword = document.getElementById('billingAppealSearch')?.value.trim() || '';
@@ -456,6 +761,111 @@ async function loadBillingAppeals(p) {
   } catch (e) {
     body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
   }
+}
+
+async function loadCompanyBillingAppeals(p) {
+  companyBillingAppealPage = Math.max(1, p || 1);
+  const keyword = document.getElementById('companyBillingAppealSearch')?.value.trim() || '';
+  const status = document.getElementById('companyBillingAppealStatus')?.value || '';
+  const params = new URLSearchParams({ page: companyBillingAppealPage, pageSize: 20 });
+  if (keyword) params.set('keyword', keyword);
+  if (status) params.set('status', status);
+
+  const body = document.getElementById('company-billing-appeal-body');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/billing/company-appeals?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const appeals = j.data.appeals || [];
+    companyBillingAppealTotal = Number(j.data.total || 0);
+    body.innerHTML = appeals.map(companyBillingAppealRow).join('') ||
+      '<tr><td colspan="7" style="text-align:center;color:#999;padding:32px;">暂无申诉记录</td></tr>';
+    const totalPages = Math.ceil(companyBillingAppealTotal / 20) || 1;
+    document.getElementById('company-billing-appeal-page-info').textContent = `共 ${companyBillingAppealTotal} 条 · ${companyBillingAppealPage}/${totalPages}`;
+    document.getElementById('company-billing-appeal-btn-prev').disabled = companyBillingAppealPage <= 1;
+    document.getElementById('company-billing-appeal-btn-next').disabled = companyBillingAppealPage >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="7" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function companyBillingAppealRow(item) {
+  const company = item.company || {};
+  const pending = item.status === 'pending';
+  return `
+    <tr>
+      <td>
+        <div class="mono">${esc(item.appeal_no || `#${item.id}`)}</div>
+        <div class="muted">ID ${esc(item.id)}</div>
+      </td>
+      <td>
+        <div>${esc(company.name || '-')}</div>
+        <div class="muted mono">ID ${esc(company.id || item.subject_id)} · ${esc(company.contact_phone || company.city || '-')}</div>
+      </td>
+      <td>${esc(item.reason_label || item.reason_code || '-')}</td>
+      <td>
+        <div>${esc(item.content || '-')}</div>
+        ${item.result_reason ? `<div class="muted">处理：${esc(item.result_reason)}</div>` : ''}
+      </td>
+      <td><span class="badge ${appealStatusClass(item.status)}">${appealStatusLabel(item.status)}</span></td>
+      <td>
+        <div>${fmtTime(item.created_at)}</div>
+        ${item.reviewed_at ? `<div class="muted">处理 ${fmtTime(item.reviewed_at)}</div>` : ''}
+      </td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="viewCompanyBillingAppealCompany(${Number(company.id || item.subject_id || 0)})">公司详情</button>
+          ${pending ? `<button class="success-btn" onclick="approveCompanyBillingAppeal(${Number(item.id)})">通过恢复</button>` : ''}
+          ${pending ? `<button class="danger-btn" onclick="rejectCompanyBillingAppeal(${Number(item.id)})">驳回</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+async function viewCompanyBillingAppealCompany(companyId) {
+  selectedBillingCompanyId = Number(companyId);
+  const detail = document.getElementById('company-billing-appeal-detail');
+  if (!detail) return;
+  detail.innerHTML = '<div class="placeholder">正在加载装修公司处理记录...</div>';
+  try {
+    const j = await adminFetch(`/billing/companies/${companyId}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    billingDetailTab = 'overview';
+    selectedBillingDetailData = j.data || {};
+    detail.innerHTML = billingCompanyDetailHtml(selectedBillingDetailData);
+    detail.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    detail.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '加载失败')}</div>`;
+  }
+}
+
+function approveCompanyBillingAppeal(appealId) {
+  openBillingActionModal({
+    type: 'companyApproveAppeal',
+    appealId,
+    title: '通过装修公司申诉',
+    summary: '通过后会恢复该装修公司的展示权益，公司重新进入找装修公开列表。',
+    submitText: '通过并恢复展示',
+    fields: [
+      { name: 'reason', label: '通过原因', type: 'textarea', placeholder: '例如：资料已整改，恢复展示', required: true },
+    ],
+  });
+}
+
+function rejectCompanyBillingAppeal(appealId) {
+  openBillingActionModal({
+    type: 'companyRejectAppeal',
+    appealId,
+    title: '驳回装修公司申诉',
+    summary: '驳回后公司管理员可在 App 查看驳回原因，并可重新提交申诉。',
+    submitText: '确认驳回',
+    danger: true,
+    fields: [
+      { name: 'reason', label: '驳回原因', type: 'textarea', placeholder: '例如：资料仍不符合展示要求，请补充资质后再提交', required: true },
+    ],
+  });
 }
 
 function billingAppealRow(item) {
@@ -715,6 +1125,137 @@ async function switchBillingTabToMerchant(userId) {
   await viewBillingMerchant(userId);
 }
 
+async function loadCompanyBillingOrders(p) {
+  companyBillingOrderPage = Math.max(1, p || 1);
+  const params = companyBillingOrderFilterParams({ page: companyBillingOrderPage, pageSize: 20 });
+
+  const body = document.getElementById('company-billing-order-body');
+  if (!body) return;
+  body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/billing/company-orders?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const orders = j.data.orders || [];
+    companyBillingOrderTotal = Number(j.data.total || 0);
+    body.innerHTML = orders.map(companyBillingOrderListRow).join('') ||
+      '<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">暂无订单记录</td></tr>';
+    const totalPages = Math.ceil(companyBillingOrderTotal / 20) || 1;
+    document.getElementById('company-billing-order-page-info').textContent = `共 ${companyBillingOrderTotal} 条 · ${companyBillingOrderPage}/${totalPages}`;
+    document.getElementById('company-billing-order-btn-prev').disabled = companyBillingOrderPage <= 1;
+    document.getElementById('company-billing-order-btn-next').disabled = companyBillingOrderPage >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function companyBillingOrderFilterParams(extra = {}) {
+  const params = new URLSearchParams(extra);
+  const keyword = document.getElementById('companyBillingOrderSearch')?.value.trim() || '';
+  const status = document.getElementById('companyBillingOrderStatus')?.value || '';
+  const channel = document.getElementById('companyBillingOrderChannel')?.value || '';
+  const dateFrom = document.getElementById('companyBillingOrderDateFrom')?.value || '';
+  const dateTo = document.getElementById('companyBillingOrderDateTo')?.value || '';
+  if (keyword) params.set('keyword', keyword);
+  if (status) params.set('status', status);
+  if (channel) params.set('payment_channel', channel);
+  if (dateFrom) params.set('date_from', dateFrom);
+  if (dateTo) params.set('date_to', dateTo);
+  return params;
+}
+
+async function exportCompanyBillingOrdersCsv() {
+  const params = companyBillingOrderFilterParams();
+  const url = `${API}/billing/company-orders/export?${params}`;
+  try {
+    const response = await fetch(url, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (response.status === 401) {
+      logout();
+      throw new Error('登录已过期');
+    }
+    if (!response.ok) {
+      const text = await response.text();
+      throw new Error(text || '导出失败');
+    }
+    const blob = await response.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = `company-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(objectUrl);
+    toast('订单 CSV 已导出');
+  } catch (e) {
+    toast(e.message || '导出失败');
+  }
+}
+
+function companyBillingOrderListRow(item) {
+  return `
+    <tr>
+      <td>
+        <div class="mono">${esc(item.order_no || item.id)}</div>
+        <div class="muted">ID ${esc(item.id)}</div>
+      </td>
+      <td>
+        <div>${esc(item.company_name || '-')}</div>
+        <div class="muted mono">ID ${esc(item.company_id)} · ${esc(item.contact_phone || item.city || '-')}</div>
+      </td>
+      <td><span class="badge ${orderStatusClass(item.status)}">${orderStatusLabel(item.status)}</span></td>
+      <td>${moneyText(item.amount_cents, item.currency)}</td>
+      <td>${esc(item.payment_channel || '-')}</td>
+      <td>
+        <div>${paymentStatusLabel(item.payment_status)}</div>
+        <div class="muted">${esc(item.payment_no || '-')}</div>
+      </td>
+      <td>
+        <div><span class="badge ${billingStatusClass(item.subscription_status)}">${billingStatusLabel(item.subscription_status)}</span></div>
+        <div class="muted">${item.subscription_expire_at ? fmtTime(item.subscription_expire_at) : '-'}</div>
+      </td>
+      <td>${fmtTime(item.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          <button class="action-btn" onclick="viewCompanyBillingOrderFromList(${Number(item.id || 0)})">订单详情</button>
+          <button class="action-btn" onclick="switchCompanyBillingTabToCompany(${Number(item.company_id || 0)})">公司详情</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function resetCompanyBillingOrderFilters() {
+  ['companyBillingOrderSearch', 'companyBillingOrderStatus', 'companyBillingOrderChannel', 'companyBillingOrderDateFrom', 'companyBillingOrderDateTo']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.value = '';
+    });
+  loadCompanyBillingOrders(1);
+}
+
+async function viewCompanyBillingOrderFromList(orderId) {
+  const box = document.getElementById('company-billing-order-list-detail');
+  if (!box) return;
+  box.innerHTML = '<div class="placeholder">正在加载订单详情...</div>';
+  try {
+    const j = await adminFetch(`/billing/company-orders/${orderId}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    box.innerHTML = billingOrderDetailHtml(j.data || {});
+    box.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) {
+    box.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '订单详情加载失败')}</div>`;
+  }
+}
+
+async function switchCompanyBillingTabToCompany(companyId) {
+  companyBillingTab = 'companies';
+  renderCompanyBilling();
+  await loadBillingCompanies(1);
+  await viewBillingCompany(companyId);
+}
+
 async function loadMerchantPlanConfig() {
   const box = document.getElementById('merchant-plan-config');
   if (!box) return;
@@ -942,6 +1483,180 @@ function boolText(value) {
   return value ? '开启' : '关闭';
 }
 
+async function loadCompanyPlanConfig() {
+  const box = document.getElementById('company-plan-config');
+  if (!box) return;
+  box.innerHTML = '<div class="placeholder">正在加载装修公司套餐...</div>';
+  try {
+    const j = await adminFetch('/billing/company-plan');
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    companyPlan = j.data || {};
+    box.innerHTML = companyPlanConfigHtml(companyPlan);
+  } catch (e) {
+    box.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '装修公司套餐加载失败')}</div>`;
+  }
+}
+
+function companyPlanConfigHtml(plan) {
+  const feature = plan.feature || {};
+  const limit = plan.limit || {};
+  const priceYuan = (Number(plan.price_cents || 0) / 100).toFixed(2);
+  return `
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>装修公司套餐配置</h3>
+          <p>保存会发布新版本，已购订单继续保留旧版本价格和权益。</p>
+        </div>
+        <span class="badge ${plan.plan_status === 'active' ? 'status-approved' : 'status-hidden'}">当前 v${esc(plan.version || 0)} · ${plan.plan_status === 'active' ? '启用' : '停用'}</span>
+      </div>
+      <div class="editor-body">
+        <div class="form-grid">
+          <div>
+            <label>套餐名称</label>
+            <input id="companyPlanName" value="${esc(plan.plan_name || plan.version_name || '装修公司展示月度版')}">
+          </div>
+          <div>
+            <label>价格（元）</label>
+            <input id="companyPlanPrice" type="number" min="0" step="0.01" value="${esc(priceYuan)}">
+          </div>
+          <div>
+            <label>有效天数</label>
+            <input id="companyPlanDuration" type="number" min="1" max="3650" value="${esc(plan.duration_days || 30)}">
+          </div>
+          <div>
+            <label>套餐状态</label>
+            <select id="companyPlanEnabled">
+              <option value="1" ${plan.plan_status === 'active' ? 'selected' : ''}>启用</option>
+              <option value="0" ${plan.plan_status !== 'active' ? 'selected' : ''}>停用</option>
+            </select>
+          </div>
+          <div>
+            <label>案例数量</label>
+            <input id="companyPlanCaseLimit" type="number" min="0" value="${esc(limit.case_limit || 0)}">
+          </div>
+          <div>
+            <label>评价数量</label>
+            <input id="companyPlanReviewLimit" type="number" min="0" value="${esc(limit.review_limit || 0)}">
+          </div>
+        </div>
+        <div>
+          <label>展示权益</label>
+          <div class="row-actions">
+            ${planFeatureCheckbox('companyPlanCompanyVisible', '公司展示', feature.company_visible !== false)}
+            ${planFeatureCheckbox('companyPlanSearchVisible', '搜索展示', feature.search_visible !== false)}
+            ${planFeatureCheckbox('companyPlanCaseShowcase', '案例展示', feature.case_showcase !== false)}
+            ${planFeatureCheckbox('companyPlanReviewShowcase', '评价展示', feature.review_showcase !== false)}
+          </div>
+        </div>
+        <div class="row-actions">
+          <button class="primary-btn" onclick="saveCompanyPlanConfig()">发布新版本</button>
+          <button class="ghost-btn" onclick="loadCompanyPlanConfig()">重置</button>
+        </div>
+      </div>
+      ${merchantPlanVersionsTable(plan.versions || [])}
+    </div>
+  `;
+}
+
+async function saveCompanyPlanConfig() {
+  const payload = readCompanyPlanForm();
+  if (!payload.name) {
+    toast('套餐名称不能为空');
+    return;
+  }
+  if (!Number.isFinite(payload.price_yuan) || payload.price_yuan < 0) {
+    toast('价格不正确');
+    return;
+  }
+  const diff = companyPlanDiff(payload, companyPlan || {});
+  if (!diff.length) {
+    toast('当前配置未变化，无需发布新版本');
+    return;
+  }
+  const nextVersion = Number(companyPlan?.version || 0) + 1;
+  const confirmText = [
+    `确认发布装修公司套餐 v${nextVersion}？`,
+    '',
+    '变更内容：',
+    ...diff.map(item => `- ${item}`),
+    '',
+    '这会生成一个新版本。',
+    '已购订单不会受影响。',
+    '新订单会使用新版本。',
+  ].join('\n');
+  if (!confirm(confirmText)) return;
+  try {
+    const j = await adminFetch('/billing/company-plan', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        name: payload.name,
+        price_cents: payload.price_cents,
+        duration_days: payload.duration_days,
+        enabled: payload.enabled,
+        case_limit: payload.case_limit,
+        review_limit: payload.review_limit,
+        company_visible: payload.company_visible,
+        search_visible: payload.search_visible,
+        case_showcase: payload.case_showcase,
+        review_showcase: payload.review_showcase,
+      }),
+    });
+    if (j.code !== 200) throw new Error(j.message || '保存失败');
+    toast('装修公司套餐新版本已发布');
+    await loadCompanyPlanConfig();
+  } catch (e) {
+    toast(e.message || '保存失败');
+  }
+}
+
+function readCompanyPlanForm() {
+  const priceYuan = Number(document.getElementById('companyPlanPrice')?.value || 0);
+  return {
+    name: document.getElementById('companyPlanName')?.value.trim() || '',
+    price_yuan: priceYuan,
+    price_cents: Math.round(priceYuan * 100),
+    duration_days: Math.round(Number(document.getElementById('companyPlanDuration')?.value || 30)),
+    enabled: document.getElementById('companyPlanEnabled')?.value === '1',
+    case_limit: Math.round(Number(document.getElementById('companyPlanCaseLimit')?.value || 0)),
+    review_limit: Math.round(Number(document.getElementById('companyPlanReviewLimit')?.value || 0)),
+    company_visible: document.getElementById('companyPlanCompanyVisible')?.checked === true,
+    search_visible: document.getElementById('companyPlanSearchVisible')?.checked === true,
+    case_showcase: document.getElementById('companyPlanCaseShowcase')?.checked === true,
+    review_showcase: document.getElementById('companyPlanReviewShowcase')?.checked === true,
+  };
+}
+
+function companyPlanDiff(next, current) {
+  const feature = current.feature || {};
+  const limit = current.limit || {};
+  const previous = {
+    name: current.plan_name || current.version_name || '',
+    price_cents: Number(current.price_cents || 0),
+    duration_days: Number(current.duration_days || 30),
+    enabled: current.plan_status === 'active',
+    case_limit: Number(limit.case_limit || 0),
+    review_limit: Number(limit.review_limit || 0),
+    company_visible: feature.company_visible !== false,
+    search_visible: feature.search_visible !== false,
+    case_showcase: feature.case_showcase !== false,
+    review_showcase: feature.review_showcase !== false,
+  };
+  const items = [];
+  addPlanDiff(items, '套餐名称', previous.name, next.name);
+  addPlanDiff(items, '价格', moneyText(previous.price_cents, 'CNY'), moneyText(next.price_cents, 'CNY'));
+  addPlanDiff(items, '有效天数', `${previous.duration_days}天`, `${next.duration_days}天`);
+  addPlanDiff(items, '套餐状态', previous.enabled ? '启用' : '停用', next.enabled ? '启用' : '停用');
+  addPlanDiff(items, '案例数量', previous.case_limit, next.case_limit);
+  addPlanDiff(items, '评价数量', previous.review_limit, next.review_limit);
+  addPlanDiff(items, '公司展示', boolText(previous.company_visible), boolText(next.company_visible));
+  addPlanDiff(items, '搜索展示', boolText(previous.search_visible), boolText(next.search_visible));
+  addPlanDiff(items, '案例展示', boolText(previous.case_showcase), boolText(next.case_showcase));
+  addPlanDiff(items, '评价展示', boolText(previous.review_showcase), boolText(next.review_showcase));
+  return items;
+}
+
 async function loadBillingExceptions() {
   const box = document.getElementById('billing-exceptions');
   if (!box) return;
@@ -957,6 +1672,136 @@ async function loadBillingExceptions() {
   } catch (e) {
     box.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '异常处理加载失败')}</div>`;
   }
+}
+
+async function loadCompanyBillingExceptions() {
+  const box = document.getElementById('company-billing-exceptions');
+  if (!box) return;
+  box.innerHTML = '<div class="placeholder">正在加载异常处理...</div>';
+  try {
+    const j = await adminFetch('/billing/company-exceptions');
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    billingExceptions = Object.assign(
+      { payment_not_activated: [], event_failures: [] },
+      j.data || {}
+    );
+    box.innerHTML = companyBillingExceptionsHtml(billingExceptions);
+  } catch (e) {
+    box.innerHTML = `<div class="placeholder" style="border-color:#fecdca;color:#b42318;">${esc(e.message || '异常处理加载失败')}</div>`;
+  }
+}
+
+function companyBillingExceptionsHtml(data) {
+  const paymentItems = data.payment_not_activated || [];
+  const eventItems = data.event_failures || [];
+  const totalExceptions = paymentItems.length + eventItems.length;
+  return `
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>异常处理</h3>
+          <p>装修公司支付成功未开通、事件失败和死信事件会在这里集中处理。</p>
+        </div>
+        <div class="row-actions">
+          <span class="badge ${totalExceptions ? 'status-rejected' : 'status-approved'}">${totalExceptions ? `${totalExceptions} 个异常` : '暂无异常'}</span>
+          <button class="ghost-btn" onclick="loadCompanyBillingExceptions()">刷新</button>
+        </div>
+      </div>
+      <div id="company-billing-payment-exceptions">
+        ${companyBillingPaymentExceptionTable(paymentItems)}
+      </div>
+      <div id="company-billing-event-exceptions">
+        ${companyBillingEventExceptionTable(eventItems)}
+      </div>
+    </div>
+  `;
+}
+
+function companyBillingPaymentExceptionTable(items) {
+  const body = items.length
+    ? items.map(item => `
+      <tr>
+        <td>
+          <div>${esc(item.company_name || '-')}</div>
+          <div class="muted mono">ID ${esc(item.company_id)} · ${esc(item.contact_phone || item.city || '-')}</div>
+        </td>
+        <td>
+          <div class="mono">${esc(item.order_no || item.order_id || '-')}</div>
+          <div class="muted">${orderStatusLabel(item.order_status)}</div>
+        </td>
+        <td>
+          <div>${moneyText(item.amount_cents, item.currency)}</div>
+          <div class="muted mono">${esc(item.payment_no || '-')}</div>
+        </td>
+        <td>
+          <div><span class="badge ${billingStatusClass(item.entitlement_status)}">${billingStatusLabel(item.entitlement_status)}</span></div>
+          <div class="muted">${item.entitlement_expire_at ? fmtTime(item.entitlement_expire_at) : '-'}</div>
+        </td>
+        <td>${fmtTime(item.paid_at || item.created_at)}</td>
+        <td>
+          <div class="row-actions">
+            <button class="action-btn" onclick="switchCompanyBillingTabToCompany(${Number(item.company_id || 0)})">公司详情</button>
+            <button class="success-btn" onclick="manualActivateCompany(${Number(item.company_id || 0)})">补开权益</button>
+          </div>
+        </td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无支付成功未开通异常</td></tr>';
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th colspan="6">支付成功未开通</th></tr>
+          <tr><th>装修公司</th><th>订单</th><th>支付</th><th>当前权益</th><th>支付时间</th><th>操作</th></tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
+}
+
+function companyBillingEventExceptionTable(items) {
+  const body = items.length
+    ? items.map(item => `
+      <tr>
+        <td>
+          <div>${esc(item.event_type || '-')}</div>
+          <div class="muted mono">${esc(item.event_id || item.id)}</div>
+        </td>
+        <td>
+          <div>${esc(item.company_name || '-')}</div>
+          <div class="muted mono">ID ${esc(item.subject_id || '-')} · ${esc(item.contact_phone || item.city || '-')}</div>
+        </td>
+        <td>
+          <span class="badge ${item.status === 'dead_letter' ? 'status-rejected' : 'status-hidden'}">${eventStatusLabel(item.status)}</span>
+          <div class="muted">重试 ${esc(item.retry_count || 0)} 次</div>
+        </td>
+        <td>${esc(item.aggregate_type || '-')} #${esc(item.aggregate_id || '-')}</td>
+        <td>
+          <div>${fmtTime(item.updated_at || item.created_at)}</div>
+          <div class="muted">${fmtTime(item.created_at)}</div>
+        </td>
+        <td>
+          <div class="row-actions">
+            <button class="action-btn" onclick="retryCompanyBillingEvent(${Number(item.id || 0)})">重跑</button>
+            <button class="success-btn" onclick="resolveCompanyBillingEvent(${Number(item.id || 0)}, 'processed')">已处理</button>
+            <button class="danger-btn" onclick="resolveCompanyBillingEvent(${Number(item.id || 0)}, 'ignored')">忽略</button>
+          </div>
+        </td>
+      </tr>
+    `).join('')
+    : '<tr><td colspan="6" style="text-align:center;color:#999;padding:24px;">暂无失败或死信事件</td></tr>';
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr><th colspan="6">事件失败 / 死信</th></tr>
+          <tr><th>事件</th><th>装修公司</th><th>状态</th><th>聚合对象</th><th>时间</th><th>操作</th></tr>
+        </thead>
+        <tbody>${body}</tbody>
+      </table>
+    </div>
+  `;
 }
 
 async function loadBillingMerchants(p) {
@@ -1160,6 +2005,7 @@ function billingCompanyDetailTabsHtml() {
     ['orders', '订单'],
     ['payments', '支付'],
     ['entitlements', '订阅与权益'],
+    ['appeals', '申诉'],
     ['audit', '审计日志'],
     ['events', '事件'],
   ];
@@ -1172,7 +2018,9 @@ function billingCompanyDetailTabsHtml() {
 
 function switchCompanyBillingDetailTab(tab) {
   billingDetailTab = tab;
-  const detail = document.getElementById('billing-company-detail');
+  const detail =
+    document.getElementById('billing-company-detail') ||
+    document.getElementById('company-billing-appeal-detail');
   if (detail && selectedBillingDetailData) {
     detail.innerHTML = billingCompanyDetailHtml(selectedBillingDetailData);
   }
@@ -1224,6 +2072,17 @@ function billingCompanyDetailTabPanelHtml(company, billing, entitlement) {
       fmtTime(row.created_at),
     ]);
   }
+  if (billingDetailTab === 'appeals') {
+    return billingSectionTable('申诉', ['ID', '申诉号', '状态', '关闭原因', '申诉内容', '处理原因', '时间'], billing.appeals || [], row => [
+      row.id,
+      row.appeal_no,
+      appealStatusLabel(row.status),
+      row.reason_label || row.reason_code || '-',
+      row.content || '-',
+      row.result_reason || '-',
+      fmtTime(row.reviewed_at || row.created_at),
+    ]);
+  }
   if (billingDetailTab === 'events') {
     return billingSectionTable('事件', ['ID', '事件', '版本', '对象', '状态', '重试', '时间'], billing.events || [], row => [
       row.id,
@@ -1244,6 +2103,7 @@ function billingCompanyDetailTabPanelHtml(company, billing, entitlement) {
       <div class="detail-cell"><span>订单数量</span><strong>${(billing.orders || []).length} 条</strong></div>
       <div class="detail-cell"><span>支付记录</span><strong>${(billing.payments || []).length} 条</strong></div>
       <div class="detail-cell"><span>订阅记录</span><strong>${(billing.subscriptions || []).length} 条</strong></div>
+      <div class="detail-cell"><span>申诉记录</span><strong>${(billing.appeals || []).length} 条</strong></div>
       <div class="detail-cell"><span>审计记录</span><strong>${(billing.audit_logs || []).length} 条</strong></div>
       <div class="detail-cell"><span>最近事件</span><strong>${(billing.events || []).length} 条</strong></div>
     </div>
@@ -1354,12 +2214,14 @@ async function closeCompanyDisplay(companyId) {
   openBillingActionModal({
     type: 'companyClose',
     companyId,
-    title: '关闭装修公司展示权益',
-    summary: '关闭后订阅取消，展示权益立即失效，装修公司不再进入找装修公开列表。',
+    title: '关闭装修公司展示权益 / 退款处理',
+    summary: '关闭后订阅取消，展示权益立即失效，装修公司不再进入找装修公开列表。请填写退款金额和处理凭证。',
     submitText: '确认关闭',
     danger: true,
     fields: [
       { name: 'reason', label: '关闭原因', type: 'textarea', placeholder: '例如：合同终止、退款完成、违规关闭、客服人工关闭', required: true },
+      { name: 'refund_amount_yuan', label: '退款金额（元）', type: 'number', placeholder: '没有退款请填 0', required: true, value: '0' },
+      { name: 'voucher_note', label: '退款或关闭凭证说明', type: 'textarea', placeholder: '例如：退款流水号、线下退款凭证、客服处理单号', required: true },
     ],
   });
 }
@@ -1374,6 +2236,7 @@ async function refreshBillingAfterMerchantAction(userId) {
 }
 
 async function refreshBillingAfterCompanyAction(companyId) {
+  if (document.getElementById('company-billing-exceptions')) await loadCompanyBillingExceptions();
   if (document.getElementById('billing-company-body')) await loadBillingCompanies(page);
   if (document.getElementById('billing-company-detail')) await viewBillingCompany(companyId, false);
 }
@@ -1499,7 +2362,11 @@ async function executeBillingAction(action, values) {
     const j = await adminFetch(`/billing/companies/${action.companyId}/close`, {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({ reason: values.reason }),
+      body: JSON.stringify({
+        reason: values.reason,
+        refund_amount_cents: values.refund_amount_cents,
+        voucher_note: values.voucher_note,
+      }),
     });
     if (j.code !== 200) throw new Error(j.message || '关闭失败');
     toast('装修公司展示权益已关闭');
@@ -1562,6 +2429,42 @@ async function executeBillingAction(action, values) {
     if (selectedBillingMerchantId) await viewBillingMerchant(selectedBillingMerchantId, false);
     return;
   }
+  if (action.type === 'companyApproveAppeal' || action.type === 'companyRejectAppeal') {
+    const endpoint = action.type === 'companyApproveAppeal' ? 'approve' : 'reject';
+    const j = await adminFetch(`/billing/company-appeals/${action.appealId}/${endpoint}`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reason: values.reason }),
+    });
+    if (j.code !== 200) throw new Error(j.message || (action.type === 'companyApproveAppeal' ? '通过失败' : '驳回失败'));
+    toast(action.type === 'companyApproveAppeal' ? '申诉已通过，装修公司展示已恢复' : '申诉已驳回');
+    if (document.getElementById('company-billing-appeal-body')) await loadCompanyBillingAppeals(companyBillingAppealPage);
+    if (document.getElementById('billing-company-body')) await loadBillingCompanies(page);
+    if (selectedBillingCompanyId) await viewBillingCompany(selectedBillingCompanyId, false);
+    return;
+  }
+  if (action.type === 'companyRetryEvent') {
+    const j = await adminFetch(`/billing/events/${action.eventId}/retry`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ reason: values.reason }),
+    });
+    if (j.code !== 200) throw new Error(j.message || '重跑失败');
+    toast('事件已重新加入待处理');
+    await loadCompanyBillingExceptions();
+    return;
+  }
+  if (action.type === 'companyResolveEvent') {
+    const j = await adminFetch(`/billing/events/${action.eventId}/resolve`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ status: action.status, reason: values.reason }),
+    });
+    if (j.code !== 200) throw new Error(j.message || '处理失败');
+    toast(action.status === 'processed' ? '事件已标记为已处理' : '事件已标记为忽略');
+    await loadCompanyBillingExceptions();
+    return;
+  }
   if (action.type === 'retryEvent') {
     const j = await adminFetch(`/billing/events/${action.eventId}/retry`, {
       method: 'POST',
@@ -1572,6 +2475,7 @@ async function executeBillingAction(action, values) {
     toast('事件已重新加入待处理');
     await loadBillingExceptions();
     if (selectedBillingMerchantId) await viewBillingMerchant(selectedBillingMerchantId, false);
+    return;
   }
   if (action.type === 'resolveEvent') {
     const j = await adminFetch(`/billing/events/${action.eventId}/resolve`, {
@@ -1583,6 +2487,7 @@ async function executeBillingAction(action, values) {
     toast(action.status === 'processed' ? '事件已标记为已处理' : '事件已标记为忽略');
     await loadBillingExceptions();
     if (selectedBillingMerchantId) await viewBillingMerchant(selectedBillingMerchantId, false);
+    return;
   }
 }
 
@@ -1599,6 +2504,19 @@ async function retryBillingEvent(eventId) {
   });
 }
 
+async function retryCompanyBillingEvent(eventId) {
+  openBillingActionModal({
+    type: 'companyRetryEvent',
+    eventId,
+    title: '重跑装修公司 Billing 事件',
+    summary: '确认后会把该事件重新加入待处理队列。只用于人工确认可以重新投递的失败或死信事件。',
+    submitText: '确认重跑',
+    fields: [
+      { name: 'reason', label: '重跑原因', type: 'textarea', placeholder: '例如：人工确认后重新投递', required: true },
+    ],
+  });
+}
+
 async function resolveBillingEvent(eventId, status) {
   const processed = status === 'processed';
   openBillingActionModal({
@@ -1606,6 +2524,30 @@ async function resolveBillingEvent(eventId, status) {
     eventId,
     status: processed ? 'processed' : 'ignored',
     title: processed ? '标记事件已处理' : '忽略 Billing 事件',
+    summary: processed
+      ? '适用于人工确认订单、订阅、权益都已经正常，不需要再重跑的事件。'
+      : '适用于测试数据、重复事件或确认无影响的事件。忽略后不会继续出现在异常列表。',
+    submitText: processed ? '确认已处理' : '确认忽略',
+    danger: !processed,
+    fields: [
+      {
+        name: 'reason',
+        label: processed ? '处理说明' : '忽略原因',
+        type: 'textarea',
+        placeholder: processed ? '例如：人工确认权益已正常生效' : '例如：测试数据，无需处理',
+        required: true,
+      },
+    ],
+  });
+}
+
+async function resolveCompanyBillingEvent(eventId, status) {
+  const processed = status === 'processed';
+  openBillingActionModal({
+    type: 'companyResolveEvent',
+    eventId,
+    status: processed ? 'processed' : 'ignored',
+    title: processed ? '标记装修公司事件已处理' : '忽略装修公司 Billing 事件',
     summary: processed
       ? '适用于人工确认订单、订阅、权益都已经正常，不需要再重跑的事件。'
       : '适用于测试数据、重复事件或确认无影响的事件。忽略后不会继续出现在异常列表。',
@@ -1949,12 +2891,14 @@ async function viewBillingOrder(orderId) {
 
 function billingOrderDetailHtml(data) {
   const order = data.order || {};
+  const subjectName = order.company_name || order.merchant_name || '-';
+  const subjectContact = order.contact_phone || order.phone || order.city || '-';
   return `
     <div class="card item-panel">
       <div class="card-title">
         <div>
           <h3>订单详情 ${esc(order.order_no || '')}</h3>
-          <p>${esc(order.merchant_name || '-')} · ${esc(order.phone || '-')} · ${orderStatusLabel(order.status)}</p>
+          <p>${esc(subjectName)} · ${esc(subjectContact)} · ${orderStatusLabel(order.status)}</p>
         </div>
       </div>
       <div class="detail-grid">

@@ -197,6 +197,54 @@ function buildBillingOrderWhere(query = {}) {
   return { where, params };
 }
 
+function buildCompanyBillingOrderWhere(query = {}) {
+  const params = [];
+  let where = `bo.subject_type = 'company'`;
+
+  const keyword = String(query.keyword || '').trim();
+  if (keyword) {
+    where += ` AND (
+      bo.order_no LIKE ?
+      OR c.name LIKE ?
+      OR c.contact_phone LIKE ?
+      OR c.city LIKE ?
+    )`;
+    const kw = `%${keyword}%`;
+    params.push(kw, kw, kw, kw);
+  }
+
+  const status = String(query.status || '').trim();
+  if (status) {
+    if (!['pending_payment', 'paid', 'closed', 'refunded'].includes(status)) {
+      return { error: '订单状态不正确' };
+    }
+    where += ` AND bo.status = ?`;
+    params.push(status);
+  }
+
+  const paymentChannel = String(query.payment_channel || '').trim();
+  if (paymentChannel) {
+    if (!['manual', 'wechat_pay', 'alipay', 'apple_iap', 'google_play', 'stripe'].includes(paymentChannel)) {
+      return { error: '支付渠道不正确' };
+    }
+    where += ` AND bo.payment_channel = ?`;
+    params.push(paymentChannel);
+  }
+
+  const dateFrom = String(query.date_from || '').trim();
+  if (dateFrom) {
+    where += ` AND bo.created_at >= ?`;
+    params.push(`${dateFrom.slice(0, 10)} 00:00:00`);
+  }
+  const dateTo = String(query.date_to || '').trim();
+  if (dateTo) {
+    where += ` AND bo.created_at <= ?`;
+    params.push(`${dateTo.slice(0, 10)} 23:59:59`);
+  }
+
+  return { where, params };
+}
+
 function adminTemplatePayload(body = {}, existing = {}) {
   return {
     code: body.code !== undefined ? String(body.code).trim() : existing.code,
@@ -1124,6 +1172,56 @@ app.post('/api/admin/billing/merchant-plan', adminAuth, async (req, res) => {
   }
 });
 
+app.get('/api/admin/billing/company-plan', adminAuth, async (req, res) => {
+  try {
+    return success(res, await billingService.getCompanyDisplayPlanForAdmin());
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/admin/billing/company-plan', adminAuth, async (req, res) => {
+  const body = req.body || {};
+  const name = String(body.name || '').trim().slice(0, 120);
+  if (!name) return error(res, '套餐名称不能为空');
+
+  const priceCents = Math.max(0, Math.round(Number(body.price_cents || 0)));
+  if (!Number.isFinite(priceCents)) return error(res, '套餐价格不正确');
+
+  const durationDays = Math.max(1, Math.min(3650, Math.round(Number(body.duration_days || 30))));
+  const enabled = body.enabled === true || body.enabled === 1 || body.enabled === '1' || body.enabled === 'true';
+  const feature = {
+    company_visible: body.company_visible !== false && body.company_visible !== 'false' && body.company_visible !== 0 && body.company_visible !== '0',
+    search_visible: body.search_visible !== false && body.search_visible !== 'false' && body.search_visible !== 0 && body.search_visible !== '0',
+    case_showcase: body.case_showcase !== false && body.case_showcase !== 'false' && body.case_showcase !== 0 && body.case_showcase !== '0',
+    review_showcase: body.review_showcase !== false && body.review_showcase !== 'false' && body.review_showcase !== 0 && body.review_showcase !== '0',
+  };
+  const limit = {
+    case_limit: Math.max(0, Math.round(Number(body.case_limit || 0))),
+    review_limit: Math.max(0, Math.round(Number(body.review_limit || 0))),
+  };
+
+  try {
+    const plan = await billingService.publishCompanyDisplayPlanVersion({
+      name,
+      priceCents,
+      durationDays,
+      enabled,
+      feature,
+      limit,
+    });
+    return success(res, plan, '装修公司套餐已发布新版本');
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
 app.get('/api/admin/billing/appeals', adminAuth, async (req, res) => {
   try {
     const result = await billingService.listMerchantDisplayAppeals({
@@ -1509,6 +1607,23 @@ app.post('/api/admin/billing/merchants/:id/resume', adminAuth, async (req, res) 
     if (!entitlement) {
       await conn.rollback();
       return error(res, '没有可恢复的有效展示权益', 404);
+    }
+    const [companyRows] = await conn.query(
+      `SELECT verification_status, status
+       FROM companies
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    const company = companyRows[0];
+    if (!company || company.status === 'deleted') {
+      await conn.rollback();
+      return error(res, '装修公司不存在', 404);
+    }
+    if (company.verification_status !== 'verified') {
+      await conn.rollback();
+      return error(res, '装修公司必须认证通过后才能恢复展示', 409);
     }
     await conn.query(
       `UPDATE billing_entitlements
@@ -2023,6 +2138,20 @@ app.post('/api/admin/billing/companies/:id/suspend', adminAuth, async (req, res)
         reason,
       ]
     );
+    await conn.query(
+      `INSERT INTO billing_events (
+         event_id, event_type, event_version, subject_type, subject_id,
+         aggregate_type, aggregate_id, payload_json, status
+       )
+       VALUES (?, 'COMPANY_DISPLAY_SUSPENDED', 1, 'company', ?,
+               'billing_entitlement', ?, ?, 'pending')`,
+      [
+        crypto.randomUUID(),
+        companyId,
+        entitlement.id,
+        JSON.stringify({ reason }),
+      ]
+    );
     await conn.commit();
     return success(res, { suspended: true }, '装修公司展示已暂停');
   } catch (err) {
@@ -2087,6 +2216,20 @@ app.post('/api/admin/billing/companies/:id/resume', adminAuth, async (req, res) 
         reason,
       ]
     );
+    await conn.query(
+      `INSERT INTO billing_events (
+         event_id, event_type, event_version, subject_type, subject_id,
+         aggregate_type, aggregate_id, payload_json, status
+       )
+       VALUES (?, 'COMPANY_DISPLAY_RESUMED', 1, 'company', ?,
+               'billing_entitlement', ?, ?, 'pending')`,
+      [
+        crypto.randomUUID(),
+        companyId,
+        entitlement.id,
+        JSON.stringify({ reason }),
+      ]
+    );
     await conn.commit();
     return success(res, { resumed: true }, '装修公司展示已恢复');
   } catch (err) {
@@ -2102,11 +2245,15 @@ app.post('/api/admin/billing/companies/:id/close', adminAuth, async (req, res) =
   if (!companyId) return error(res, '装修公司不存在', 404);
   const reason = String(req.body?.reason || '').trim().slice(0, 200);
   if (!reason) return error(res, '请填写关闭原因');
+  const refundAmountCents = Math.round(Number(req.body?.refund_amount_cents || 0));
+  if (!Number.isFinite(refundAmountCents) || refundAmountCents < 0) return error(res, '退款金额不正确');
+  const voucherNote = String(req.body?.voucher_note || '').trim().slice(0, 300);
+  if (!voucherNote) return error(res, '请填写退款或关闭凭证说明');
 
   const conn = await db.getConnection();
   try {
     await conn.beginTransaction();
-    const [rows] = await conn.query(
+    const [entitlementRows] = await conn.query(
       `SELECT *
        FROM billing_entitlements
        WHERE subject_type = 'company'
@@ -2118,20 +2265,53 @@ app.post('/api/admin/billing/companies/:id/close', adminAuth, async (req, res) =
        FOR UPDATE`,
       [companyId]
     );
-    const entitlement = rows[0];
+    const entitlement = entitlementRows[0];
     if (!entitlement) {
       await conn.rollback();
       return error(res, '没有可关闭的有效展示权益', 404);
     }
+
+    let subscription = null;
+    if (entitlement.subscription_id) {
+      const [subscriptionRows] = await conn.query(
+        `SELECT *
+         FROM billing_subscriptions
+         WHERE id = ?
+           AND subject_type = 'company'
+           AND subject_id = ?
+         LIMIT 1
+         FOR UPDATE`,
+        [entitlement.subscription_id, companyId]
+      );
+      subscription = subscriptionRows[0] || null;
+    }
+
+    const sourceOrderId = subscription?.source_order_id || null;
+    let payment = null;
+    if (sourceOrderId) {
+      const [paymentRows] = await conn.query(
+        `SELECT *
+         FROM billing_payments
+         WHERE order_id = ?
+           AND subject_type = 'company'
+           AND subject_id = ?
+         ORDER BY id DESC
+         LIMIT 1
+         FOR UPDATE`,
+        [sourceOrderId, companyId]
+      );
+      payment = paymentRows[0] || null;
+    }
+
     await conn.query(
       `UPDATE billing_entitlements
        SET status = 'inactive',
            readonly_mode = 1,
            reason = 'refund_closed'
-       WHERE id = ?`,
+      WHERE id = ?`,
       [entitlement.id]
     );
-    if (entitlement.subscription_id) {
+    if (subscription) {
       await conn.query(
         `UPDATE billing_subscriptions
          SET status = 'cancelled',
@@ -2139,9 +2319,28 @@ app.post('/api/admin/billing/companies/:id/close', adminAuth, async (req, res) =
              readonly_mode = 1,
              reason = 'refund_closed'
          WHERE id = ?`,
-        [entitlement.subscription_id]
+        [subscription.id]
       );
     }
+    if (sourceOrderId) {
+      await conn.query(
+        `UPDATE billing_orders
+         SET status = 'refunded',
+             closed_at = NOW()
+         WHERE id = ?
+           AND status = 'paid'`,
+        [sourceOrderId]
+      );
+    }
+    if (payment) {
+      await conn.query(
+        `UPDATE billing_payments
+         SET status = 'refunded'
+         WHERE id = ?`,
+        [payment.id]
+      );
+    }
+
     await conn.query(
       `UPDATE companies
        SET paid_display_status = 'none',
@@ -2149,6 +2348,22 @@ app.post('/api/admin/billing/companies/:id/close', adminAuth, async (req, res) =
        WHERE id = ?`,
       [companyId]
     );
+
+    const after = {
+      entitlement_id: entitlement.id,
+      subscription_id: subscription?.id || null,
+      order_id: sourceOrderId,
+      payment_id: payment?.id || null,
+      refund_processing: {
+        amount_cents: refundAmountCents,
+        currency: payment?.currency || 'CNY',
+        voucher_note: voucherNote,
+      },
+      entitlement: { status: 'inactive', readonly_mode: true, reason: 'refund_closed' },
+      subscription: subscription ? { status: 'cancelled', readonly_mode: true, reason: 'refund_closed' } : null,
+      company: { paid_display_status: 'none' },
+    };
+
     await conn.query(
       `INSERT INTO billing_audit_logs (
          subject_type, subject_id, actor_type, actor_id, action,
@@ -2159,19 +2374,564 @@ app.post('/api/admin/billing/companies/:id/close', adminAuth, async (req, res) =
       [
         companyId,
         entitlement.id,
-        JSON.stringify({ status: entitlement.status, readonly_mode: Boolean(entitlement.readonly_mode), reason: entitlement.reason || null }),
-        JSON.stringify({ status: 'inactive', readonly_mode: true, reason: 'refund_closed' }),
+        JSON.stringify({
+          entitlement: {
+            status: entitlement.status,
+            readonly_mode: Boolean(entitlement.readonly_mode),
+            reason: entitlement.reason || null,
+          },
+          subscription: subscription
+            ? {
+                id: subscription.id,
+                status: subscription.status,
+                readonly_mode: Boolean(subscription.readonly_mode),
+                reason: subscription.reason || null,
+              }
+            : null,
+          order_id: sourceOrderId,
+          payment_id: payment?.id || null,
+        }),
+        JSON.stringify(after),
         reason,
       ]
     );
+    await conn.query(
+      `INSERT INTO billing_events (
+         event_id, event_type, event_version, subject_type, subject_id,
+         aggregate_type, aggregate_id, payload_json, status
+       )
+       VALUES (?, 'COMPANY_DISPLAY_CLOSED', 1, 'company', ?,
+               'billing_entitlement', ?, ?, 'pending')`,
+      [
+        crypto.randomUUID(),
+        companyId,
+        entitlement.id,
+        JSON.stringify(after),
+      ]
+    );
+    if (refundAmountCents > 0) {
+      await conn.query(
+        `INSERT INTO billing_events (
+           event_id, event_type, event_version, subject_type, subject_id,
+           aggregate_type, aggregate_id, payload_json, status
+         )
+         VALUES (?, 'REFUND_MANUAL_PROCESSED', 1, 'company', ?,
+                 'billing_order', ?, ?, 'pending')`,
+        [
+          crypto.randomUUID(),
+          companyId,
+          sourceOrderId || entitlement.id,
+          JSON.stringify(after),
+        ]
+      );
+    }
+
     await conn.commit();
-    return success(res, { closed: true }, '装修公司展示权益已关闭');
+    return success(res, { closed: true, refund_amount_cents: refundAmountCents }, '装修公司展示权益已关闭');
   } catch (err) {
     await conn.rollback();
     throw err;
   } finally {
     conn.release();
   }
+});
+
+app.get('/api/admin/billing/company-appeals', adminAuth, async (req, res) => {
+  try {
+    const result = await billingService.listCompanyDisplayAppeals({
+      status: req.query.status,
+      keyword: req.query.keyword,
+      page: req.query.page,
+      pageSize: req.query.pageSize,
+    });
+    return success(res, result);
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/admin/billing/company-appeals/:id/approve', adminAuth, async (req, res) => {
+  const appealId = Number(req.params.id);
+  if (!appealId) return error(res, '申诉不存在', 404);
+  try {
+    const result = await billingService.approveCompanyDisplayAppeal({
+      appealId,
+      adminId: req.admin?.id || null,
+      reason: req.body?.reason,
+    });
+    return success(res, result, '申诉已通过，装修公司展示已恢复');
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.post('/api/admin/billing/company-appeals/:id/reject', adminAuth, async (req, res) => {
+  const appealId = Number(req.params.id);
+  if (!appealId) return error(res, '申诉不存在', 404);
+  try {
+    const result = await billingService.rejectCompanyDisplayAppeal({
+      appealId,
+      adminId: req.admin?.id || null,
+      reason: req.body?.reason,
+    });
+    return success(res, result, '申诉已驳回');
+  } catch (err) {
+    if (err instanceof billingService.BillingError) {
+      return error(res, err.message, err.statusCode || 400);
+    }
+    throw err;
+  }
+});
+
+app.get('/api/admin/billing/company-summary', adminAuth, async (req, res) => {
+  const range = String(req.query.range || 'today').trim();
+  const today = new Date();
+  const yyyyMmDd = (date) => date.toISOString().slice(0, 10);
+  let dateFrom = String(req.query.date_from || '').trim().slice(0, 10);
+  let dateTo = String(req.query.date_to || '').trim().slice(0, 10);
+  if (!dateFrom || !dateTo) {
+    if (range === 'yesterday') {
+      const day = new Date(today);
+      day.setDate(day.getDate() - 1);
+      dateFrom = yyyyMmDd(day);
+      dateTo = yyyyMmDd(day);
+    } else if (range === 'last7') {
+      const start = new Date(today);
+      start.setDate(start.getDate() - 6);
+      dateFrom = yyyyMmDd(start);
+      dateTo = yyyyMmDd(today);
+    } else {
+      dateFrom = yyyyMmDd(today);
+      dateTo = yyyyMmDd(today);
+    }
+  }
+  const startAt = `${dateFrom} 00:00:00`;
+  const endAt = `${dateTo} 23:59:59`;
+
+  const [[orderRow]] = await db.query(
+    `SELECT COUNT(*) AS total_orders,
+            SUM(status = 'pending_payment') AS pending_orders,
+            SUM(status = 'paid') AS paid_orders,
+            SUM(status = 'refunded') AS refunded_orders,
+            SUM(status = 'closed') AS closed_orders,
+            COALESCE(SUM(amount_cents), 0) AS order_amount_cents
+     FROM billing_orders
+     WHERE subject_type = 'company'
+       AND created_at BETWEEN ? AND ?`,
+    [startAt, endAt]
+  );
+  const [[paymentRow]] = await db.query(
+    `SELECT COUNT(*) AS successful_payments,
+            COALESCE(SUM(amount_cents), 0) AS successful_payment_amount_cents
+     FROM billing_payments
+     WHERE subject_type = 'company'
+       AND status = 'succeeded'
+       AND paid_at BETWEEN ? AND ?`,
+    [startAt, endAt]
+  );
+  const [[refundRow]] = await db.query(
+    `SELECT COUNT(*) AS refunded_payments,
+            COALESCE(SUM(amount_cents), 0) AS refunded_payment_amount_cents
+     FROM billing_payments
+     WHERE subject_type = 'company'
+       AND status = 'refunded'
+       AND updated_at BETWEEN ? AND ?`,
+    [startAt, endAt]
+  );
+  const [[activeRow]] = await db.query(
+    `SELECT
+       (SELECT COUNT(*)
+        FROM billing_subscriptions
+        WHERE subject_type = 'company'
+          AND status = 'active'
+          AND expire_at > NOW()) AS active_subscriptions,
+       (SELECT COUNT(*)
+        FROM billing_entitlements
+        WHERE subject_type = 'company'
+          AND status = 'active'
+          AND readonly_mode = 0
+          AND expire_at > NOW()
+          AND JSON_UNQUOTE(JSON_EXTRACT(feature_json, '$.company_visible')) = 'true') AS visible_companies`
+  );
+  const [[exceptionRow]] = await db.query(
+    `SELECT
+       (SELECT COUNT(*)
+        FROM billing_payments bp
+        JOIN billing_orders bo ON bo.id = bp.order_id
+        WHERE bp.subject_type = 'company'
+          AND bp.status = 'succeeded'
+          AND bo.status = 'paid'
+          AND NOT EXISTS (
+            SELECT 1
+            FROM billing_entitlements be
+            WHERE be.subject_type = 'company'
+              AND be.subject_id = bp.subject_id
+              AND be.status = 'active'
+              AND be.expire_at > NOW()
+          )) AS payment_not_activated,
+       (SELECT COUNT(*)
+        FROM billing_events
+        WHERE subject_type = 'company'
+          AND status IN ('failed', 'dead_letter')) AS event_failures`
+  );
+
+  return success(res, {
+    range: { date_from: dateFrom, date_to: dateTo },
+    orders: {
+      total: Number(orderRow.total_orders || 0),
+      pending_payment: Number(orderRow.pending_orders || 0),
+      paid: Number(orderRow.paid_orders || 0),
+      refunded: Number(orderRow.refunded_orders || 0),
+      closed: Number(orderRow.closed_orders || 0),
+      amount_cents: Number(orderRow.order_amount_cents || 0),
+    },
+    payments: {
+      successful_count: Number(paymentRow.successful_payments || 0),
+      successful_amount_cents: Number(paymentRow.successful_payment_amount_cents || 0),
+    },
+    refunds: {
+      count: Number(refundRow.refunded_payments || 0),
+      amount_cents: Number(refundRow.refunded_payment_amount_cents || 0),
+    },
+    active: {
+      subscriptions: Number(activeRow.active_subscriptions || 0),
+      visible_companies: Number(activeRow.visible_companies || 0),
+    },
+    exceptions: {
+      payment_not_activated: Number(exceptionRow.payment_not_activated || 0),
+      event_failures: Number(exceptionRow.event_failures || 0),
+    },
+  });
+});
+
+app.get('/api/admin/billing/company-orders', adminAuth, async (req, res) => {
+  const filter = buildCompanyBillingOrderWhere(req.query);
+  if (filter.error) return error(res, filter.error);
+  const { where, params } = filter;
+
+  const pageNo = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (pageNo - 1) * pageSize;
+
+  const [rows] = await db.query(
+    `SELECT bo.id, bo.order_no, bo.subject_id, bo.status, bo.amount_cents,
+            bo.currency, bo.payment_channel, bo.paid_at, bo.closed_at, bo.created_at,
+            c.name, c.city, c.contact_phone, c.owner_user_id,
+            bp.id AS payment_id, bp.payment_no, bp.status AS payment_status,
+            bs.id AS subscription_id, bs.status AS subscription_status, bs.expire_at
+     FROM billing_orders bo
+     LEFT JOIN companies c ON c.id = bo.subject_id
+     LEFT JOIN billing_payments bp ON bp.id = (
+       SELECT bp2.id
+       FROM billing_payments bp2
+       WHERE bp2.order_id = bo.id
+       ORDER BY bp2.id DESC
+       LIMIT 1
+     )
+     LEFT JOIN billing_subscriptions bs ON bs.id = (
+       SELECT bs2.id
+       FROM billing_subscriptions bs2
+       WHERE bs2.source_order_id = bo.id
+       ORDER BY bs2.id DESC
+       LIMIT 1
+     )
+     WHERE ${where}
+     ORDER BY bo.created_at DESC, bo.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const [[countRow]] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM billing_orders bo
+     LEFT JOIN companies c ON c.id = bo.subject_id
+     WHERE ${where}`,
+    params
+  );
+
+  return success(res, {
+    orders: rows.map((row) => ({
+      id: Number(row.id),
+      order_no: row.order_no || '',
+      company_id: Number(row.subject_id),
+      company_name: row.name || '',
+      city: row.city || '',
+      contact_phone: row.contact_phone || '',
+      owner_user_id: row.owner_user_id ? Number(row.owner_user_id) : null,
+      status: row.status || '',
+      amount_cents: Number(row.amount_cents || 0),
+      currency: row.currency || 'CNY',
+      payment_channel: row.payment_channel || '',
+      paid_at: row.paid_at,
+      closed_at: row.closed_at,
+      created_at: row.created_at,
+      payment_id: row.payment_id ? Number(row.payment_id) : null,
+      payment_no: row.payment_no || '',
+      payment_status: row.payment_status || '',
+      subscription_id: row.subscription_id ? Number(row.subscription_id) : null,
+      subscription_status: row.subscription_status || '',
+      subscription_expire_at: row.expire_at,
+    })),
+    total: Number(countRow.total || 0),
+    page: pageNo,
+    pageSize,
+  });
+});
+
+app.get('/api/admin/billing/company-orders/export', adminAuth, async (req, res) => {
+  const filter = buildCompanyBillingOrderWhere(req.query);
+  if (filter.error) return error(res, filter.error);
+  const { where, params } = filter;
+
+  const [rows] = await db.query(
+    `SELECT bo.id, bo.order_no, bo.subject_id, bo.status, bo.amount_cents,
+            bo.currency, bo.payment_channel, bo.paid_at, bo.closed_at, bo.created_at,
+            c.name, c.city, c.contact_phone,
+            bp.payment_no, bp.status AS payment_status,
+            bs.status AS subscription_status, bs.expire_at
+     FROM billing_orders bo
+     LEFT JOIN companies c ON c.id = bo.subject_id
+     LEFT JOIN billing_payments bp ON bp.id = (
+       SELECT bp2.id
+       FROM billing_payments bp2
+       WHERE bp2.order_id = bo.id
+       ORDER BY bp2.id DESC
+       LIMIT 1
+     )
+     LEFT JOIN billing_subscriptions bs ON bs.id = (
+       SELECT bs2.id
+       FROM billing_subscriptions bs2
+       WHERE bs2.source_order_id = bo.id
+       ORDER BY bs2.id DESC
+       LIMIT 1
+     )
+     WHERE ${where}
+     ORDER BY bo.created_at DESC, bo.id DESC
+     LIMIT 5000`,
+    params
+  );
+
+  const headers = [
+    '订单号',
+    '装修公司ID',
+    '装修公司名称',
+    '城市',
+    '联系电话',
+    '订单状态',
+    '订单金额',
+    '支付渠道',
+    '支付号',
+    '支付状态',
+    '订阅状态',
+    '订阅到期时间',
+    '创建时间',
+    '支付时间',
+    '关闭/退款时间',
+  ];
+  const lines = [
+    csvLine(headers),
+    ...rows.map((row) => csvLine([
+      row.order_no || '',
+      row.subject_id || '',
+      row.name || '',
+      row.city || '',
+      row.contact_phone || '',
+      row.status || '',
+      (Number(row.amount_cents || 0) / 100).toFixed(2),
+      row.payment_channel || '',
+      row.payment_no || '',
+      row.payment_status || '',
+      row.subscription_status || '',
+      adminDateTimeText(row.expire_at),
+      adminDateTimeText(row.created_at),
+      adminDateTimeText(row.paid_at),
+      adminDateTimeText(row.closed_at),
+    ])),
+  ];
+  const filename = `company-orders-${new Date().toISOString().slice(0, 10)}.csv`;
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+  return res.send(`\uFEFF${lines.join('\n')}`);
+});
+
+app.get('/api/admin/billing/company-orders/:id', adminAuth, async (req, res) => {
+  const orderId = Number(req.params.id);
+  if (!orderId) return error(res, '订单不存在', 404);
+
+  const [orderRows] = await db.query(
+    `SELECT bo.*, c.name, c.city, c.contact_phone, c.owner_user_id
+     FROM billing_orders bo
+     LEFT JOIN companies c ON bo.subject_type = 'company' AND c.id = bo.subject_id
+     WHERE bo.id = ?
+       AND bo.subject_type = 'company'
+     LIMIT 1`,
+    [orderId]
+  );
+  const order = orderRows[0];
+  if (!order) return error(res, '订单不存在', 404);
+
+  const [payments] = await db.query(
+    `SELECT id, payment_no, status, amount_cents, currency, payment_channel, paid_at, created_at
+     FROM billing_payments
+     WHERE order_id = ?
+     ORDER BY id DESC`,
+    [orderId]
+  );
+  const [subscriptions] = await db.query(
+    `SELECT id, subscription_no, status, is_primary, started_at, expire_at, readonly_mode, reason, created_at
+     FROM billing_subscriptions
+     WHERE source_order_id = ?
+     ORDER BY id DESC`,
+    [orderId]
+  );
+  const subscriptionIds = subscriptions.map((item) => Number(item.id)).filter(Boolean);
+  let entitlements = [];
+  if (subscriptionIds.length) {
+    const [rows] = await db.query(
+      `SELECT id, subscription_id, status, source_type, source_id, readonly_mode, reason, expire_at, calculated_at
+       FROM billing_entitlements
+       WHERE subscription_id IN (?)
+       ORDER BY id DESC`,
+      [subscriptionIds]
+    );
+    entitlements = rows;
+  }
+  const [audits] = await db.query(
+    `SELECT id, action, target_type, target_id, reason, after_json, created_at
+     FROM billing_audit_logs
+     WHERE (target_type = 'billing_order' AND target_id = ?)
+        OR (subject_type = ? AND subject_id = ?)
+     ORDER BY id DESC
+     LIMIT 20`,
+    [orderId, order.subject_type, order.subject_id]
+  );
+  const [events] = await db.query(
+    `SELECT id, event_id, event_type, event_version, aggregate_type, aggregate_id,
+            status, retry_count, created_at, updated_at
+     FROM billing_events
+     WHERE (aggregate_type = 'billing_order' AND aggregate_id = ?)
+        OR (subject_type = ? AND subject_id = ?)
+     ORDER BY id DESC
+     LIMIT 20`,
+    [orderId, order.subject_type, order.subject_id]
+  );
+
+  return success(res, {
+    order: {
+      id: Number(order.id),
+      order_no: order.order_no || '',
+      subject_type: order.subject_type || '',
+      subject_id: Number(order.subject_id),
+      company_name: order.name || '',
+      city: order.city || '',
+      contact_phone: order.contact_phone || '',
+      owner_user_id: order.owner_user_id ? Number(order.owner_user_id) : null,
+      status: order.status || '',
+      amount_cents: Number(order.amount_cents || 0),
+      currency: order.currency || 'CNY',
+      payment_channel: order.payment_channel || '',
+      paid_at: order.paid_at,
+      created_at: order.created_at,
+      updated_at: order.updated_at,
+    },
+    payments,
+    subscriptions,
+    entitlements,
+    audits,
+    events,
+  });
+});
+
+app.get('/api/admin/billing/company-exceptions', adminAuth, async (req, res) => {
+  const [paymentRows] = await db.query(
+    `SELECT bp.id AS payment_id, bp.payment_no, bp.order_id, bp.subject_id AS company_id,
+            bp.amount_cents, bp.currency, bp.paid_at, bp.created_at,
+            bo.order_no, bo.status AS order_status,
+            be_current.id AS entitlement_id, be_current.status AS entitlement_status,
+            be_current.readonly_mode AS entitlement_readonly_mode,
+            be_current.expire_at AS entitlement_expire_at,
+            c.name, c.city, c.contact_phone
+     FROM billing_payments bp
+     LEFT JOIN billing_orders bo ON bo.id = bp.order_id
+     JOIN companies c ON c.id = bp.subject_id
+     LEFT JOIN billing_entitlements be_current ON be_current.id = (
+       SELECT be2.id
+       FROM billing_entitlements be2
+       WHERE be2.subject_type = 'company'
+         AND be2.subject_id = bp.subject_id
+       ORDER BY be2.id DESC
+       LIMIT 1
+     )
+     WHERE bp.subject_type = 'company'
+       AND bp.status = 'succeeded'
+       AND NOT EXISTS (
+         SELECT 1 FROM billing_entitlements be
+         WHERE be.subject_type = 'company'
+           AND be.subject_id = bp.subject_id
+           AND be.status = 'active'
+           AND be.readonly_mode = 0
+           AND be.expire_at > NOW()
+           AND JSON_UNQUOTE(JSON_EXTRACT(be.feature_json, '$.company_visible')) = 'true'
+       )
+     ORDER BY bp.paid_at DESC, bp.id DESC
+     LIMIT 50`
+  );
+  const [eventRows] = await db.query(
+    `SELECT be.id, be.event_id, be.event_type, be.event_version,
+            be.subject_type, be.subject_id, be.aggregate_type, be.aggregate_id,
+            be.status, be.retry_count, be.created_at, be.updated_at,
+            c.name, c.city, c.contact_phone
+     FROM billing_events be
+     LEFT JOIN companies c ON be.subject_type = 'company' AND c.id = be.subject_id
+     WHERE be.subject_type = 'company'
+       AND be.status IN ('failed', 'dead_letter')
+     ORDER BY be.updated_at DESC, be.id DESC
+     LIMIT 50`
+  );
+
+  return success(res, {
+    payment_not_activated: paymentRows.map((row) => ({
+      payment_id: Number(row.payment_id),
+      payment_no: row.payment_no || '',
+      order_id: row.order_id ? Number(row.order_id) : null,
+      order_no: row.order_no || '',
+      order_status: row.order_status || '',
+      company_id: Number(row.company_id),
+      company_name: row.name || '',
+      city: row.city || '',
+      contact_phone: row.contact_phone || '',
+      amount_cents: Number(row.amount_cents || 0),
+      currency: row.currency || 'CNY',
+      paid_at: row.paid_at,
+      created_at: row.created_at,
+      entitlement_id: row.entitlement_id ? Number(row.entitlement_id) : null,
+      entitlement_status: row.entitlement_status || '',
+      entitlement_readonly_mode: Boolean(row.entitlement_readonly_mode),
+      entitlement_expire_at: row.entitlement_expire_at,
+    })),
+    event_failures: eventRows.map((row) => ({
+      id: Number(row.id),
+      event_id: row.event_id || '',
+      event_type: row.event_type || '',
+      event_version: Number(row.event_version || 1),
+      subject_type: row.subject_type || '',
+      subject_id: row.subject_id ? Number(row.subject_id) : null,
+      company_name: row.name || '',
+      city: row.city || '',
+      contact_phone: row.contact_phone || '',
+      aggregate_type: row.aggregate_type || '',
+      aggregate_id: row.aggregate_id ? Number(row.aggregate_id) : null,
+      status: row.status || '',
+      retry_count: Number(row.retry_count || 0),
+      created_at: row.created_at,
+      updated_at: row.updated_at,
+    })),
+  });
 });
 
 app.get('/api/admin/billing/summary', adminAuth, async (req, res) => {
