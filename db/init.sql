@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS users (
     city VARCHAR(50) DEFAULT '',
     role ENUM('owner', 'designer', 'merchant', 'project_manager', 'project_supervisor') NOT NULL DEFAULT 'owner',
     admin_status ENUM('pending', 'approved', 'rejected') NOT NULL DEFAULT 'approved',
+    identity_onboarding_completed TINYINT UNSIGNED NOT NULL DEFAULT 0,
     followers_count INT UNSIGNED DEFAULT 0,
     following_count INT UNSIGNED DEFAULT 0,
     likes_received INT UNSIGNED DEFAULT 0,

@@ -12,7 +12,9 @@ function generateCode() {
 
 async function findUserByPhone(phone) {
   const [userRows] = await db.query(
-    'SELECT id, phone, password_hash, nickname, avatar, bio, city, role, admin_status FROM users WHERE phone = ?',
+    `SELECT id, phone, password_hash, nickname, avatar, bio, city, role,
+            admin_status, identity_onboarding_completed
+       FROM users WHERE phone = ?`,
     [phone]
   );
   return userRows[0] || null;
@@ -39,6 +41,7 @@ async function createFormalUser(phone) {
     bio: '',
     city: '',
     admin_status: 'approved',
+    identity_onboarding_completed: 0,
     password_hash: null,
   };
 }
@@ -78,6 +81,7 @@ async function buildLoginResponse(user) {
       role: currentRole,
       current_role: currentRole,
       roles,
+      identity_onboarding_completed: Boolean(user.identity_onboarding_completed),
     },
   };
 }

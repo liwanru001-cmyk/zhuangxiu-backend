@@ -26,6 +26,7 @@ const USER_INTERACTION_QUOTAS = {
 
 const profileSelect = `
   SELECT u.id, u.phone, u.nickname, u.avatar, u.bio, u.city, u.role,
+         u.identity_onboarding_completed,
          (u.password_hash IS NOT NULL AND u.password_hash != '') AS has_password,
          (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
           WHERE ur.user_id = u.id) AS roles,
@@ -1512,10 +1513,10 @@ async function updateRole(req, res) {
        VALUES (?, ?, 0)`,
       [req.user.id, role]
     );
-    await connection.query('UPDATE users SET role = ? WHERE id = ?', [
-      role,
-      req.user.id,
-    ]);
+    await connection.query(
+      'UPDATE users SET role = ?, identity_onboarding_completed = 1 WHERE id = ?',
+      [role, req.user.id]
+    );
     await connection.commit();
   } catch (updateError) {
     await connection.rollback();
@@ -1525,6 +1526,7 @@ async function updateRole(req, res) {
   }
   const [rows] = await db.query(
     `SELECT u.id, u.phone, u.nickname, u.avatar, u.bio, u.city, u.role,
+            u.identity_onboarding_completed,
             (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
              WHERE ur.user_id = u.id) AS roles
      FROM users u WHERE u.id = ?`,
