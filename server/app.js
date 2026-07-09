@@ -1608,23 +1608,6 @@ app.post('/api/admin/billing/merchants/:id/resume', adminAuth, async (req, res) 
       await conn.rollback();
       return error(res, '没有可恢复的有效展示权益', 404);
     }
-    const [companyRows] = await conn.query(
-      `SELECT verification_status, status
-       FROM companies
-       WHERE id = ?
-       LIMIT 1
-       FOR UPDATE`,
-      [companyId]
-    );
-    const company = companyRows[0];
-    if (!company || company.status === 'deleted') {
-      await conn.rollback();
-      return error(res, '装修公司不存在', 404);
-    }
-    if (company.verification_status !== 'verified') {
-      await conn.rollback();
-      return error(res, '装修公司必须认证通过后才能恢复展示', 409);
-    }
     await conn.query(
       `UPDATE billing_entitlements
        SET readonly_mode = 0,
@@ -2187,6 +2170,23 @@ app.post('/api/admin/billing/companies/:id/resume', adminAuth, async (req, res) 
     if (!entitlement) {
       await conn.rollback();
       return error(res, '没有可恢复的有效展示权益', 404);
+    }
+    const [companyRows] = await conn.query(
+      `SELECT verification_status, status
+       FROM companies
+       WHERE id = ?
+       LIMIT 1
+       FOR UPDATE`,
+      [companyId]
+    );
+    const company = companyRows[0];
+    if (!company || company.status === 'deleted') {
+      await conn.rollback();
+      return error(res, '装修公司不存在', 404);
+    }
+    if (company.verification_status !== 'verified') {
+      await conn.rollback();
+      return error(res, '装修公司必须认证通过后才能恢复展示', 409);
     }
     await conn.query(
       `UPDATE billing_entitlements

@@ -1334,7 +1334,10 @@ function assertAppealableEntitlement(entitlement, visibleField = 'shop_visible',
   if (entitlement[visibleField]) {
     throw new BillingError(visibleMessage, 409);
   }
-  if (!['manual_suspend', 'refund_closed'].includes(entitlement.reason)) {
+  if (entitlement.reason === 'refund_closed') {
+    throw new BillingError('展示权益已关闭，请重新付款开通', 409);
+  }
+  if (entitlement.reason !== 'manual_suspend') {
     throw new BillingError('当前状态不支持申诉，请按页面提示处理', 400);
   }
 }
@@ -1755,6 +1758,9 @@ async function approveMerchantDisplayAppeal({ appealId, adminId = null, reason }
     );
     const entitlement = entitlementRows[0];
     if (!entitlement) throw new BillingError('申诉关联权益不存在', 404);
+    if (entitlement.reason === 'refund_closed' || appeal.reason_code === 'refund_closed') {
+      throw new BillingError('展示权益已关闭，请重新付款开通', 409);
+    }
     if (new Date(entitlement.expire_at).getTime() <= Date.now()) {
       throw new BillingError('该权益已到期，不能直接恢复', 409);
     }
@@ -1864,6 +1870,9 @@ async function approveCompanyDisplayAppeal({ appealId, adminId = null, reason })
     );
     const entitlement = entitlementRows[0];
     if (!entitlement) throw new BillingError('申诉关联权益不存在', 404);
+    if (entitlement.reason === 'refund_closed' || appeal.reason_code === 'refund_closed') {
+      throw new BillingError('展示权益已关闭，请重新付款开通', 409);
+    }
     if (new Date(entitlement.expire_at).getTime() <= Date.now()) {
       throw new BillingError('该权益已到期，不能直接恢复', 409);
     }

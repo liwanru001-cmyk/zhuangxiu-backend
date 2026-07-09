@@ -330,7 +330,7 @@ test('approve merchant display appeal restores inactive entitlement and subscrip
           subscription_id: 77,
           status: 'inactive',
           readonly_mode: 1,
-          reason: 'refund_closed',
+          reason: 'manual_suspend',
           expire_at: future,
         }]];
       }
@@ -375,4 +375,66 @@ test('approve merchant display appeal restores inactive entitlement and subscrip
   assert.equal(result.resumed, true);
   assert.equal(result.appeal.status, 'approved');
   assert.deepEqual(updates, ['entitlement', 'subscription', 'appeal', 'commit']);
+});
+
+test('approve merchant display appeal rejects refund closed entitlement', async () => {
+  const future = new Date(Date.now() + 86400000).toISOString();
+  const updates = [];
+  const conn = {
+    async beginTransaction() {},
+    async query(sql, params) {
+      if (/FROM billing_appeals/.test(sql)) {
+        assert.deepEqual(params, [99]);
+        return [[{
+          id: 99,
+          appeal_no: 'BA1',
+          subject_type: 'merchant',
+          subject_id: 42,
+          appeal_type: 'merchant_display_restore',
+          status: 'pending',
+          entitlement_id: 88,
+          reason_code: 'refund_closed',
+          reason_label: '后台已关闭展示权益',
+          content: '申请恢复',
+          created_by: 42,
+          created_at: future,
+        }]];
+      }
+      if (/FROM billing_entitlements/.test(sql)) {
+        assert.deepEqual(params, [88, 42]);
+        return [[{
+          id: 88,
+          subject_type: 'merchant',
+          subject_id: 42,
+          subscription_id: 77,
+          status: 'inactive',
+          readonly_mode: 1,
+          reason: 'refund_closed',
+          expire_at: future,
+        }]];
+      }
+      throw new Error(`unexpected conn query: ${sql}`);
+    },
+    async commit() {
+      updates.push('commit');
+    },
+    async rollback() {
+      updates.push('rollback');
+    },
+    release() {},
+  };
+  const billingService = loadBillingService({
+    async getConnection() {
+      return conn;
+    },
+  });
+
+  await assert.rejects(
+    () => billingService.approveMerchantDisplayAppeal({
+      appealId: 99,
+      reason: '审核通过，恢复展示',
+    }),
+    /展示权益已关闭，请重新付款开通/
+  );
+  assert.deepEqual(updates, ['rollback']);
 });
