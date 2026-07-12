@@ -1083,6 +1083,35 @@
     .profile-anchor:hover { color: var(--blue-dark); border-color: #c9d9ec; background: #fff; }
     .dirty-state { color: var(--muted); font-size: 10px; font-weight: 800; white-space: nowrap; }
     .dirty-state.active { color: #b54708; }
+    .profile-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
+    .profile-section-nav { position: sticky; top: 88px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .profile-section-nav h3 { margin: 4px 6px 10px; font-size: 13px; }
+    .profile-section-button { width: 100%; min-height: 48px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; text-align: left; font-size: 11px; font-weight: 850; }
+    .profile-section-button.active { color: var(--blue-dark); background: #edf4fc; }
+    .profile-section-state { padding: 4px 6px; border-radius: 8px; color: #667085; background: #eef1f4; white-space: nowrap; font-size: 9px; }
+    .profile-section-state.complete { color: #087a5b; background: #e8f6f1; }
+    .profile-edit-section { display: none; margin-top: 0; }
+    .profile-edit-section.active { display: block; }
+    .profile-section-heading { margin-bottom: 18px; }
+    .profile-section-heading h2 { margin: 0; }
+    .profile-section-heading p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .profile-basic-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+    .profile-store-preview { position: sticky; top: 88px; }
+    .profile-store-preview h3 { margin: 0 0 12px; font-size: 14px; }
+    .profile-preview-phone { width: 220px; height: 430px; margin: 0 auto; padding: 8px; border-radius: 26px; background: #25282d; }
+    .profile-preview-screen { height: 100%; overflow: hidden; border-radius: 19px; background: #f6f4ef; }
+    .profile-preview-cover { height: 145px; display: grid; place-items: center; overflow: hidden; color: var(--muted); background: #e7ebef; font-size: 10px; }
+    .profile-preview-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-preview-body { padding: 13px; }
+    .profile-preview-identity { display: grid; grid-template-columns: 40px minmax(0, 1fr); gap: 9px; align-items: center; }
+    .profile-preview-logo { width: 40px; height: 40px; display: grid; place-items: center; overflow: hidden; border-radius: 7px; color: var(--blue-dark); background: #e9f1fc; font-size: 10px; font-weight: 900; }
+    .profile-preview-logo img { width: 100%; height: 100%; object-fit: cover; }
+    .profile-preview-identity b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+    .profile-preview-identity small, .profile-preview-copy { color: var(--muted); font-size: 9px; line-height: 1.6; }
+    .profile-preview-copy { margin-top: 12px; }
+    .profile-trust-note { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #f1d7a8; border-radius: 7px; color: #8a5b13; background: #fff8e8; font-size: 11px; line-height: 1.6; }
+    body.profile-active .shell { max-width: none; padding: 28px 32px 48px; }
+    body.profile-active .portal-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
     .profile-summary { margin-bottom: 14px; padding: 16px 18px; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .profile-summary h2 { margin: 0; font-size: 17px; }
     .profile-summary p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
@@ -1198,6 +1227,14 @@
       .overview-status { align-items: flex-start; flex-direction: column; }
       .overview-status-tags { justify-content: flex-start; }
       .profile-toolbar { align-items: flex-start; flex-direction: column; }
+      .profile-workspace { grid-template-columns: 1fr; }
+      .profile-section-nav { position: static; display: flex; gap: 6px; overflow-x: auto; }
+      .profile-section-nav h3 { display: none; }
+      .profile-section-button { min-width: 150px; }
+      .profile-basic-layout { grid-template-columns: 1fr; }
+      .profile-store-preview { display: none; }
+      body.profile-active .shell { padding: 18px 16px 36px; }
+      body.profile-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
       .product-filterbar { grid-template-columns: 1fr; }
       .product-table-panel .product-filterbar { grid-template-columns: 1fr; }
       .product-management-layout { grid-template-columns: 1fr; }
@@ -1367,11 +1404,12 @@
       </section>
 
       <form id="profilePanel" class="workspace-panel">
-        <div class="profile-toolbar"><div class="profile-anchor-nav"><button class="profile-anchor" type="button" data-profile-target="profileBasicSection">基础信息</button><button class="profile-anchor" type="button" data-profile-target="profileContactSection">联系信息</button><button class="profile-anchor" type="button" data-profile-target="profileCategorySection">主营品类</button><button class="profile-anchor" type="button" data-profile-target="profileTrustSection">资质与咨询</button></div><span id="profileDirtyState" class="dirty-state">当前内容已保存</span></div>
+        <div class="profile-toolbar"><div><b>店铺资料编辑</b><div class="upload-note">按分区完善资料，内容统一保存。</div></div><span id="profileDirtyState" class="dirty-state">当前内容已保存</span></div>
         <div class="profile-summary"><div><h2 id="profileSummaryName">店铺资料</h2><p id="profileSummaryText">完善资料后会同步到移动端店铺展示页</p></div><div id="profileSummaryScore" class="profile-score">0%</div></div>
-        <section id="profileBasicSection" class="section">
-          <h2>基础信息</h2>
-          <div class="form-grid">
+        <div class="profile-workspace"><aside class="profile-section-nav"><h3>资料分区</h3><button class="profile-section-button active" type="button" data-profile-section="profileBasicSection">店铺展示 <span id="profileBasicState" class="profile-section-state">待补充</span></button><button class="profile-section-button" type="button" data-profile-section="profileContactSection">经营联系 <span id="profileContactState" class="profile-section-state">待补充</span></button><button class="profile-section-button" type="button" data-profile-section="profileCategorySection">主营与服务 <span id="profileCategoryState" class="profile-section-state">待补充</span></button><button class="profile-section-button" type="button" data-profile-section="profileTrustSection">资质认证 <span id="profileTrustState" class="profile-section-state">待补充</span></button></aside><div class="profile-section-content">
+        <section id="profileBasicSection" class="section profile-edit-section active">
+          <div class="profile-section-heading"><h2>店铺展示</h2><p>这些内容会直接展示给 App 用户，用于介绍门店和品牌。</p></div>
+          <div class="profile-basic-layout"><div class="form-grid">
             <div class="field">
               <label for="shop_name">商家/门店名称</label>
               <input id="shop_name" name="shop_name" maxlength="120" placeholder="例如：木序全屋定制">
@@ -1406,11 +1444,11 @@
                 <input id="cover_url" name="cover_url" type="hidden">
               </div>
             </div>
-          </div>
+          </div><aside class="profile-store-preview"><h3>App 店铺预览</h3><div class="profile-preview-phone"><div id="profileLivePreview" class="profile-preview-screen"></div></div></aside></div>
         </section>
 
-        <section id="profileContactSection" class="section">
-          <h2>线下联系信息</h2>
+        <section id="profileContactSection" class="section profile-edit-section">
+          <div class="profile-section-heading"><h2>经营联系</h2><p>用于用户了解门店位置、联系电话和营业时间。</p></div>
           <div class="form-grid">
             <div class="field full">
               <label for="address">详细地址</label>
@@ -1441,8 +1479,8 @@
           </div>
         </section>
 
-        <section id="profileCategorySection" class="section">
-          <h2>主营品类</h2>
+        <section id="profileCategorySection" class="section profile-edit-section">
+          <div class="profile-section-heading"><h2>主营与服务</h2><p>说明店铺经营范围、售后承诺和咨询服务。</p></div>
           <div class="chip-group">
             <div class="chip-group-title">主营大类</div>
             <div id="categoryGroupChoices" class="chips"></div>
@@ -1452,15 +1490,14 @@
             <div id="categoryChoices" class="chips"></div>
           </div>
           <div id="categoryHint" class="upload-note"></div>
+          <div class="field" style="margin-top:18px"><label for="after_sales_promise">售后承诺</label><textarea id="after_sales_promise" name="after_sales_promise" maxlength="500" placeholder="例如：安装问题 48 小时响应，质保期内提供售后支持"></textarea></div>
+          <div class="toggle-row"><div><strong>开放站内咨询</strong><span>用于线索沟通和线下成交，不接入线上下单。</span></div><input id="consultation_enabled" class="switch" name="consultation_enabled" type="checkbox"></div>
         </section>
 
-        <section id="profileTrustSection" class="section">
-          <h2>商家可信信息</h2>
+        <section id="profileTrustSection" class="section profile-edit-section">
+          <div class="profile-section-heading"><h2>资质认证</h2><p>维护入驻审核需要的营业执照和品牌授权材料。</p></div>
+          <div class="profile-trust-note">修改营业执照或品牌授权材料后，商家认证状态可能重新进入审核，请确认资料清晰有效。</div>
           <div class="form-grid">
-            <div class="field full">
-              <label for="after_sales_promise">售后承诺</label>
-              <textarea id="after_sales_promise" name="after_sales_promise" maxlength="500" placeholder="例如：安装问题 48 小时响应，质保期内提供售后支持"></textarea>
-            </div>
             <div class="upload-box">
               <label>营业执照/资质图片</label>
               <div id="licensePreview" class="upload-preview">建议上传清晰证照图片</div>
@@ -1481,15 +1518,9 @@
               <input id="authorizationFile" class="file-input" type="file" accept="image/*">
               <input id="authorization_url" name="authorization_url" type="hidden">
             </div>
-            <div class="full toggle-row">
-              <div>
-                <strong>开放站内咨询</strong>
-                <span>用于线索沟通和线下成交，不接入线上下单。</span>
-              </div>
-              <input id="consultation_enabled" class="switch" name="consultation_enabled" type="checkbox">
-            </div>
           </div>
         </section>
+        </div></div>
 
         <div class="save-bar">
           <button id="applyVerifiedMerchantBtn" class="button button-secondary" type="button" style="width:auto; min-width:160px">申请入驻</button>
@@ -1726,6 +1757,7 @@
     let productStatusFilter = 'all';
     let caseSearchQuery = '';
     let caseStatusFilter = 'all';
+    let activeProfileSection = 'profileBasicSection';
     let activePanelId = 'overviewPanel';
 
     const $ = (id) => document.getElementById(id);
@@ -1808,9 +1840,11 @@
       activePanelId = panelId;
       document.body.classList.toggle('products-active', panelId === 'productsPanel');
       document.body.classList.toggle('cases-active', panelId === 'casesPanel');
+      document.body.classList.toggle('profile-active', panelId === 'profilePanel');
       updateWorkspaceHeader(panelId);
       if (panelId === 'profilePanel' && currentProfile) {
         fillProfile(currentProfile);
+        showProfileSection(activeProfileSection);
       }
       if (panelId === 'casesPanel') loadCases();
       if (panelId === 'consultationsPanel') loadConsultations();
@@ -2439,6 +2473,38 @@
       $('profileSummaryText').textContent = score === 100 ? '基础展示资料已经完整' : '继续完善图片、服务区域和联系方式';
       $('profileDirtyState').textContent = profileDirty ? '有未保存修改' : '当前内容已保存';
       $('profileDirtyState').classList.toggle('active', profileDirty);
+      updateProfileSectionStates();
+      renderProfileLivePreview();
+    }
+
+    function setProfileSectionState(id, complete) {
+      const target = $(id);
+      target.textContent = complete ? '已完成' : '待补充';
+      target.classList.toggle('complete', complete);
+    }
+
+    function updateProfileSectionStates() {
+      setProfileSectionState('profileBasicState', ['shop_name', 'logo_url', 'cover_url', 'service_area', 'brand_intro'].every((id) => String($(id).value || '').trim()));
+      setProfileSectionState('profileContactState', ['address', 'contact_phone', 'business_hours'].every((id) => String($(id).value || '').trim()));
+      setProfileSectionState('profileCategoryState', selectedCategories.size > 0 && Boolean($('after_sales_promise').value.trim()));
+      setProfileSectionState('profileTrustState', Boolean($('license_url').value.trim()));
+    }
+
+    function renderProfileLivePreview() {
+      const target = $('profileLivePreview');
+      if (!target) return;
+      const name = $('shop_name').value.trim() || '我的店铺';
+      const serviceArea = $('service_area').value.trim() || '服务区域待完善';
+      const intro = $('brand_intro').value.trim() || '介绍主营产品、服务优势和适合的装修需求。';
+      const logo = $('logo_url').value.trim();
+      const cover = $('cover_url').value.trim();
+      target.innerHTML = `<div class="profile-preview-cover">${cover ? `<img src="${escapeHtml(displayImageUrl(cover))}" alt="">` : '门店封面'}</div><div class="profile-preview-body"><div class="profile-preview-identity"><div class="profile-preview-logo">${logo ? `<img src="${escapeHtml(displayImageUrl(logo))}" alt="">` : escapeHtml(name.slice(0, 1))}</div><div><b>${escapeHtml(name)}</b><small>${escapeHtml(serviceArea)}</small></div></div><p class="profile-preview-copy">${escapeHtml(intro)}</p><div class="profile-preview-copy">主营：${escapeHtml([...selectedCategories].join('、') || '主营品类待完善')}</div></div>`;
+    }
+
+    function showProfileSection(sectionId) {
+      activeProfileSection = sectionId;
+      document.querySelectorAll('.profile-edit-section').forEach((section) => section.classList.toggle('active', section.id === sectionId));
+      document.querySelectorAll('[data-profile-section]').forEach((button) => button.classList.toggle('active', button.dataset.profileSection === sectionId));
     }
 
     function markProfileDirty() {
@@ -2967,8 +3033,8 @@
       button.addEventListener('click', () => showPanel(button.dataset.openPanel));
     });
 
-    document.querySelectorAll('[data-profile-target]').forEach((button) => {
-      button.addEventListener('click', () => document.getElementById(button.dataset.profileTarget)?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+    document.querySelectorAll('[data-profile-section]').forEach((button) => {
+      button.addEventListener('click', () => showProfileSection(button.dataset.profileSection));
     });
     $('profilePanel').addEventListener('input', markProfileDirty);
     $('profilePanel').addEventListener('change', markProfileDirty);
