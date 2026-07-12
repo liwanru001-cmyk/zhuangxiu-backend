@@ -2266,7 +2266,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        SELECT item.id, item.project_id, item.planned_end AS due_at
        FROM project_progress_items item
        JOIN company_projects cp ON cp.project_id = item.project_id
-       WHERE item.status NOT IN (2, 3)
+       WHERE item.status NOT IN ('completed', 'delayed')
          AND item.planned_end IS NOT NULL
          AND item.planned_end >= CURDATE()
          AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
@@ -2305,27 +2305,14 @@ async function getCompanyWorkbenchSummary(req, res) {
               COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
               responsible.id AS person_id,
               responsible.nickname AS person_name,
-              '项目负责人' AS person_role,
+              '业主' AS person_role,
               task.planned_end AS due_at,
               task.updated_at AS submitted_at,
               NULL AS waiting_hours
        FROM renovation_tasks task
        JOIN company_projects cp ON cp.project_id = task.project_id
        JOIN renovation_projects project ON project.id = task.project_id
-       LEFT JOIN users responsible
-         ON responsible.id = (
-           SELECT ppe_resp.user_id
-           FROM project_participants_ext ppe_resp
-           WHERE ppe_resp.project_id = task.project_id
-             AND ppe_resp.status <> 'removed'
-             AND (
-               ppe_resp.company_id = ?
-               OR (ppe_resp.participant_type = 'company' AND ppe_resp.participant_id = ?)
-             )
-             AND ppe_resp.user_id IS NOT NULL
-           ORDER BY ppe_resp.id DESC
-           LIMIT 1
-         )
+       LEFT JOIN users responsible ON responsible.id = project.user_id
        WHERE task.status <> 2
          AND task.planned_start <= CURDATE()
          AND task.planned_end >= CURDATE()
@@ -2365,7 +2352,7 @@ async function getCompanyWorkbenchSummary(req, res) {
      ) workbench_todos
      ORDER BY due_at ASC, submitted_at ASC, item_id ASC
      LIMIT 3`,
-    [companyId, companyId, companyId, companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const pendingConsultationItemRows = await queryWorkbenchDetailItems('pendingConsultations', companyId,
@@ -2418,27 +2405,14 @@ async function getCompanyWorkbenchSummary(req, res) {
               COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
               responsible.id AS person_id,
               responsible.nickname AS person_name,
-              '项目负责人' AS person_role,
+              '业主' AS person_role,
               task.planned_end AS due_at,
               task.updated_at AS submitted_at,
               NULL AS waiting_hours
        FROM renovation_tasks task
        JOIN company_projects cp ON cp.project_id = task.project_id
        JOIN renovation_projects project ON project.id = task.project_id
-       LEFT JOIN users responsible
-         ON responsible.id = (
-           SELECT ppe_resp.user_id
-           FROM project_participants_ext ppe_resp
-           WHERE ppe_resp.project_id = task.project_id
-             AND ppe_resp.status <> 'removed'
-             AND (
-               ppe_resp.company_id = ?
-               OR (ppe_resp.participant_type = 'company' AND ppe_resp.participant_id = ?)
-             )
-             AND ppe_resp.user_id IS NOT NULL
-           ORDER BY ppe_resp.id DESC
-           LIMIT 1
-         )
+       LEFT JOIN users responsible ON responsible.id = project.user_id
        WHERE task.status <> 2
          AND task.planned_end >= CURDATE()
          AND task.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
@@ -2460,7 +2434,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        JOIN company_projects cp ON cp.project_id = item.project_id
        JOIN renovation_projects project ON project.id = item.project_id
        LEFT JOIN users creator ON creator.id = item.created_by
-       WHERE item.status NOT IN (2, 3)
+       WHERE item.status NOT IN ('completed', 'delayed')
          AND item.planned_end IS NOT NULL
          AND item.planned_end >= CURDATE()
          AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
@@ -2496,7 +2470,7 @@ async function getCompanyWorkbenchSummary(req, res) {
      ) workbench_deadlines
      ORDER BY due_at ASC, submitted_at ASC, item_id ASC
      LIMIT 3`,
-    [companyId, companyId, companyId, companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const pendingHandoverItemRows = await queryWorkbenchDetailItems('pendingHandovers', companyId,
