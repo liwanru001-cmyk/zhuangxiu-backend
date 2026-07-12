@@ -865,18 +865,23 @@
     }
     .product-management-layout {
       display: grid;
-      grid-template-columns: 220px minmax(0, 1fr);
-      gap: 16px;
+      grid-template-columns: 230px minmax(0, 1fr);
+      gap: 0;
       align-items: start;
-    }
-    .product-category-sidebar,
-    .product-table-panel {
+      min-height: 650px;
+      overflow: hidden;
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
-      box-shadow: var(--card-shadow);
     }
-    .product-category-sidebar { padding: 14px; }
+    .product-category-sidebar,
+    .product-table-panel {
+      border: 0;
+      border-radius: 0;
+      background: #fff;
+      box-shadow: none;
+    }
+    .product-category-sidebar { min-height: 650px; padding: 18px 14px; border-right: 1px solid var(--line); background: #fbfcfe; }
     .product-category-head {
       min-height: 40px;
       display: flex;
@@ -910,11 +915,12 @@
     .product-category-item.active { color: var(--blue-dark); background: #edf4fc; }
     .product-category-item span { color: var(--muted); font-size: 10px; }
     .product-table-panel { min-width: 0; overflow: hidden; }
-    .product-table-panel .product-filterbar { margin: 0; padding: 14px; border-bottom: 1px solid var(--line); }
+    .product-table-panel { padding: 18px; }
+    .product-table-panel .product-filterbar { margin: 0 0 15px; padding: 0; border-bottom: 0; grid-template-columns: minmax(240px, 1fr) 150px auto; }
     .product-table-wrap { overflow-x: auto; }
     .product-table { width: 100%; min-width: 820px; border-collapse: collapse; }
     .product-table th,
-    .product-table td { padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; font-size: 11px; }
+    .product-table td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; font-size: 12px; }
     .product-table th { color: var(--muted); background: #f8fafc; font-size: 10px; font-weight: 850; }
     .product-table tr:last-child td { border-bottom: 0; }
     .product-table-product { min-width: 210px; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: center; }
@@ -924,7 +930,7 @@
     .product-table-product small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .product-table-product small { margin-top: 4px; color: var(--muted); }
     .product-table-actions { display: flex; gap: 8px; white-space: nowrap; }
-    .product-table-footer { padding: 12px 14px; display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+    .product-table-footer { padding-top: 16px; display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
     .product-case-choices { max-height: 230px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .product-case-choice { padding: 11px; display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 11px; }
     .product-case-choice input { width: auto; margin-top: 2px; }
@@ -933,6 +939,49 @@
     .product-linked-cases { display: grid; gap: 8px; }
     .product-linked-case { padding: 11px 12px; display: flex; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 7px; background: #f8fafc; font-size: 11px; }
     .product-linked-case span { color: var(--muted); }
+    .category-management-tree { max-height: 260px; margin-bottom: 18px; overflow-y: auto; border-top: 1px solid var(--line); }
+    .category-management-row { min-height: 48px; padding: 8px 2px; display: flex; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--line); }
+    .category-management-row.child { padding-left: 24px; }
+    .category-management-row b, .category-management-row small { display: block; }
+    .category-management-row small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    body.products-active .shell { max-width: none; padding: 28px 32px 48px; }
+    body.products-active .workspace-header { display: none; }
+    body.products-active .portal-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
+    body.products-active #productsPanel > .section > .panel-toolbar { margin-bottom: 22px; align-items: flex-start; }
+    body.products-active #productsPanel > .section > .panel-toolbar h2 { font-size: 28px; }
+    body.products-active #productsPanel > .section > .panel-toolbar .panel-desc { margin: 7px 0 0; font-size: 13px; }
+    body.products-active #productsPanel > .section > .panel-toolbar .button {
+      width: auto;
+      min-width: 0;
+      min-height: 40px;
+      padding: 0 14px;
+      border-radius: 7px;
+      box-shadow: none;
+    }
+    body.products-active #openCategoryEditorBtn { color: var(--ink); border-color: var(--line); background: #fff; }
+    body.products-active #newProductBtn { color: #fff; border-color: var(--blue); background: var(--blue); }
+    #productDetailView.active {
+      position: fixed;
+      inset: 0;
+      z-index: 30;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(390px, 470px);
+      grid-template-rows: auto minmax(0, 1fr);
+      background: rgba(17, 24, 39, .35);
+    }
+    #productDetailView > .panel-toolbar {
+      grid-column: 2;
+      margin: 0;
+      padding: 22px 24px 16px;
+      background: #fff;
+    }
+    #productDetailContent {
+      grid-column: 2;
+      min-height: 0;
+      overflow-y: auto;
+      padding: 0 24px 24px;
+      background: #fff;
+    }
 
     .login-shell {
       max-width: 1120px;
@@ -1098,8 +1147,14 @@
       .overview-status-tags { justify-content: flex-start; }
       .profile-toolbar { align-items: flex-start; flex-direction: column; }
       .product-filterbar { grid-template-columns: 1fr; }
+      .product-table-panel .product-filterbar { grid-template-columns: 1fr; }
       .product-management-layout { grid-template-columns: 1fr; }
       .product-category-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      body.products-active .shell { padding: 18px 16px 36px; }
+      body.products-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
+      .product-category-sidebar { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
+      #productDetailView.active { grid-template-columns: 1fr; }
+      #productDetailView > .panel-toolbar, #productDetailContent { grid-column: 1; }
       .case-card-grid { grid-template-columns: 1fr; }
       .case-image-grid, .case-product-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .hero { grid-template-columns: 1fr; }
@@ -1488,8 +1543,9 @@
 
       <div id="categoryEditor" class="category-modal" role="dialog" aria-modal="true" aria-labelledby="categoryEditorTitle">
         <div class="category-dialog">
-          <div id="categoryEditorTitle" class="category-editor-title">新增产品分类</div>
-          <p class="panel-desc">选择“新增一级分类”，或选择已有一级分类来创建二级分类。产品分类最多二级。</p>
+          <div id="categoryEditorTitle" class="category-editor-title">分类管理</div>
+          <p class="panel-desc">集中管理一级分类和二级分类，产品分类最多支持两级。</p>
+          <div id="categoryManagementTree" class="category-management-tree"></div>
           <div class="form-grid">
             <div class="field full">
               <label for="category_parent_id">分类层级</label>
@@ -1666,6 +1722,7 @@
       });
       localStorage.setItem(PANEL_KEY, panelId);
       activePanelId = panelId;
+      document.body.classList.toggle('products-active', panelId === 'productsPanel');
       updateWorkspaceHeader(panelId);
       if (panelId === 'profilePanel' && currentProfile) {
         fillProfile(currentProfile);
@@ -1824,6 +1881,13 @@
           ].join('');
         }),
       ].join('');
+      $('categoryManagementTree').innerHTML = roots.length ? roots.map((root) => {
+        const rootChildren = productCategories.filter((item) => Number(item.parent_id) === Number(root.id));
+        return [
+          `<div class="category-management-row"><div><b>${escapeHtml(root.name)}</b><small>${merchantProducts.filter((product) => Number(product.category_id) === Number(root.id) || rootChildren.some((child) => Number(child.id) === Number(product.category_id))).length} 个产品</small></div><div class="small-actions"><button class="text-button" type="button" data-action="addChildCategory" data-id="${root.id}">新增子分类</button><button class="text-button" type="button" data-action="editCategory" data-id="${root.id}">重命名</button><button class="text-button danger" type="button" data-action="deleteCategory" data-id="${root.id}">删除</button></div></div>`,
+          ...rootChildren.map((child) => `<div class="category-management-row child"><div><b>${escapeHtml(child.name)}</b><small>${productCountForCategory(child.id)} 个产品</small></div><div class="small-actions"><button class="text-button" type="button" data-action="editCategory" data-id="${child.id}">编辑</button><button class="text-button danger" type="button" data-action="deleteCategory" data-id="${child.id}">删除</button></div></div>`),
+        ].join('');
+      }).join('') : '<div class="empty-state">还没有产品分类</div>';
 
       renderProducts();
     }
@@ -1904,6 +1968,12 @@
       resetCategoryForm();
       $('categoryEditor').classList.add('active');
       $('category_name').focus();
+    }
+
+    function openCategoryManagement() {
+      resetCategoryForm();
+      $('categoryEditorTitle').textContent = '分类管理';
+      $('categoryEditor').classList.add('active');
     }
 
     function startChildCategory(parentId) {
@@ -2732,8 +2802,8 @@
       $('passwordToggle').textContent = showing ? '显示' : '隐藏';
     });
 
-    $('openCategoryEditorBtn').addEventListener('click', startRootCategory);
-    document.querySelector('[data-open-category-editor]').addEventListener('click', startRootCategory);
+    $('openCategoryEditorBtn').addEventListener('click', openCategoryManagement);
+    document.querySelector('[data-open-category-editor]').addEventListener('click', openCategoryManagement);
     $('newProductBtn').addEventListener('click', () => {
       resetProductForm();
       showProductEditorView();
