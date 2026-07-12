@@ -2300,7 +2300,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        JOIN renovation_projects project ON project.id = task.project_id
        LEFT JOIN users responsible
          ON responsible.id = (
-           SELECT ppe_resp.responsible_user_id
+           SELECT ppe_resp.user_id
            FROM project_participants_ext ppe_resp
            WHERE ppe_resp.project_id = task.project_id
              AND ppe_resp.status <> 'removed'
@@ -2308,7 +2308,7 @@ async function getCompanyWorkbenchSummary(req, res) {
                ppe_resp.company_id = ?
                OR (ppe_resp.participant_type = 'company' AND ppe_resp.participant_id = ?)
              )
-             AND ppe_resp.responsible_user_id IS NOT NULL
+             AND ppe_resp.user_id IS NOT NULL
            ORDER BY ppe_resp.id DESC
            LIMIT 1
          )
@@ -2413,7 +2413,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        JOIN renovation_projects project ON project.id = task.project_id
        LEFT JOIN users responsible
          ON responsible.id = (
-           SELECT ppe_resp.responsible_user_id
+           SELECT ppe_resp.user_id
            FROM project_participants_ext ppe_resp
            WHERE ppe_resp.project_id = task.project_id
              AND ppe_resp.status <> 'removed'
@@ -2421,7 +2421,7 @@ async function getCompanyWorkbenchSummary(req, res) {
                ppe_resp.company_id = ?
                OR (ppe_resp.participant_type = 'company' AND ppe_resp.participant_id = ?)
              )
-             AND ppe_resp.responsible_user_id IS NOT NULL
+             AND ppe_resp.user_id IS NOT NULL
            ORDER BY ppe_resp.id DESC
            LIMIT 1
          )

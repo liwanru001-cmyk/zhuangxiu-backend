@@ -387,6 +387,8 @@ test('company workbench summary uses explicit company project links', async () =
       if (/workbench_todos/.test(sql)) {
         assert.match(sql, /project_participants_ext ppe/);
         assert.match(sql, /ppe_resp\.company_id = \?/);
+        assert.match(sql, /SELECT ppe_resp\.user_id/);
+        assert.doesNotMatch(sql, /ppe_resp\.responsible_user_id/);
         assert.deepEqual(params, [9, 9, 9, 9, 9]);
         return [[{
           item_type: 'action',
@@ -421,6 +423,8 @@ test('company workbench summary uses explicit company project links', async () =
       if (/workbench_deadlines/.test(sql)) {
         assert.match(sql, /project_progress_items item/);
         assert.match(sql, /item\.status NOT IN \(2, 3\)/);
+        assert.match(sql, /SELECT ppe_resp\.user_id/);
+        assert.doesNotMatch(sql, /ppe_resp\.responsible_user_id/);
         assert.deepEqual(params, [9, 9, 9, 9, 9]);
         return [[{
           item_type: 'progress',
