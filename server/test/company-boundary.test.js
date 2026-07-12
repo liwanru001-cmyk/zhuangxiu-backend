@@ -505,6 +505,49 @@ test('company workbench summary rejects ordinary company members', async () => {
   assert.equal(res.payload.message, '当前成员不能查看公司工作台');
 });
 
+test('company workbench summary tolerates detail query schema drift', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT c\.id, c\.owner_user_id, cm\.member_role/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9, owner_user_id: 42, member_role: null }]];
+      }
+      if (/COUNT\(DISTINCT item_key\) AS total/.test(sql)) {
+        return [[{ total: 1, project_count: 1, member_count: 0, owner_count: 0 }]];
+      }
+      if (/COUNT\(\*\) AS total[\s\S]*FROM consultation_targets target/.test(sql)) {
+        return [[{ total: 0, conversation_count: 0, oldest_waiting_at: null }]];
+      }
+      if (/nearest_due_at/.test(sql)) {
+        return [[{ total: 0, project_count: 0, nearest_due_at: null }]];
+      }
+      if (/COUNT\(DISTINCT handover\.project_id\) AS project_count/.test(sql)) {
+        return [[{ total: 0, project_count: 0, oldest_submitted_at: null }]];
+      }
+      if (/workbench_todos|SELECT 'consultation' AS item_type|workbench_deadlines|SELECT 'handover' AS item_type/.test(sql)) {
+        const err = new Error('Unknown column');
+        err.code = 'ER_BAD_FIELD_ERROR';
+        throw err;
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.getCompanyWorkbenchSummary({
+    user: { id: 42 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.todayTodos.total, 1);
+  assert.deepEqual(res.payload.data.todayTodos.items, []);
+  assert.deepEqual(res.payload.data.pendingConsultations.items, []);
+  assert.deepEqual(res.payload.data.upcomingDeadlines.items, []);
+  assert.deepEqual(res.payload.data.pendingHandovers.items, []);
+});
+
 test('legacy company review submit is disabled after evaluation redesign', async () => {
   const queries = [];
   const dbMock = {

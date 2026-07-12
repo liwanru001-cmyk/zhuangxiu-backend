@@ -346,6 +346,20 @@ function mapWorkbenchItem(row) {
   };
 }
 
+async function queryWorkbenchDetailItems(label, companyId, sql, params) {
+  try {
+    const [rows] = await db.query(sql, params);
+    return rows;
+  } catch (err) {
+    console.error(`company workbench ${label} detail query failed`, {
+      companyId,
+      code: err.code,
+      message: err.message,
+    });
+    return [];
+  }
+}
+
 function mapCompanyMemberRow(row) {
   return {
     memberId: row.member_id,
@@ -2280,7 +2294,7 @@ async function getCompanyWorkbenchSummary(req, res) {
     [companyId, companyId]
   );
 
-  const [todayTodoItemRows] = await db.query(
+  const todayTodoItemRows = await queryWorkbenchDetailItems('todayTodos', companyId,
     `${companyProjectsCte}
      SELECT *
      FROM (
@@ -2354,7 +2368,7 @@ async function getCompanyWorkbenchSummary(req, res) {
     [companyId, companyId, companyId, companyId, companyId]
   );
 
-  const [pendingConsultationItemRows] = await db.query(
+  const pendingConsultationItemRows = await queryWorkbenchDetailItems('pendingConsultations', companyId,
     `SELECT 'consultation' AS item_type,
             c.id AS item_id,
             '咨询待回复' AS title,
@@ -2393,7 +2407,7 @@ async function getCompanyWorkbenchSummary(req, res) {
     [companyId, companyId]
   );
 
-  const [upcomingDeadlineItemRows] = await db.query(
+  const upcomingDeadlineItemRows = await queryWorkbenchDetailItems('upcomingDeadlines', companyId,
     `${companyProjectsCte}
      SELECT *
      FROM (
@@ -2485,7 +2499,7 @@ async function getCompanyWorkbenchSummary(req, res) {
     [companyId, companyId, companyId, companyId, companyId]
   );
 
-  const [pendingHandoverItemRows] = await db.query(
+  const pendingHandoverItemRows = await queryWorkbenchDetailItems('pendingHandovers', companyId,
     `${companyProjectsCte}
      SELECT 'handover' AS item_type,
             handover.id AS item_id,
