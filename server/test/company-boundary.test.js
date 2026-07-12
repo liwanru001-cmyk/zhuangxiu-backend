@@ -384,24 +384,31 @@ test('company workbench summary uses explicit company project links', async () =
           oldest_submitted_at: new Date(Date.now() - 2 * 86400000).toISOString(),
         }]];
       }
-      if (/workbench_todos/.test(sql)) {
+      if (sql.includes("SELECT 'task' AS item_type")
+        && sql.includes('FROM renovation_tasks task')
+        && sql.includes('task.planned_start <= CURDATE()')) {
         assert.match(sql, /project_participants_ext ppe/);
         assert.match(sql, /responsible\.id = project\.user_id/);
         assert.doesNotMatch(sql, /ppe_resp\./);
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.deepEqual(params, [9, 9]);
         return [[{
-          item_type: 'action',
+          item_type: 'task',
           item_id: 101,
           title: '确认水电验收',
           project_id: 11,
           project_name: '星河湾工地',
           person_id: 42,
-          person_name: '项目经理张三',
-          person_role: '公司成员',
+          person_name: '业主张三',
+          person_role: '业主',
           due_at: new Date().toISOString(),
           submitted_at: new Date().toISOString(),
           waiting_hours: null,
         }]];
+      }
+      if (sql.includes("SELECT 'action' AS item_type")
+        && sql.includes('FROM project_action_items item')) {
+        assert.deepEqual(params, [9, 9, 9]);
+        return [[]];
       }
       if (/SELECT 'consultation' AS item_type/.test(sql)) {
         assert.deepEqual(params, [9, 9]);
@@ -419,12 +426,19 @@ test('company workbench summary uses explicit company project links', async () =
           waiting_hours: 18,
         }]];
       }
-      if (/workbench_deadlines/.test(sql)) {
+      if (sql.includes("SELECT 'task' AS item_type")
+        && sql.includes('FROM renovation_tasks task')
+        && sql.includes('task.planned_end <= DATE_ADD')) {
+        assert.match(sql, /responsible\.id = project\.user_id/);
+        assert.deepEqual(params, [9, 9]);
+        return [[]];
+      }
+      if (sql.includes("SELECT 'progress' AS item_type")
+        && sql.includes('FROM project_progress_items item')) {
         assert.match(sql, /project_progress_items item/);
         assert.match(sql, /item\.status NOT IN \('completed', 'delayed'\)/);
-        assert.match(sql, /responsible\.id = project\.user_id/);
         assert.doesNotMatch(sql, /ppe_resp\./);
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.deepEqual(params, [9, 9]);
         return [[{
           item_type: 'progress',
           item_id: 301,
@@ -438,6 +452,11 @@ test('company workbench summary uses explicit company project links', async () =
           submitted_at: new Date().toISOString(),
           waiting_hours: null,
         }]];
+      }
+      if (sql.includes("SELECT 'action' AS item_type")
+        && sql.includes('FROM project_action_items action')) {
+        assert.deepEqual(params, [9, 9, 9]);
+        return [[]];
       }
       if (/SELECT 'handover' AS item_type/.test(sql)) {
         assert.deepEqual(params, [9, 9]);
@@ -477,11 +496,11 @@ test('company workbench summary uses explicit company project links', async () =
   assert.equal(res.payload.data.upcomingDeadlines.total, 4);
   assert.equal(res.payload.data.pendingHandovers.total, 3);
   assert.equal(res.payload.data.todayTodos.items[0].projectName, '星河湾工地');
-  assert.equal(res.payload.data.todayTodos.items[0].personName, '项目经理张三');
+  assert.equal(res.payload.data.todayTodos.items[0].personName, '业主张三');
   assert.equal(res.payload.data.pendingConsultations.items[0].personRole, '咨询用户');
   assert.equal(res.payload.data.upcomingDeadlines.items[0].projectName, '江南里工地');
   assert.equal(res.payload.data.pendingHandovers.items[0].personName, '项目经理赵六');
-  assert.equal(queries.length, 9);
+  assert.equal(queries.length, 12);
 });
 
 test('company workbench summary rejects ordinary company members', async () => {
@@ -523,7 +542,7 @@ test('company workbench summary tolerates detail query schema drift', async () =
       if (/COUNT\(DISTINCT handover\.project_id\) AS project_count/.test(sql)) {
         return [[{ total: 0, project_count: 0, oldest_submitted_at: null }]];
       }
-      if (/workbench_todos|SELECT 'consultation' AS item_type|workbench_deadlines|SELECT 'handover' AS item_type/.test(sql)) {
+      if (/SELECT '(task|action|progress|consultation|handover)' AS item_type/.test(sql)) {
         const err = new Error('Unknown column');
         err.code = 'ER_BAD_FIELD_ERROR';
         throw err;
