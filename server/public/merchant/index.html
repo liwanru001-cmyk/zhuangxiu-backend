@@ -3,9 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="装修不凡商家入口，用于电脑端维护商家资料、主营品类、服务能力和线下咨询信息。">
+  <meta name="description" content="装修不凡商家中心，用于管理店铺资料、产品案例、用户咨询和装修公司项目协作。">
   <link rel="icon" href="/favicon.png">
-  <title>商家入口 - 装修不凡</title>
+  <title>商家中心 - 装修不凡</title>
   <style>
     :root {
       --ink: #172033;
@@ -863,7 +863,92 @@
       white-space: pre-wrap;
     }
 
+    .login-shell {
+      max-width: 1120px;
+      min-height: calc(100vh - 132px);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 400px;
+      gap: 70px;
+      align-items: center;
+    }
+    .login-intro { padding: 20px 0; }
+    .login-intro h1 { max-width: 620px; margin: 18px 0 16px; font-size: clamp(42px, 5vw, 64px); }
+    .login-intro p { max-width: 590px; color: var(--muted); font-size: 16px; line-height: 1.8; }
+    .login-points { margin: 28px 0 0; padding: 0; list-style: none; display: grid; gap: 12px; }
+    .login-points li { display: flex; align-items: center; gap: 12px; font-size: 14px; font-weight: 750; }
+    .login-points li::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--mint); box-shadow: 0 0 0 5px rgba(22,163,123,.1); }
+    .login-card { padding: 30px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--shadow); }
+    .login-card h2 { margin: 0; font-size: 24px; }
+    .password-wrap { position: relative; }
+    .password-wrap input { padding-right: 68px; }
+    .password-toggle { position: absolute; right: 8px; top: 7px; min-height: 32px; padding: 0 9px; border: 0; background: transparent; color: var(--blue-dark); cursor: pointer; font-size: 12px; font-weight: 800; }
+
+    .portal-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
+    .portal-sidebar { position: sticky; top: 88px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--card-shadow); }
+    .merchant-identity { padding: 10px 10px 16px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
+    .merchant-identity strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
+    .merchant-identity span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
+    .portal-menu { display: grid; gap: 4px; }
+    .portal-menu .tab { width: 100%; min-height: 42px; padding: 0 12px; justify-content: flex-start; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
+    .portal-menu .tab.active { color: var(--blue-dark); background: rgba(47,115,232,.09); box-shadow: none; }
+    .portal-menu .tab:hover { background: #f4f7fb; }
+    .portal-main { min-width: 0; }
+    .workspace-header { margin-bottom: 20px; }
+    .workspace-title h1 { margin: 0; font-size: 30px; }
+    .workspace-title p { margin-top: 8px; }
+    .overview-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .overview-card { min-height: 132px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .overview-card span { display: block; color: var(--muted); font-size: 12px; font-weight: 700; }
+    .overview-card b { display: block; margin: 13px 0 8px; font-size: 28px; }
+    .overview-card small { color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .overview-actions { margin-top: 16px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+    .overview-action { padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; text-align: left; }
+    .overview-action b { display: block; margin-bottom: 6px; }
+    .overview-action span { color: var(--muted); font-size: 12px; }
+    .management-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); gap: 14px; }
+    .management-list, .management-detail { min-height: 420px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .management-list-head { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+    .management-list-head h2, .management-detail h2 { margin: 0; font-size: 19px; }
+    .entity-list { display: grid; gap: 8px; }
+    .entity-row { width: 100%; padding: 13px; display: grid; grid-template-columns: 48px 1fr auto; gap: 11px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; text-align: left; }
+    .entity-row:hover, .entity-row.active { border-color: #abc3e2; background: #f7faff; }
+    .entity-thumb { width: 48px; height: 48px; overflow: hidden; display: grid; place-items: center; border-radius: 7px; color: var(--blue-dark); background: #edf3fb; font-size: 12px; font-weight: 900; }
+    .entity-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .entity-row b { display: block; font-size: 13px; }
+    .entity-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
+    .status-pill { padding: 4px 7px; border-radius: 5px; color: var(--mint); background: rgba(22,163,123,.09); font-size: 10px; font-weight: 850; }
+    .empty-state { padding: 48px 20px; color: var(--muted); text-align: center; font-size: 13px; line-height: 1.7; }
+    .detail-form { margin-top: 18px; }
+    .case-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .case-card { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .case-cover { height: 150px; display: grid; place-items: center; color: var(--muted); background: #f3f6fa; font-size: 12px; }
+    .case-cover img { width: 100%; height: 100%; object-fit: cover; }
+    .case-body { padding: 14px; }
+    .case-body h3 { margin: 0 0 6px; font-size: 15px; }
+    .case-body p { height: 38px; margin: 0; overflow: hidden; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .case-actions { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .button-small { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; font-size: 11px; font-weight: 800; }
+    .chat-messages { height: 330px; padding: 12px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+    .chat-message { max-width: 78%; margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; background: #fff; font-size: 12px; line-height: 1.55; }
+    .chat-message.mine { margin-left: auto; color: #fff; background: var(--blue); }
+    .chat-message small { display: block; margin-top: 5px; opacity: .65; font-size: 9px; }
+    .reply-row { margin-top: 10px; display: grid; grid-template-columns: 1fr auto; gap: 8px; }
+    .company-summary-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; margin-top: 16px; }
+    .company-summary-card { padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: #f8fafc; }
+    .company-summary-card b { display: block; font-size: 22px; }
+    .company-summary-card span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+
     @media (max-width: 900px) {
+      .login-shell, .portal-layout { grid-template-columns: 1fr; }
+      .login-shell { min-height: auto; gap: 24px; }
+      .portal-sidebar { position: static; overflow-x: auto; }
+      .merchant-identity { display: none; }
+      .portal-menu { display: flex; min-width: max-content; }
+      .portal-menu .tab { width: auto; }
+      .overview-grid { grid-template-columns: repeat(2, 1fr); }
+      .overview-actions, .management-grid { grid-template-columns: 1fr; }
+      .case-card-grid { grid-template-columns: 1fr; }
       .hero { grid-template-columns: 1fr; }
       .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid, .product-editor-layout { grid-template-columns: 1fr; }
       .product-card-grid { grid-template-columns: 1fr; }
@@ -892,24 +977,17 @@
   </nav>
 
   <main class="shell">
-    <section id="loginView" class="hero">
-      <div class="intro">
-        <div class="eyebrow">商家电脑端入口</div>
-        <h1>维护店铺资料，让业主更快找到你</h1>
-        <p>登录后可同步编辑 App 里的商家信息，包括门店资料、服务区域、主营品类、联系电话、营业时间和资质信息。这里只做展示和线索咨询，不接入线上下单。</p>
-        <div class="tips">
-          <div class="tip">建材、家居商家</div>
-          <div class="tip">展示产品和服务，引流到线下成交</div>
-          <div class="tip">不参与装修项目成员和施工权限</div>
-        </div>
+    <section id="loginView" class="login-shell">
+      <div class="login-intro">
+        <div class="eyebrow">装修不凡商家中心</div>
+        <h1>管理店铺，也管理装修公司的项目协作</h1>
+        <p>登录后可以维护店铺资料、产品和案例，回复用户咨询，并查看自己负责的装修公司、团队和关联项目。</p>
+        <ul class="login-points"><li>店铺资料、产品和案例统一管理</li><li>及时查看并回复用户咨询</li><li>汇总装修公司关联项目状态</li></ul>
       </div>
 
-      <div class="panel">
-        <div class="panel-heading">
-          <h2>商家登录</h2>
-          <button id="demoProductsBtn" class="demo-link" type="button">演示页面</button>
-        </div>
-        <p class="panel-desc">使用已审核账号的手机号和密码登录。</p>
+      <div class="login-card">
+        <h2>登录商家中心</h2>
+        <p class="panel-desc">使用商家账号绑定的手机号和密码登录。</p>
         <form id="loginForm">
           <div class="field">
             <label for="phone">手机号</label>
@@ -917,15 +995,28 @@
           </div>
           <div class="field">
             <label for="password">密码</label>
-            <input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入账户密码">
+            <div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入账户密码"><button id="passwordToggle" class="password-toggle" type="button">显示</button></div>
           </div>
-          <button id="loginBtn" class="button button-primary" type="submit">登录商家入口</button>
+          <button id="loginBtn" class="button button-primary" type="submit">登录</button>
           <div id="loginMessage" class="message"></div>
         </form>
       </div>
     </section>
 
     <section id="workspaceView" class="workspace">
+      <div class="portal-layout">
+        <aside class="portal-sidebar">
+          <div class="merchant-identity"><strong id="sidebarMerchantName">商家中心</strong><span id="sidebarMerchantStatus">读取账户信息中</span></div>
+          <div class="portal-menu" role="tablist" aria-label="商家中心导航">
+            <button id="overviewTab" class="tab active" type="button" data-panel="overviewPanel">工作台</button>
+            <button id="profileTab" class="tab" type="button" data-panel="profilePanel">店铺资料</button>
+            <button id="productsTab" class="tab" type="button" data-panel="productsPanel">产品管理</button>
+            <button id="casesTab" class="tab" type="button" data-panel="casesPanel">案例管理</button>
+            <button id="consultationsTab" class="tab" type="button" data-panel="consultationsPanel">咨询管理</button>
+            <button id="companiesTab" class="tab" type="button" data-panel="companiesPanel">装修公司</button>
+          </div>
+        </aside>
+        <div class="portal-main">
       <div class="workspace-header">
         <div class="workspace-title">
           <h1 id="workspaceTitle">商家资料</h1>
@@ -934,10 +1025,19 @@
         <button id="reloadBtn" class="button button-secondary" type="button">重新读取</button>
       </div>
 
-      <div class="tabs" role="tablist">
-        <button id="profileTab" class="tab active" type="button" data-panel="profilePanel">商家资料</button>
-        <button id="productsTab" class="tab" type="button" data-panel="productsPanel">产品展示</button>
-      </div>
+      <section id="overviewPanel" class="workspace-panel active">
+        <div class="overview-grid">
+          <div class="overview-card"><span>资料完整度</span><b id="overviewCompleteness">0%</b><small>完善店铺资料有助于用户了解服务能力</small></div>
+          <div class="overview-card"><span>产品</span><b id="overviewProducts">0</b><small id="overviewProductsNote">暂无产品</small></div>
+          <div class="overview-card"><span>案例</span><b id="overviewCases">0</b><small id="overviewCasesNote">暂无案例</small></div>
+          <div class="overview-card"><span>待回复咨询</span><b id="overviewConsultations">0</b><small id="overviewConsultationsNote">暂无待回复咨询</small></div>
+        </div>
+        <div class="overview-actions">
+          <button class="overview-action" type="button" data-open-panel="profilePanel"><b>完善店铺资料</b><span>维护品牌、服务区域和联系信息</span></button>
+          <button class="overview-action" type="button" data-open-panel="productsPanel"><b>管理产品</b><span>整理分类并更新产品展示内容</span></button>
+          <button class="overview-action" type="button" data-open-panel="consultationsPanel"><b>回复咨询</b><span>查看用户消息和未读会话</span></button>
+        </div>
+      </section>
 
       <form id="profilePanel" class="workspace-panel active">
         <section class="section">
@@ -1175,6 +1275,28 @@
         </section>
       </section>
 
+      <section id="casesPanel" class="workspace-panel">
+        <div class="panel-toolbar"><div><h2>案例管理</h2><p class="panel-desc">维护真实案例、图片、标签和关联产品。</p></div><button id="newCaseBtn" class="button button-primary" type="button">新增案例</button></div>
+        <div id="caseListView"><div id="caseList" class="case-card-grid"></div><div id="caseMessage" class="message"></div></div>
+        <div id="caseEditorView" style="display:none">
+          <section class="section" style="margin-top:0"><div class="panel-toolbar"><h2 id="caseEditorTitle">新增案例</h2><button id="cancelCaseEditBtn" class="button button-secondary" type="button">返回案例列表</button></div>
+            <div class="form-grid detail-form"><div class="field"><label for="case_title">案例名称</label><input id="case_title" maxlength="120"></div><div class="field"><label for="case_status">状态</label><select id="case_status"><option value="draft">草稿</option><option value="published">发布</option><option value="hidden">隐藏</option></select></div><div class="field"><label for="case_city">城市</label><input id="case_city" maxlength="80" placeholder="例如：浙江省 / 杭州市"></div><div class="field"><label for="case_area">面积范围</label><select id="case_area"><option value="">请选择</option><option value="60㎡以下">60㎡以下</option><option value="60-90㎡">60-90㎡</option><option value="90-120㎡">90-120㎡</option><option value="120-150㎡">120-150㎡</option><option value="150㎡以上">150㎡以上</option></select></div><div class="field"><label for="case_budget">预算范围</label><input id="case_budget" maxlength="80"></div><div class="field"><label for="case_cover">封面图片地址</label><input id="case_cover" maxlength="500"></div><div class="field full"><label for="case_description">案例说明</label><textarea id="case_description" maxlength="3000"></textarea></div></div>
+            <div class="save-bar"><button id="saveCaseBtn" class="button button-primary" type="button">保存案例</button></div>
+          </section>
+        </div>
+      </section>
+
+      <section id="consultationsPanel" class="workspace-panel">
+        <div class="management-grid"><div class="management-list"><div class="management-list-head"><h2>咨询会话</h2><button id="reloadConsultationsBtn" class="button-small" type="button">刷新</button></div><div id="consultationList" class="entity-list"></div><div id="consultationMessage" class="message"></div></div><div class="management-detail"><h2 id="consultationDetailTitle">选择一个会话</h2><div id="consultationMessages" class="chat-messages"><div class="empty-state">选择左侧咨询后查看消息记录</div></div><div class="reply-row"><input id="consultationReply" maxlength="1000" placeholder="输入回复内容" disabled><button id="sendConsultationReplyBtn" class="button button-primary" type="button" disabled>发送</button></div></div></div>
+      </section>
+
+      <section id="companiesPanel" class="workspace-panel">
+        <div class="management-grid"><div class="management-list"><div class="management-list-head"><h2>我的装修公司</h2><button id="newCompanyBtn" class="button-small" type="button">新建</button></div><div id="companyList" class="entity-list"></div><div id="companyMessage" class="message"></div></div><div class="management-detail"><h2 id="companyDetailTitle">选择装修公司</h2><div id="companyDetail"><div class="empty-state">选择左侧公司后查看资料和项目汇总</div></div></div></div>
+      </section>
+
+        </div>
+      </div>
+
       <div id="categoryEditor" class="category-modal" role="dialog" aria-modal="true" aria-labelledby="categoryEditorTitle">
         <div class="category-dialog">
           <div id="categoryEditorTitle" class="category-editor-title">新增产品分类</div>
@@ -1229,6 +1351,13 @@
     let selectedRootCategoryId = 'all';
     let selectedChildCategoryId = 'all';
     let currentProfile = null;
+    let merchantCases = [];
+    let editingCaseId = null;
+    let consultations = [];
+    let activeConsultationId = null;
+    let companies = [];
+    let activeCompanyId = null;
+    let activeCompany = null;
 
     const $ = (id) => document.getElementById(id);
     const fields = [
@@ -1302,15 +1431,24 @@
       if (panelId === 'profilePanel' && currentProfile) {
         fillProfile(currentProfile);
       }
+      if (panelId === 'casesPanel') loadCases();
+      if (panelId === 'consultationsPanel') loadConsultations();
+      if (panelId === 'companiesPanel') loadCompanies();
     }
 
     function updateWorkspaceHeader(panelId) {
-      const isProducts = panelId === 'productsPanel';
-      $('workspaceTitle').textContent = isProducts ? '产品展示管理' : '商家资料';
-      $('workspaceSubtitle').textContent = isProducts
-        ? '用商家自己的内部分类管理产品橱窗。这里不做订单、库存和支付，只做展示和咨询引流。'
-        : '这些信息会同步到移动端商家资料，用于产品/服务展示和线下咨询。';
-      $('reloadBtn').style.display = isProducts ? 'none' : 'inline-flex';
+      const headers = {
+        overviewPanel: ['商家工作台', '集中查看店铺内容、咨询和装修公司状态。'],
+        profilePanel: ['店铺资料', '这些信息会同步到移动端店铺展示页。'],
+        productsPanel: ['产品管理', '使用店铺自己的分类维护产品展示内容。'],
+        casesPanel: ['案例管理', '维护真实案例、图片、标签和关联产品。'],
+        consultationsPanel: ['咨询管理', '查看用户咨询并及时回复消息。'],
+        companiesPanel: ['装修公司', '管理自己负责的装修公司和关联项目。'],
+      };
+      const value = headers[panelId] || headers.overviewPanel;
+      $('workspaceTitle').textContent = value[0];
+      $('workspaceSubtitle').textContent = value[1];
+      $('reloadBtn').style.display = panelId === 'profilePanel' ? 'inline-flex' : 'none';
     }
 
     function renderTimeOptions() {
@@ -1744,6 +1882,30 @@
       document.body.classList.toggle('portal-workspace', show);
     }
 
+    function currentUser() {
+      try { return JSON.parse(localStorage.getItem(USER_KEY) || '{}'); } catch (_) { return {}; }
+    }
+
+    function profileCompleteness(profile) {
+      const required = ['shop_name', 'logo_url', 'cover_url', 'service_area', 'address', 'contact_phone', 'brand_intro'];
+      return Math.round(required.filter((field) => String(profile?.[field] || '').trim()).length / required.length * 100);
+    }
+
+    function updateOverview() {
+      const publishedProducts = merchantProducts.filter((item) => item.status === 'active').length;
+      const publishedCases = merchantCases.filter((item) => item.status === 'published').length;
+      const unread = consultations.reduce((sum, item) => sum + Number(item.unread_count || 0), 0);
+      $('overviewCompleteness').textContent = `${profileCompleteness(currentProfile)}%`;
+      $('overviewProducts').textContent = merchantProducts.length;
+      $('overviewProductsNote').textContent = `${publishedProducts} 个正在展示`;
+      $('overviewCases').textContent = merchantCases.length;
+      $('overviewCasesNote').textContent = `${publishedCases} 个已发布`;
+      $('overviewConsultations').textContent = unread;
+      $('overviewConsultationsNote').textContent = unread ? '有用户消息等待查看' : '暂无未读咨询';
+      $('sidebarMerchantName').textContent = currentProfile?.shop_name || currentUser()?.nickname || '商家中心';
+      $('sidebarMerchantStatus').textContent = verifiedMerchantLabel(currentProfile?.verified_merchant?.status || 'none');
+    }
+
     function fillProfile(profile) {
       for (const field of fields) {
         $(field).value = profile?.[field] || '';
@@ -1829,6 +1991,7 @@
       } finally {
         renderProductCategories();
         renderProducts();
+        updateOverview();
       }
     }
 
@@ -1837,8 +2000,144 @@
       const profile = await api('/users/merchant-profile');
       currentProfile = profile || {};
       fillProfile(profile);
-      await loadProducts();
+      await Promise.all([loadProducts(), loadCases(), loadConsultations(), loadCompanies()]);
       updateVerifiedMerchantStatus(currentProfile?.verified_merchant);
+      updateOverview();
+    }
+
+    function caseStatusLabel(status) {
+      return { draft: '草稿', published: '已发布', hidden: '已隐藏' }[status] || status || '草稿';
+    }
+
+    function renderCases() {
+      $('caseList').innerHTML = merchantCases.length ? merchantCases.map((item) => `
+        <article class="case-card">
+          <div class="case-cover">${item.cover_image ? `<img src="${escapeHtml(displayImageUrl(item.cover_image))}" alt="">` : '暂无封面'}</div>
+          <div class="case-body"><div class="status-pill" style="display:inline-flex;margin-bottom:8px">${escapeHtml(caseStatusLabel(item.status))}</div><h3>${escapeHtml(item.title || '未命名案例')}</h3><p>${escapeHtml(item.description || `${item.city || ''} ${item.area_range || ''}`)}</p><div class="case-actions"><button class="button-small" type="button" data-case-action="edit" data-id="${item.id}">编辑</button>${item.status === 'published' ? `<button class="button-small" type="button" data-case-action="hide" data-id="${item.id}">隐藏</button>` : `<button class="button-small" type="button" data-case-action="publish" data-id="${item.id}">发布</button>`}<button class="button-small" type="button" data-case-action="delete" data-id="${item.id}">删除</button></div></div>
+        </article>`).join('') : '<div class="empty-state" style="grid-column:1/-1">还没有案例，点击“新增案例”开始维护。</div>';
+      updateOverview();
+    }
+
+    async function loadCases() {
+      if (!token()) return;
+      try {
+        merchantCases = await api('/users/merchant/dashboard/cases') || [];
+        setMessage('caseMessage', '');
+      } catch (error) {
+        merchantCases = [];
+        setMessage('caseMessage', error.message, 'error');
+      }
+      renderCases();
+    }
+
+    function openCaseEditor(item = null) {
+      editingCaseId = item?.id || null;
+      $('caseEditorTitle').textContent = item ? '编辑案例' : '新增案例';
+      $('case_title').value = item?.title || '';
+      $('case_status').value = item?.status || 'draft';
+      $('case_city').value = item?.city || '';
+      $('case_area').value = item?.area_range || '';
+      $('case_budget').value = item?.budget_range || '';
+      $('case_cover').value = item?.cover_image || '';
+      $('case_description').value = item?.description || '';
+      $('caseListView').style.display = 'none';
+      $('caseEditorView').style.display = 'block';
+    }
+
+    function closeCaseEditor() {
+      editingCaseId = null;
+      $('caseEditorView').style.display = 'none';
+      $('caseListView').style.display = 'block';
+    }
+
+    async function saveCase() {
+      const desiredStatus = $('case_status').value;
+      const cover = $('case_cover').value.trim();
+      const body = {
+        title: $('case_title').value.trim(), city: $('case_city').value.trim(),
+        area_range: $('case_area').value.trim(), budget_range: $('case_budget').value.trim(),
+        cover_image: cover, images: cover ? [cover] : [], description: $('case_description').value.trim(),
+        tags: { space: [], style: [] }, items: [],
+      };
+      if (!body.title) throw new Error('请填写案例名称');
+      if (!body.city || !body.area_range) throw new Error('请填写有效城市和面积档位');
+      const path = editingCaseId ? `/users/merchant/dashboard/cases/${editingCaseId}` : '/users/merchant/dashboard/cases';
+      const item = await api(path, { method: editingCaseId ? 'PUT' : 'POST', body: JSON.stringify(body) });
+      if (desiredStatus === 'published' && item.status !== 'published') await api(`/users/merchant/dashboard/cases/${item.id}/publish`, { method: 'POST', body: '{}' });
+      if (desiredStatus === 'hidden' && item.status !== 'hidden') await api(`/users/merchant/dashboard/cases/${item.id}/hide`, { method: 'POST', body: '{}' });
+      await loadCases();
+      closeCaseEditor();
+      setMessage('caseMessage', '案例已保存', 'ok');
+    }
+
+    function renderConsultations() {
+      $('consultationList').innerHTML = consultations.length ? consultations.map((item) => `
+        <button class="entity-row ${Number(item.consultation_id) === Number(activeConsultationId) ? 'active' : ''}" type="button" data-consultation-id="${item.consultation_id}"><div class="entity-thumb">${escapeHtml((item.peer_nickname || '用户').slice(0, 1))}</div><div><b>${escapeHtml(item.peer_nickname || '咨询用户')}</b><small>${escapeHtml(item.last_message || item.consultation_content || '暂无消息')}</small></div>${Number(item.unread_count || 0) ? `<span class="status-pill">${item.unread_count} 未读</span>` : ''}</button>`).join('') : '<div class="empty-state">当前暂无用户咨询。</div>';
+      updateOverview();
+    }
+
+    async function loadConsultations() {
+      if (!token()) return;
+      try {
+        consultations = await api('/users/consultation-conversations') || [];
+        setMessage('consultationMessage', '');
+      } catch (error) {
+        consultations = [];
+        setMessage('consultationMessage', error.message, 'error');
+      }
+      renderConsultations();
+    }
+
+    async function openConsultation(id) {
+      activeConsultationId = Number(id);
+      const data = await api(`/users/consultations/${id}/messages`);
+      const messages = data?.messages || [];
+      const conversation = consultations.find((item) => Number(item.consultation_id) === activeConsultationId);
+      $('consultationDetailTitle').textContent = conversation?.peer_nickname || '咨询消息';
+      $('consultationMessages').innerHTML = messages.length ? messages.map((item) => `<div class="chat-message ${Number(item.sender_id) === Number(currentUser()?.id) ? 'mine' : ''}">${escapeHtml(item.content || '')}<small>${escapeHtml(formatTime(item.created_at))}</small></div>`).join('') : '<div class="empty-state">暂无消息记录</div>';
+      $('consultationReply').disabled = false;
+      $('sendConsultationReplyBtn').disabled = false;
+      renderConsultations();
+    }
+
+    function companyStatusLabel(company) {
+      return company.verification_status === 'verified' ? '已认证' : company.verification_status === 'pending' ? '认证审核中' : '资料待完善';
+    }
+
+    function renderCompanies() {
+      $('companyList').innerHTML = companies.length ? companies.map((company) => `
+        <button class="entity-row ${Number(company.id) === Number(activeCompanyId) ? 'active' : ''}" type="button" data-company-id="${company.id}"><div class="entity-thumb">${company.logo_url ? `<img src="${escapeHtml(displayImageUrl(company.logo_url))}" alt="">` : escapeHtml((company.name || '公司').slice(0, 1))}</div><div><b>${escapeHtml(company.name || '未命名公司')}</b><small>${escapeHtml(company.city || company.service_area || '服务区域待完善')}</small></div><span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span></button>`).join('') : '<div class="empty-state">当前账号还没有创建或管理装修公司。</div>';
+    }
+
+    async function loadCompanies() {
+      if (!token()) return;
+      try {
+        companies = await api('/companies/mine') || [];
+        setMessage('companyMessage', '');
+      } catch (error) {
+        companies = [];
+        setMessage('companyMessage', error.message, 'error');
+      }
+      renderCompanies();
+    }
+
+    async function openCompany(id) {
+      activeCompanyId = Number(id);
+      renderCompanies();
+      const company = companies.find((item) => Number(item.id) === activeCompanyId) || await api(`/companies/${id}`);
+      activeCompany = company;
+      const [members, projectData, workbench] = await Promise.all([
+        api(`/companies/${id}/members`).catch(() => []),
+        api(`/companies/${id}/projects`).catch(() => []),
+        api(`/companies/${id}/workbench-summary`).catch(() => null),
+      ]);
+      const projects = Array.isArray(projectData) ? projectData : (projectData?.items || []);
+      const todo = workbench?.todayTodos || workbench?.today_todos || {};
+      const consultation = workbench?.pendingConsultations || workbench?.pending_consultations || {};
+      const deadlines = workbench?.upcomingDeadlines || workbench?.upcoming_deadlines || {};
+      const handovers = workbench?.pendingHandovers || workbench?.pending_handovers || {};
+      $('companyDetailTitle').textContent = company.name || '装修公司';
+      $('companyDetail').innerHTML = `<div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" value="${escapeHtml(company.name || '')}" maxlength="120"></div><div class="field"><label>所在城市</label><input id="company_city" value="${escapeHtml(company.city || '')}" maxlength="80"></div><div class="field"><label>服务区域</label><input id="company_service_area" value="${escapeHtml(company.service_area || '')}" maxlength="120"></div><div class="field"><label>联系电话</label><input id="company_contact_phone" value="${escapeHtml(company.contact_phone || '')}" maxlength="30"></div><div class="field full"><label>详细地址</label><input id="company_address" value="${escapeHtml(company.address || '')}" maxlength="255"></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000">${escapeHtml(company.intro || '')}</textarea></div></div><div class="save-bar"><button class="button button-primary" type="button" data-company-save="${company.id}">保存公司资料</button></div><div class="company-summary-grid"><div class="company-summary-card"><b>${Number(todo.total || 0)}</b><span>今日待办</span></div><div class="company-summary-card"><b>${Number(consultation.total || 0)}</b><span>待回复咨询</span></div><div class="company-summary-card"><b>${Number(deadlines.total || 0)}</b><span>即将到期</span></div><div class="company-summary-card"><b>${Number(handovers.total || 0)}</b><span>待确认交底</span></div></div><div class="product-list-heading"><h3>团队与项目</h3><span>${members.length} 名成员 · ${projects.length} 个关联项目</span></div><div class="entity-list">${projects.length ? projects.slice(0, 8).map((project) => `<div class="entity-row"><div class="entity-thumb">项</div><div><b>${escapeHtml(project.project_name || project.name || '装修项目')}</b><small>${escapeHtml(project.role_name || project.status_label || '公司关联项目')}</small></div></div>`).join('') : '<div class="empty-state">暂无明确关联项目</div>'}</div>`;
     }
 
     async function login(phone, password) {
@@ -1853,7 +2152,7 @@
       localStorage.setItem(USER_KEY, JSON.stringify(data.user));
       showWorkspace(true);
       await loadProfile();
-      showPanel('productsPanel');
+      showPanel('overviewPanel');
     }
 
     async function saveProfile() {
@@ -1871,6 +2170,7 @@
         body: JSON.stringify(payload)
       });
       currentProfile = { ...(currentProfile || {}), ...payload };
+      updateOverview();
       setMessage('profileMessage', '商家资料已保存', 'ok');
     }
 
@@ -1913,8 +2213,10 @@
       }
     });
 
-    $('demoProductsBtn').addEventListener('click', () => {
-      window.location.href = `${window.location.pathname}?demo=products`;
+    $('passwordToggle').addEventListener('click', () => {
+      const showing = $('password').type === 'text';
+      $('password').type = showing ? 'password' : 'text';
+      $('passwordToggle').textContent = showing ? '显示' : '隐藏';
     });
 
     $('openCategoryEditorBtn').addEventListener('click', startRootCategory);
@@ -1934,6 +2236,40 @@
 
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => showPanel(tab.dataset.panel));
+    });
+
+    document.querySelectorAll('[data-open-panel]').forEach((button) => {
+      button.addEventListener('click', () => showPanel(button.dataset.openPanel));
+    });
+
+    $('newCaseBtn').addEventListener('click', () => openCaseEditor());
+    $('cancelCaseEditBtn').addEventListener('click', closeCaseEditor);
+    $('saveCaseBtn').addEventListener('click', async () => {
+      $('saveCaseBtn').disabled = true;
+      try { await saveCase(); } catch (error) { setMessage('caseMessage', error.message, 'error'); }
+      finally { $('saveCaseBtn').disabled = false; }
+    });
+
+    $('reloadConsultationsBtn').addEventListener('click', loadConsultations);
+    $('sendConsultationReplyBtn').addEventListener('click', async () => {
+      const content = $('consultationReply').value.trim();
+      if (!activeConsultationId || !content) return;
+      $('sendConsultationReplyBtn').disabled = true;
+      try {
+        await api(`/users/consultations/${activeConsultationId}/messages`, { method: 'POST', body: JSON.stringify({ content }) });
+        $('consultationReply').value = '';
+        await openConsultation(activeConsultationId);
+        await loadConsultations();
+      } catch (error) { setMessage('consultationMessage', error.message, 'error'); }
+      finally { $('sendConsultationReplyBtn').disabled = false; }
+    });
+
+    $('newCompanyBtn').addEventListener('click', () => {
+      activeCompanyId = null;
+      activeCompany = null;
+      renderCompanies();
+      $('companyDetailTitle').textContent = '新建装修公司';
+      $('companyDetail').innerHTML = `<div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" maxlength="120"></div><div class="field"><label>所在城市</label><input id="company_city" maxlength="80"></div><div class="field"><label>服务区域</label><input id="company_service_area" maxlength="120"></div><div class="field"><label>联系电话</label><input id="company_contact_phone" maxlength="30"></div><div class="field full"><label>详细地址</label><input id="company_address" maxlength="255"></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000"></textarea></div></div><div class="save-bar"><button class="button button-primary" type="button" data-company-create>创建装修公司</button></div>`;
     });
 
     [...productFields, 'product_category_id'].forEach((field) => {
@@ -2174,6 +2510,47 @@
       }
     });
 
+    document.body.addEventListener('click', async (event) => {
+      const caseButton = event.target.closest('[data-case-action]');
+      const consultationButton = event.target.closest('[data-consultation-id]');
+      const companyButton = event.target.closest('[data-company-id]');
+      const saveCompanyButton = event.target.closest('[data-company-save]');
+      const createCompanyButton = event.target.closest('[data-company-create]');
+      try {
+        if (caseButton) {
+          const id = Number(caseButton.dataset.id);
+          const action = caseButton.dataset.caseAction;
+          if (action === 'edit') openCaseEditor(merchantCases.find((item) => Number(item.id) === id));
+          if (action === 'publish') await api(`/users/merchant/dashboard/cases/${id}/publish`, { method: 'POST', body: '{}' });
+          if (action === 'hide') await api(`/users/merchant/dashboard/cases/${id}/hide`, { method: 'POST', body: '{}' });
+          if (action === 'delete' && confirm('确定删除这个案例吗？')) await api(`/users/merchant/dashboard/cases/${id}`, { method: 'DELETE' });
+          if (action !== 'edit') await loadCases();
+          return;
+        }
+        if (consultationButton) { await openConsultation(consultationButton.dataset.consultationId); return; }
+        if (companyButton) { await openCompany(companyButton.dataset.companyId); return; }
+        if (saveCompanyButton || createCompanyButton) {
+          const body = {
+            name: $('company_name').value.trim(), city: $('company_city').value.trim(),
+            service_area: $('company_service_area').value.trim(), intro: $('company_intro').value.trim(),
+            logo_url: activeCompany?.logo_url || '', address: $('company_address').value.trim(),
+            contact_phone: $('company_contact_phone').value.trim(), license_url: activeCompany?.license_url || '',
+          };
+          if (!body.name) throw new Error('请填写公司名称');
+          const saved = saveCompanyButton
+            ? await api(`/companies/${saveCompanyButton.dataset.companySave}`, { method: 'PUT', body: JSON.stringify(body) })
+            : await api('/companies', { method: 'POST', body: JSON.stringify(body) });
+          await loadCompanies();
+          if (saved?.id) await openCompany(saved.id);
+          setMessage('companyMessage', saveCompanyButton ? '公司资料已保存' : '装修公司已创建', 'ok');
+        }
+      } catch (error) {
+        if (caseButton) setMessage('caseMessage', error.message, 'error');
+        else if (consultationButton) setMessage('consultationMessage', error.message, 'error');
+        else setMessage('companyMessage', error.message, 'error');
+      }
+    });
+
     $('reloadBtn').addEventListener('click', async () => {
       try {
         await loadProfile();
@@ -2191,79 +2568,6 @@
       setMessage('loginMessage', '已退出登录');
     });
 
-    function enterProductsDemo() {
-      productCategories = [
-        { id: 1, name: '瓷砖', parent_id: null, status: 'active' },
-        { id: 2, name: '灯具', parent_id: null, status: 'active' },
-        { id: 3, name: '卫浴', parent_id: null, status: 'active' },
-        { id: 4, name: '木门', parent_id: null, status: 'active' },
-        { id: 5, name: '客厅砖', parent_id: 1, status: 'active' },
-        { id: 6, name: '厨卫砖', parent_id: 1, status: 'active' },
-        { id: 7, name: '阳台砖', parent_id: 1, status: 'active' },
-      ];
-      merchantProducts = [
-        {
-          id: 11,
-          category_id: 5,
-          name: '柔光瓷砖 750x1500',
-          price_text: '¥199/㎡ 起',
-          brand: '木序精选',
-          spec: '750x1500mm',
-          summary: '适合客厅和餐厅的大规格柔光砖',
-          description: '耐磨、防滑、易打理，到店可看实物色板。',
-          status: 'active',
-        },
-        {
-          id: 12,
-          category_id: 6,
-          name: '岩板背景墙',
-          price_text: '到店咨询',
-          summary: '电视背景墙和餐厅背景可选',
-          status: 'active',
-        },
-        {
-          id: 13,
-          category_id: 6,
-          name: '防滑厨卫砖',
-          price_text: '¥89/㎡ 起',
-          summary: '厨卫空间防滑耐污',
-          status: 'active',
-        },
-        {
-          id: 14,
-          category_id: 2,
-          name: '无主灯射灯',
-          price_text: '¥128 起',
-          summary: '适合现代简约无主灯设计',
-          status: 'active',
-        },
-        {
-          id: 15,
-          category_id: 3,
-          name: '智能浴室柜',
-          price_text: '到店咨询',
-          summary: '镜柜、收纳、台盆组合',
-          status: 'active',
-        },
-        {
-          id: 16,
-          category_id: 4,
-          name: '木门静音系列',
-          price_text: '¥1680/樘 起',
-          summary: '卧室静音门，颜色可定制',
-          status: 'active',
-        },
-      ];
-      currentProfile = {};
-      selectedRootCategoryId = 'all';
-      selectedChildCategoryId = 'all';
-      showWorkspace(true);
-      showPanel('productsPanel');
-      renderProductCategories();
-      renderProducts();
-      setMessage('productMessage', '当前为本地演示数据，保存、上传和删除需要登录真实商家账号。');
-    }
-
     renderTimeOptions();
     updateBusinessHours();
     renderChips();
@@ -2271,13 +2575,10 @@
     renderProductCategories();
     renderProducts();
     bindChipClicks();
-    const demoMode = new URLSearchParams(window.location.search).get('demo');
-    if (demoMode === 'products') {
-      enterProductsDemo();
-    } else if (token()) {
+    if (token()) {
       showWorkspace(true);
       loadProfile()
-        .then(() => showPanel('productsPanel'))
+        .then(() => showPanel('overviewPanel'))
         .catch((error) => {
           localStorage.removeItem(TOKEN_KEY);
           showWorkspace(false);
