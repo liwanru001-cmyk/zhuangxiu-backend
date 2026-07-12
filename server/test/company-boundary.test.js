@@ -130,8 +130,8 @@ test('public company case shares require verified company and approved project c
       if (queries.length === 1) {
         assert.match(sql, /status = 'active'/);
         assert.match(sql, /verification_status = 'verified'/);
-        assert.match(sql, /be\.subject_type = 'company'/);
-        assert.match(sql, /be\.subject_id = companies\.id/);
+        assert.doesNotMatch(sql, /be\.subject_type = 'company'/);
+        assert.doesNotMatch(sql, /be\.subject_id = companies\.id/);
         assert.deepEqual(params, [9]);
         return [[{ id: 9 }]];
       }
@@ -194,8 +194,8 @@ test('public company reviews require verified company and return review list', a
       if (queries.length === 1) {
         assert.match(sql, /status = 'active'/);
         assert.match(sql, /verification_status = 'verified'/);
-        assert.match(sql, /be\.subject_type = 'company'/);
-        assert.match(sql, /be\.subject_id = companies\.id/);
+        assert.doesNotMatch(sql, /be\.subject_type = 'company'/);
+        assert.doesNotMatch(sql, /be\.subject_id = companies\.id/);
         assert.deepEqual(params, [9]);
         return [[{ id: 9 }]];
       }
@@ -333,6 +333,99 @@ test('my project companies come from project participants and are read only', as
   assert.equal(res.payload.data[0].memberRole, 'client');
   assert.equal(res.payload.data[0].canManage, false);
   assert.equal(queries.length, 1);
+});
+
+test('company workbench summary uses explicit company project links', async () => {
+  const queries = [];
+  const dbMock = {
+    async query(sql, params) {
+      queries.push({ sql, params });
+      if (/SELECT c\.id, c\.owner_user_id, cm\.member_role/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9, owner_user_id: 42, member_role: null }]];
+      }
+      if (/COUNT\(DISTINCT item_key\) AS total/.test(sql)) {
+        assert.match(sql, /project_participants_ext ppe/);
+        assert.match(sql, /ppe\.company_id = \?/);
+        assert.match(sql, /participant_type = 'company'/);
+        assert.doesNotMatch(sql, /JOIN project_members project_pm/);
+        assert.deepEqual(params, [9, 9, 9]);
+        return [[{
+          total: 18,
+          project_count: 6,
+          member_count: 4,
+          owner_count: 3,
+        }]];
+      }
+      if (/FROM consultation_targets target/.test(sql)) {
+        assert.deepEqual(params, [9, 9]);
+        return [[{
+          total: 5,
+          conversation_count: 5,
+          oldest_waiting_at: new Date(Date.now() - 18 * 3600000).toISOString(),
+        }]];
+      }
+      if (/nearest_due_at/.test(sql)) {
+        assert.match(sql, /project_progress_items item/);
+        assert.match(sql, /item\.status NOT IN \(2, 3\)/);
+        assert.deepEqual(params, [9, 9]);
+        return [[{
+          total: 4,
+          project_count: 3,
+          nearest_due_at: new Date(Date.now() + 24 * 3600000).toISOString(),
+        }]];
+      }
+      if (/FROM project_handovers handover/.test(sql)) {
+        assert.match(sql, /handover\.status = 'pending_confirm'/);
+        assert.deepEqual(params, [9, 9]);
+        return [[{
+          total: 3,
+          project_count: 3,
+          oldest_submitted_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.getCompanyWorkbenchSummary({
+    user: { id: 42 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.companyId, 9);
+  assert.equal(res.payload.data.todayTodos.total, 18);
+  assert.equal(res.payload.data.todayTodos.projectCount, 6);
+  assert.equal(res.payload.data.todayTodos.memberCount, 4);
+  assert.equal(res.payload.data.todayTodos.ownerCount, 3);
+  assert.match(res.payload.data.todayTodos.summary, /今日共18项待办/);
+  assert.equal(res.payload.data.pendingConsultations.total, 5);
+  assert.equal(res.payload.data.upcomingDeadlines.total, 4);
+  assert.equal(res.payload.data.pendingHandovers.total, 3);
+  assert.equal(queries.length, 5);
+});
+
+test('company workbench summary rejects ordinary company members', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      assert.match(sql, /SELECT c\.id, c\.owner_user_id, cm\.member_role/);
+      assert.deepEqual(params, [42, 9, 42]);
+      return [[{ id: 9, owner_user_id: 7, member_role: 'staff' }]];
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.getCompanyWorkbenchSummary({
+    user: { id: 42 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.payload.message, '当前成员不能查看公司工作台');
 });
 
 test('legacy company review submit is disabled after evaluation redesign', async () => {

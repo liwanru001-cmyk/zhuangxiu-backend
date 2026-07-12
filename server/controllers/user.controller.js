@@ -32,6 +32,10 @@ const profileSelect = `
           WHERE ur.user_id = u.id) AS roles,
          (SELECT COUNT(*) FROM notes n
           WHERE n.user_id = u.id AND n.status = 1) AS notes_count,
+         (SELECT COUNT(*) FROM project_members pm
+          WHERE pm.user_id = u.id
+            AND pm.role IN ('project_manager', 'project_supervisor')
+            AND pm.status = 1) AS project_count,
          (SELECT COUNT(*) FROM follows f
           WHERE f.following_id = u.id) AS followers_count,
          (SELECT COUNT(*) FROM follows f
@@ -614,11 +618,12 @@ function defaultMerchantProfile(userId) {
 
 async function getProjectManagerProfileData(userId) {
   const [rows] = await db.query(
-    `SELECT user_id, service_area, project_types, management_skills,
+    `SELECT p.user_id, p.service_area, p.project_types, p.management_skills,
             experience_years, managed_project_count, management_philosophy,
-            consultation_enabled, updated_at
-     FROM project_manager_profiles
-     WHERE user_id = ?`,
+            consultation_enabled, p.updated_at, u.created_at AS registered_at
+     FROM project_manager_profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.user_id = ?`,
     [userId]
   );
   if (!rows[0]) return null;
@@ -719,6 +724,7 @@ function defaultProjectManagerProfile(userId) {
     management_skills: [],
     experience_years: 0,
     managed_project_count: 0,
+    registered_at: null,
     management_philosophy: '',
     consultation_enabled: true,
   };
@@ -751,13 +757,22 @@ async function getDesignerProfileData(userId) {
   const [rows] = await db.query(
     `SELECT user_id, service_city, styles, experience_years, case_count,
             design_philosophy, verified_status, consultation_enabled,
-            updated_at
-     FROM designer_profiles
-     WHERE user_id = ?`,
+            p.updated_at, u.created_at AS registered_at
+     FROM designer_profiles p
+     JOIN users u ON u.id = p.user_id
+     WHERE p.user_id = ?`,
     [userId]
   );
   if (!rows[0]) return null;
   const profile = rows[0];
+  const [projectRows] = await db.query(
+    `SELECT COUNT(*) AS total
+     FROM project_members
+     WHERE user_id = ?
+       AND role = 'designer'
+       AND status = 1`,
+    [userId]
+  );
   if (typeof profile.styles === 'string') {
     try {
       profile.styles = JSON.parse(profile.styles);
@@ -766,6 +781,7 @@ async function getDesignerProfileData(userId) {
     }
   }
   if (!Array.isArray(profile.styles)) profile.styles = [];
+  profile.case_count = Number(projectRows[0]?.total) || 0;
   profile.verified_status = Boolean(profile.verified_status);
   profile.consultation_enabled = Boolean(profile.consultation_enabled);
   return profile;
@@ -841,6 +857,7 @@ function defaultDesignerProfile(userId) {
     design_philosophy: '',
     verified_status: false,
     consultation_enabled: true,
+    registered_at: null,
   };
 }
 

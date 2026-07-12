@@ -120,6 +120,7 @@ function mapCompanyRow(row) {
       : Number(row.rating_avg),
     review_count: Number(row.review_count || 0),
     case_count: Number(row.case_count || 0),
+    member_count: Number(row.member_count || 0),
     status: row.status || 'active',
     source: row.source || 'manual',
     legacy_merchant_user_id: row.legacy_merchant_user_id || null,
@@ -250,6 +251,83 @@ async function canManageCompany(companyId, userId) {
     [userId, companyId, userId]
   );
   return Boolean(rows[0]);
+}
+
+async function getCompanyWorkbenchAccess(companyId, userId) {
+  const [rows] = await db.query(
+    `SELECT c.id, c.owner_user_id, cm.member_role
+     FROM companies c
+     LEFT JOIN company_members cm
+       ON cm.company_id = c.id
+      AND cm.user_id = ?
+      AND cm.status = 'active'
+     WHERE c.id = ? AND c.status <> 'deleted'
+       AND (c.owner_user_id = ? OR cm.id IS NOT NULL)
+     LIMIT 1`,
+    [userId, companyId, userId]
+  );
+  const row = rows[0];
+  if (!row) return { exists: false, canView: false, role: '' };
+  const role = Number(row.owner_user_id) === Number(userId)
+    ? 'owner'
+    : row.member_role || 'staff';
+  return {
+    exists: true,
+    canView: role === 'owner' || role === 'admin',
+    role,
+  };
+}
+
+const companyProjectsCte = `
+  WITH company_projects AS (
+    SELECT DISTINCT p.id AS project_id
+    FROM project_participants_ext ppe
+    JOIN renovation_projects p
+      ON p.id = ppe.project_id
+     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+    WHERE ppe.status <> 'removed'
+      AND (
+        ppe.company_id = ?
+        OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+      )
+  )
+`;
+
+function toNumber(value) {
+  return Number(value || 0);
+}
+
+function isoOrNull(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
+function nearestDueSummary(value) {
+  if (!value) return '暂无明确到期时间';
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const date = new Date(value);
+  date.setHours(0, 0, 0, 0);
+  const diffDays = Math.round((date.getTime() - today.getTime()) / 86400000);
+  if (diffDays <= 0) return '今日到期';
+  if (diffDays === 1) return '明日到期';
+  return `${diffDays}天后到期`;
+}
+
+function hoursSince(value) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return 0;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 3600000));
+}
+
+function daysSince(value) {
+  if (!value) return 0;
+  const timestamp = new Date(value).getTime();
+  if (Number.isNaN(timestamp)) return 0;
+  return Math.max(0, Math.floor((Date.now() - timestamp) / 86400000));
 }
 
 function mapCompanyMemberRow(row) {
@@ -696,7 +774,55 @@ async function listMyCompanies(req, res) {
             c.city, c.address, c.contact_phone, c.status, c.source,
             c.license_url, c.verification_status, c.paid_display_status,
             c.paid_display_starts_at, c.paid_display_ends_at,
-            c.rating_avg, c.review_count, c.case_count,
+            c.rating_avg,
+            (
+              SELECT COUNT(*)
+              FROM company_reviews review_count_review
+              WHERE review_count_review.company_id = c.id
+                AND review_count_review.status = 1
+            ) AS review_count,
+            (
+              SELECT COUNT(DISTINCT case_count_share.project_id)
+              FROM project_case_shares case_count_share
+              WHERE case_count_share.status = 1
+                AND (
+                  EXISTS (
+                    SELECT 1
+                    FROM project_participants_ext case_count_ppe
+                    JOIN renovation_projects case_count_project
+                      ON case_count_project.id = case_count_ppe.project_id
+                     AND COALESCE(case_count_project.lifecycle_status, 'active') <> 'deleted'
+                    WHERE case_count_ppe.project_id = case_count_share.project_id
+                      AND case_count_ppe.status <> 'removed'
+                      AND (
+                        case_count_ppe.company_id = c.id
+                        OR (
+                          case_count_ppe.participant_type = 'company'
+                          AND case_count_ppe.participant_id = c.id
+                        )
+                      )
+                  )
+                  OR EXISTS (
+                    SELECT 1
+                    FROM company_members case_count_cm
+                    JOIN project_members case_count_pm
+                      ON case_count_pm.user_id = case_count_cm.user_id
+                     AND case_count_pm.status = 1
+                    JOIN renovation_projects case_count_project
+                      ON case_count_project.id = case_count_pm.project_id
+                     AND COALESCE(case_count_project.lifecycle_status, 'active') <> 'deleted'
+                    WHERE case_count_cm.company_id = c.id
+                      AND case_count_cm.status = 'active'
+                      AND case_count_pm.project_id = case_count_share.project_id
+                  )
+                )
+            ) AS case_count,
+            (
+              SELECT COUNT(*)
+              FROM company_members member_count_cm
+              WHERE member_count_cm.company_id = c.id
+                AND member_count_cm.status = 'active'
+            ) AS member_count,
             c.legacy_merchant_user_id, c.created_at, c.updated_at,
             cm.member_role,
             COALESCE(
@@ -1209,7 +1335,6 @@ async function listPublicCompanyCaseShares(req, res) {
      WHERE id = ?
        AND status = 'active'
        AND verification_status = 'verified'
-       AND ${activeCompanyVisibleExistsSql('companies.id')}
      LIMIT 1`,
     [companyId]
   );
@@ -1291,7 +1416,6 @@ async function listPublicCompanyReviews(req, res) {
      WHERE id = ?
        AND status = 'active'
        AND verification_status = 'verified'
-       AND ${activeCompanyVisibleExistsSql('companies.id')}
      LIMIT 1`,
     [companyId]
   );
@@ -1706,7 +1830,6 @@ async function getCompanyEvaluationSummary(req, res) {
      WHERE id = ?
        AND status = 'active'
        AND verification_status = 'verified'
-       AND ${activeCompanyVisibleExistsSql('companies.id')}
      LIMIT 1`,
     [companyId]
   );
@@ -2015,6 +2138,185 @@ async function listCompanyProjects(req, res) {
   return success(res, {
     items,
     source: 'project_participants_ext_with_legacy_inference',
+  });
+}
+
+async function getCompanyWorkbenchSummary(req, res) {
+  const companyId = Number(req.params.id);
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+
+  const access = await getCompanyWorkbenchAccess(companyId, req.user.id);
+  if (!access.exists) return error(res, '公司不存在', 404);
+  if (!access.canView) return error(res, '当前成员不能查看公司工作台', 403);
+
+  const [todayTodoRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT
+       COUNT(DISTINCT item_key) AS total,
+       COUNT(DISTINCT project_id) AS project_count,
+       COUNT(DISTINCT company_member_user_id) AS member_count,
+       COUNT(DISTINCT CASE WHEN owner_item = 1 THEN item_key ELSE NULL END) AS owner_count
+     FROM (
+       SELECT CONCAT('task:', task.id) AS item_key,
+              task.project_id,
+              NULL AS company_member_user_id,
+              0 AS owner_item
+       FROM renovation_tasks task
+       JOIN company_projects cp ON cp.project_id = task.project_id
+       WHERE task.status <> 2
+         AND task.planned_start <= CURDATE()
+         AND task.planned_end >= CURDATE()
+
+       UNION ALL
+
+       SELECT CONCAT('action:', item.id) AS item_key,
+              item.project_id,
+              CASE WHEN cm.user_id IS NULL THEN NULL ELSE assigned.user_id END AS company_member_user_id,
+              CASE WHEN pm.role IN ('owner', 'owner_member') THEN 1 ELSE 0 END AS owner_item
+       FROM project_action_items item
+       JOIN company_projects cp ON cp.project_id = item.project_id
+       LEFT JOIN project_action_item_assignees assigned ON assigned.item_id = item.id
+       LEFT JOIN company_members cm
+         ON cm.company_id = ?
+        AND cm.user_id = assigned.user_id
+        AND cm.status = 'active'
+       LEFT JOIN project_members pm
+         ON pm.project_id = item.project_id
+        AND pm.user_id = assigned.user_id
+        AND pm.status = 1
+       WHERE item.status = 'pending'
+         AND item.due_date = CURDATE()
+     ) todo_items`,
+    [companyId, companyId, companyId]
+  );
+
+  const [pendingConsultationRows] = await db.query(
+    `SELECT COUNT(*) AS total,
+            COUNT(DISTINCT c.id) AS conversation_count,
+            MIN(COALESCE(last_msg.created_at, c.created_at)) AS oldest_waiting_at
+     FROM consultation_targets target
+     JOIN designer_consultations c ON c.id = target.consultation_id
+     LEFT JOIN consultation_messages last_msg
+       ON last_msg.id = (
+         SELECT msg.id
+         FROM consultation_messages msg
+         WHERE msg.consultation_id = c.id
+         ORDER BY msg.created_at DESC, msg.id DESC
+         LIMIT 1
+       )
+     LEFT JOIN company_members sender_member
+       ON sender_member.company_id = ?
+      AND sender_member.user_id = last_msg.sender_id
+      AND sender_member.status = 'active'
+     WHERE target.target_type = 'company'
+       AND target.target_id = ?
+       AND COALESCE(c.status, 'pending') NOT IN ('closed', 'cancelled', 'archived')
+       AND (
+         last_msg.id IS NULL
+         OR sender_member.id IS NULL
+       )`,
+    [companyId, companyId]
+  );
+
+  const [upcomingDeadlineRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT COUNT(*) AS total,
+            COUNT(DISTINCT project_id) AS project_count,
+            MIN(due_at) AS nearest_due_at
+     FROM (
+       SELECT task.id, task.project_id, task.planned_end AS due_at
+       FROM renovation_tasks task
+       JOIN company_projects cp ON cp.project_id = task.project_id
+       WHERE task.status <> 2
+         AND task.planned_end >= CURDATE()
+         AND task.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+
+       UNION ALL
+
+       SELECT item.id, item.project_id, item.planned_end AS due_at
+       FROM project_progress_items item
+       JOIN company_projects cp ON cp.project_id = item.project_id
+       WHERE item.status NOT IN (2, 3)
+         AND item.planned_end IS NOT NULL
+         AND item.planned_end >= CURDATE()
+         AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+
+       UNION ALL
+
+       SELECT action.id, action.project_id, action.due_date AS due_at
+       FROM project_action_items action
+       JOIN company_projects cp ON cp.project_id = action.project_id
+       WHERE action.status = 'pending'
+         AND action.due_date >= CURDATE()
+         AND action.due_date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+     ) deadline_items`,
+    [companyId, companyId]
+  );
+
+  const [pendingHandoverRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT COUNT(*) AS total,
+            COUNT(DISTINCT handover.project_id) AS project_count,
+            MIN(handover.created_at) AS oldest_submitted_at
+     FROM project_handovers handover
+     JOIN company_projects cp ON cp.project_id = handover.project_id
+     WHERE handover.status = 'pending_confirm'`,
+    [companyId, companyId]
+  );
+
+  const todo = todayTodoRows[0] || {};
+  const pendingConsultation = pendingConsultationRows[0] || {};
+  const deadline = upcomingDeadlineRows[0] || {};
+  const handover = pendingHandoverRows[0] || {};
+  const generatedAt = new Date().toISOString();
+  const todayTodoTotal = toNumber(todo.total);
+  const todayTodoProjects = toNumber(todo.project_count);
+  const todayTodoMembers = toNumber(todo.member_count);
+  const todayTodoOwners = toNumber(todo.owner_count);
+  const pendingConsultationTotal = toNumber(pendingConsultation.total);
+  const oldestWaitingHours = hoursSince(pendingConsultation.oldest_waiting_at);
+  const deadlineTotal = toNumber(deadline.total);
+  const deadlineProjects = toNumber(deadline.project_count);
+  const handoverTotal = toNumber(handover.total);
+  const handoverProjects = toNumber(handover.project_count);
+  const oldestSubmittedDays = daysSince(handover.oldest_submitted_at);
+
+  return success(res, {
+    companyId,
+    generatedAt,
+    todayTodos: {
+      total: todayTodoTotal,
+      projectCount: todayTodoProjects,
+      memberCount: todayTodoMembers,
+      ownerCount: todayTodoOwners,
+      summary: todayTodoTotal > 0
+        ? `今日共${todayTodoTotal}项待办，涉及${todayTodoProjects}个项目、${todayTodoMembers}名公司成员，业主待确认${todayTodoOwners}项`
+        : '今日暂无待办事项',
+    },
+    pendingConsultations: {
+      total: pendingConsultationTotal,
+      conversationCount: toNumber(pendingConsultation.conversation_count),
+      oldestWaitingHours,
+      summary: pendingConsultationTotal > 0
+        ? `当前有${pendingConsultationTotal}条咨询待回复，最早已等待${oldestWaitingHours}小时`
+        : '当前暂无待回复咨询',
+    },
+    upcomingDeadlines: {
+      total: deadlineTotal,
+      projectCount: deadlineProjects,
+      nearestDueAt: isoOrNull(deadline.nearest_due_at),
+      summary: deadlineTotal > 0
+        ? `未来3天有${deadlineTotal}项事项到期，涉及${deadlineProjects}个项目，最近一项${nearestDueSummary(deadline.nearest_due_at)}`
+        : '未来3天暂无即将到期事项',
+    },
+    pendingHandovers: {
+      total: handoverTotal,
+      projectCount: handoverProjects,
+      oldestSubmittedAt: isoOrNull(handover.oldest_submitted_at),
+      summary: handoverTotal > 0
+        ? `当前有${handoverTotal}份设计交底待确认，涉及${handoverProjects}个项目，最早提交于${oldestSubmittedDays}天前`
+        : '当前暂无待确认交底',
+    },
   });
 }
 
@@ -2423,6 +2725,7 @@ module.exports = {
   getProfessional,
   listCompanyMembers,
   searchCompanyMemberCandidates,
+  getCompanyWorkbenchSummary,
   listCompanyProjects,
   attachCompanyProject,
   updateCompanyProject,

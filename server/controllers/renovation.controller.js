@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
+const crypto = require('crypto');
 const fs = require('fs/promises');
 const path = require('path');
 const storageService = require('../services/storage.service');
@@ -43,6 +44,7 @@ const memberPermissions = {
 };
 const ownerSideRoles = new Set(['owner', 'owner_member']);
 const notePublishRoles = new Set(['owner', 'designer', 'merchant', 'project_manager']);
+const companyAdminViewerRole = 'company_admin_viewer';
 
 async function ensureProjectCheckInCircleSharesTable(executor = db) {
   await executor.query(`
@@ -55,6 +57,23 @@ async function ensureProjectCheckInCircleSharesTable(executor = db) {
       PRIMARY KEY (id),
       UNIQUE KEY uk_checkin_circle (checkin_id),
       KEY idx_shared_by (shared_by)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureProjectCheckInWechatSharesTable(executor = db) {
+  await executor.query(`
+    CREATE TABLE IF NOT EXISTS project_checkin_wechat_shares (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      checkin_id BIGINT UNSIGNED NOT NULL,
+      token VARCHAR(64) NOT NULL,
+      shared_by BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_checkin_shared_by (checkin_id, shared_by),
+      UNIQUE KEY uk_token (token),
+      KEY idx_checkin_id (checkin_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 }
@@ -140,7 +159,8 @@ async function canAccessProject(projectId, userId) {
      LIMIT 1`,
     [projectId, userId]
   );
-  return Boolean(rows[0]);
+  if (rows[0]) return true;
+  return canViewProjectAsCompanyAdmin(projectId, userId);
 }
 
 async function getProjectMemberRole(projectId, userId) {
@@ -152,7 +172,54 @@ async function getProjectMemberRole(projectId, userId) {
      LIMIT 1`,
     [projectId, userId]
   );
-  return rows[0]?.role || null;
+  if (rows[0]?.role) return rows[0].role;
+  return (await canViewProjectAsCompanyAdmin(projectId, userId)) ? companyAdminViewerRole : null;
+}
+
+async function canViewProjectAsCompanyAdmin(projectId, userId) {
+  if (!projectId || !userId) return false;
+  const [rows] = await db.query(
+    `SELECT c.id
+     FROM companies c
+     LEFT JOIN company_members admin_cm
+       ON admin_cm.company_id = c.id
+      AND admin_cm.user_id = ?
+      AND admin_cm.status = 'active'
+      AND admin_cm.member_role IN ('owner', 'admin')
+     WHERE c.status <> 'deleted'
+       AND (c.owner_user_id = ? OR admin_cm.id IS NOT NULL)
+       AND (
+         EXISTS (
+           SELECT 1
+           FROM project_participants_ext ppe
+           JOIN renovation_projects p
+             ON p.id = ppe.project_id
+            AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+           WHERE ppe.project_id = ?
+             AND ppe.status <> 'removed'
+             AND (
+               ppe.company_id = c.id
+               OR (ppe.participant_type = 'company' AND ppe.participant_id = c.id)
+             )
+         )
+         OR EXISTS (
+           SELECT 1
+           FROM company_members service_cm
+           JOIN project_members pm
+             ON pm.user_id = service_cm.user_id
+            AND pm.project_id = ?
+            AND pm.status = 1
+           JOIN renovation_projects p
+             ON p.id = pm.project_id
+            AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+           WHERE service_cm.company_id = c.id
+             AND service_cm.status = 'active'
+         )
+       )
+     LIMIT 1`,
+    [userId, userId, projectId, projectId]
+  );
+  return Boolean(rows[0]);
 }
 
 function isOwnerSideRole(role) {
@@ -1699,12 +1766,9 @@ async function getMyProjects(req, res) {
 
 async function getProjectMembers(req, res) {
   const projectId = Number(req.params.id);
-  const [access] = await db.query(
-    `SELECT id FROM project_members
-     WHERE project_id = ? AND user_id = ? AND status = 1`,
-    [projectId, req.user.id]
-  );
-  if (!access[0]) return error(res, '项目不存在或无权限', 404);
+  if (!projectId || !(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
 
   const [rows] = await db.query(
     `SELECT pm.id, pm.project_id, pm.user_id, pm.role, pm.status,
@@ -3359,38 +3423,37 @@ async function getAccessibleProjects(req, res) {
 // GET /api/renovation/projects/:id - 获取单个项目详情
 async function getProjectDetail(req, res) {
   const projectId = Number(req.params.id);
+  if (!projectId || !(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在', 404);
+  }
   const [rows] = await db.query(
     `SELECT p.*, u.nickname AS designer_name
      FROM renovation_projects p
      LEFT JOIN users u ON p.designer_id = u.id
      WHERE p.id = ?
-       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
-       AND EXISTS (
-         SELECT 1 FROM project_members pm
-         WHERE pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
-       )`,
-    [projectId, req.user.id]
+       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'`,
+    [projectId]
   );
   if (!rows[0]) return error(res, '项目不存在', 404);
-  return success(res, await calendarForProject(rows[0]));
+  const calendar = await calendarForProject(rows[0]);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  calendar.access = {
+    role,
+    read_only: role === companyAdminViewerRole,
+    source: role === companyAdminViewerRole ? 'company_admin' : 'project_member',
+  };
+  return success(res, calendar);
 }
 
 async function getProjectCheckIns(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
+  if (!isOwnerSideRole(role)) {
+    return error(res, '无权限查看工地打卡', 403);
+  }
   await ensureProjectCheckInCircleSharesTable();
 
-  const where = `checkin.project_id = ?
-    AND (
-      checkin.user_id = ?
-      OR EXISTS (
-        SELECT 1 FROM project_checkin_shares share_access
-        WHERE share_access.checkin_id = checkin.id
-          AND share_access.shared_with_user_id = ?
-      )
-    )`;
-  const params = [projectId, req.user.id, req.user.id];
   const [rows] = await db.query(
     `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
             checkin.description, checkin.checkin_date,
@@ -3398,9 +3461,9 @@ async function getProjectCheckIns(req, res) {
             user.nickname AS user_nickname, user.avatar AS user_avatar
      FROM project_checkins checkin
      JOIN users user ON user.id = checkin.user_id
-     WHERE ${where}
+     WHERE checkin.project_id = ?
      ORDER BY checkin.checkin_date DESC, checkin.created_at DESC, checkin.id DESC`,
-    params
+    [projectId]
   );
   if (!rows.length) return success(res, []);
   const ids = rows.map((item) => item.id);
@@ -3661,6 +3724,103 @@ async function updateProjectCheckInShares(req, res) {
   }
 }
 
+async function createProjectCheckInWechatShare(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const checkInId = Number(req.params.checkInId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) return error(res, '项目不存在或无权限', 404);
+
+  const [rows] = await db.query(
+    'SELECT id, user_id FROM project_checkins WHERE id = ? AND project_id = ? LIMIT 1',
+    [checkInId, projectId]
+  );
+  const checkIn = rows[0];
+  if (!checkIn) return error(res, '打卡记录不存在', 404);
+  if (role !== 'owner' && Number(checkIn.user_id) !== Number(req.user.id)) {
+    return error(res, '只能分享自己的打卡记录', 403);
+  }
+
+  await ensureProjectCheckInWechatSharesTable();
+  const [existingShares] = await db.query(
+    'SELECT token FROM project_checkin_wechat_shares WHERE checkin_id = ? AND shared_by = ? LIMIT 1',
+    [checkInId, req.user.id]
+  );
+  if (existingShares[0]) {
+    return success(res, {
+      token: existingShares[0].token,
+      path: `/pages/checkin-share-view/index?token=${existingShares[0].token}`,
+    });
+  }
+
+  const token = crypto.randomBytes(24).toString('hex');
+  await db.query(
+    `INSERT INTO project_checkin_wechat_shares (checkin_id, token, shared_by)
+     VALUES (?, ?, ?)`,
+    [checkInId, token, req.user.id]
+  );
+  return success(res, {
+    token,
+    path: `/pages/checkin-share-view/index?token=${token}`,
+  });
+}
+
+async function getProjectCheckInWechatShare(req, res) {
+  const token = String(req.params.token || '').trim();
+  if (!/^[a-f0-9]{48}$/.test(token)) return error(res, '分享链接无效', 404);
+
+  await ensureProjectCheckInWechatSharesTable();
+  const [rows] = await db.query(
+    `SELECT
+       share.token,
+       checkin.id,
+       checkin.project_id,
+       checkin.user_id,
+       checkin.role,
+       checkin.description,
+       checkin.checkin_date,
+       checkin.created_at,
+       project.project_name,
+       project.current_stage,
+       user.nickname AS user_nickname,
+       user.avatar AS user_avatar
+     FROM project_checkin_wechat_shares share
+     JOIN project_checkins checkin ON checkin.id = share.checkin_id
+     JOIN renovation_projects project ON project.id = checkin.project_id
+     LEFT JOIN users user ON user.id = checkin.user_id
+     WHERE share.token = ?
+     LIMIT 1`,
+    [token]
+  );
+  const checkIn = rows[0];
+  if (!checkIn) return error(res, '分享内容不存在或已失效', 404);
+
+  const [media] = await db.query(
+    `SELECT id, media_type, media_url
+     FROM project_checkin_media
+     WHERE checkin_id = ?
+     ORDER BY id`,
+    [checkIn.id]
+  );
+  return success(res, {
+    token,
+    id: checkIn.id,
+    project_id: checkIn.project_id,
+    project_name: checkIn.project_name || '装修项目',
+    current_stage: checkIn.current_stage || '',
+    user_id: checkIn.user_id,
+    role: checkIn.role,
+    description: checkIn.description || '',
+    checkin_date: checkIn.checkin_date,
+    created_at: checkIn.created_at,
+    user_nickname: checkIn.user_nickname || '项目成员',
+    user_avatar: checkIn.user_avatar || '',
+    media,
+  });
+}
+
 async function shareProjectCheckInToCircle(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
@@ -3912,6 +4072,9 @@ async function getProjectExpenses(req, res) {
   const projectId = Number(req.params.id);
   if (!(await canAccessProject(projectId, req.user.id))) {
     return error(res, '项目不存在或无权限', 404);
+  }
+  if (!(await isOwnerSide(projectId, req.user.id))) {
+    return error(res, '无权限查看费用支出', 403);
   }
   const [rows] = await db.query(
     `SELECT expense.id, expense.project_id, expense.created_by,
@@ -5693,16 +5856,15 @@ async function submitProjectActionItemFeedback(req, res) {
 // GET /api/renovation/projects/:id/progress - 获取项目进度
 async function getProjectProgress(req, res) {
   const projectId = Number(req.params.id);
+  if (!projectId || !(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在', 404);
+  }
   const [projectRows] = await db.query(
     `SELECT p.id, p.current_stage, p.status, p.start_date, p.total_days,
             p.pace_mode, p.pace_updated_at, p.lifecycle_status
      FROM renovation_projects p
-     WHERE p.id = ?
-       AND EXISTS (
-         SELECT 1 FROM project_members pm
-         WHERE pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
-       )`,
-    [projectId, req.user.id]
+     WHERE p.id = ?`,
+    [projectId]
   );
   if (!projectRows[0]) return error(res, '项目不存在', 404);
   if (normalizeProjectLifecycle(projectRows[0]) === 'active') {
@@ -7071,9 +7233,10 @@ async function getProjectInspections(req, res) {
             END`;
   const requesterRole = await getProjectMemberRole(projectId, req.user.id);
   const requesterOwnerSide = isOwnerSideRole(requesterRole);
+  const requesterCompanyAdminReadOnly = requesterRole === companyAdminViewerRole;
   const filters = ['i.project_id = ?'];
   const params = [projectId];
-  if (!requesterOwnerSide) {
+  if (!requesterOwnerSide && !requesterCompanyAdminReadOnly) {
     filters.push(`
       (
         (i.status = 'pending'
@@ -8422,6 +8585,8 @@ module.exports = {
   getProjectCheckIns,
   createProjectCheckIn,
   updateProjectCheckInShares,
+  createProjectCheckInWechatShare,
+  getProjectCheckInWechatShare,
   shareProjectCheckInToCircle,
   deleteProjectCheckIn,
   getProjectExpenses,

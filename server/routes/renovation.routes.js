@@ -531,6 +531,15 @@ router.put(
   asyncHandler(controller.updateProjectCheckInShares)
 );
 router.post(
+  '/projects/:id/check-ins/:checkInId/wechat-share',
+  ...protectedRoute,
+  asyncHandler(controller.createProjectCheckInWechatShare)
+);
+router.get(
+  '/check-in-shares/:token',
+  asyncHandler(controller.getProjectCheckInWechatShare)
+);
+router.post(
   '/projects/:id/check-ins/:checkInId/share-to-circle',
   ...protectedRoute,
   asyncHandler(controller.shareProjectCheckInToCircle)
