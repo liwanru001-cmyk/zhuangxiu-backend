@@ -767,8 +767,8 @@
     }
     .product-editor-layout {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) 420px;
-      gap: 96px;
+      grid-template-columns: minmax(0, 1fr) 300px;
+      gap: 18px;
       align-items: start;
     }
     .product-editor-card,
@@ -776,20 +776,22 @@
       border: 1px solid var(--line);
       border-radius: 8px;
       background: #fff;
-      padding: 28px;
+      padding: 20px;
       box-shadow: var(--card-shadow);
     }
     .product-editor-card .form-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
     .product-preview-card h3 {
-      margin: 0 0 16px;
+      margin: 0 0 18px;
       color: #1f2a44;
-      font-size: 16px;
+      font-size: 18px;
     }
+    .product-phone-preview { width: 220px; height: 430px; margin: 0 auto; padding: 8px; border-radius: 26px; background: #25282d; }
+    .product-phone-screen { height: 100%; padding: 13px; overflow: hidden; border-radius: 19px; background: #f6f4ef; }
     .live-preview-image {
-      height: 230px;
-      margin-bottom: 24px;
+      height: 170px;
+      margin-bottom: 15px;
       border-radius: 7px;
       background: #e8f1ff;
       display: grid;
@@ -808,35 +810,31 @@
     .live-preview-name {
       margin: 0 0 4px;
       color: #1f2a44;
-      font-size: 22px;
+      font-size: 16px;
       line-height: 1.25;
       font-weight: 950;
     }
     .live-preview-category,
     .live-preview-meta {
       color: var(--muted);
-      font-size: 13px;
+      font-size: 10px;
       line-height: 1.6;
       font-weight: 700;
     }
     .live-preview-price {
-      margin: 16px 0;
+      margin: 10px 0;
       color: #ff4d3d;
-      font-size: 18px;
+      font-size: 14px;
       font-weight: 950;
     }
     .live-preview-copy {
       margin: 0 0 24px;
       color: #344054;
-      font-size: 13px;
+      font-size: 10px;
       line-height: 1.7;
       font-weight: 650;
     }
-    .live-preview-actions {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 72px;
-    }
+    .live-preview-actions { display: none; }
     .product-detail-title {
       margin: 0;
       color: var(--ink);
@@ -863,6 +861,17 @@
       font-weight: 600;
       white-space: pre-wrap;
     }
+    .product-drawer-cover { height: 250px; margin-bottom: 18px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; color: var(--muted); background: #e9eef5; font-size: 12px; font-weight: 800; }
+    .product-drawer-cover img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .product-detail-status { display: inline-flex; width: fit-content; padding: 5px 8px; border-radius: 5px; color: #16805e; background: #eaf7f2; font-size: 10px; font-weight: 850; }
+    .product-detail-status.draft { color: #775b16; background: #fff5d9; }
+    .product-detail-status.hidden { color: #667085; background: #eef1f4; }
+    .product-detail-rows { margin-top: 14px; border-top: 1px solid var(--line); }
+    .product-detail-row { padding: 12px 0; display: grid; grid-template-columns: 90px minmax(0, 1fr); gap: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .product-detail-row span { color: var(--muted); }
+    .product-drawer-section { margin-top: 18px; }
+    .product-drawer-section h3 { margin: 0 0 9px; font-size: 13px; }
+    .product-drawer-actions { position: sticky; bottom: 0; margin-top: 20px; padding: 16px 0 2px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--line); background: #fff; }
     .product-management-layout {
       display: grid;
       grid-template-columns: 230px minmax(0, 1fr);
@@ -944,6 +953,18 @@
     .category-management-row.child { padding-left: 24px; }
     .category-management-row b, .category-management-row small { display: block; }
     .category-management-row small { margin-top: 3px; color: var(--muted); font-size: 10px; }
+    .category-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+    .category-close { width: 34px; height: 34px; flex: 0 0 auto; border: 0; border-radius: 50%; color: var(--muted); background: #f1f3f6; cursor: pointer; font-size: 20px; }
+    .category-tree-head { margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .category-form-section { display: none; padding-top: 16px; border-top: 1px solid var(--line); }
+    .category-form-section.active { display: block; }
+    .product-row-menu { position: relative; }
+    .product-row-menu summary { width: 32px; height: 32px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; list-style: none; font-weight: 900; }
+    .product-row-menu summary::-webkit-details-marker { display: none; }
+    .product-row-menu-popover { position: absolute; right: 0; top: 38px; z-index: 8; width: 110px; padding: 6px; display: grid; gap: 2px; border: 1px solid var(--line); border-radius: 7px; background: #fff; box-shadow: 0 12px 30px rgba(23,32,51,.14); }
+    .product-row-menu-popover button { min-height: 32px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; text-align: left; font-size: 11px; font-weight: 800; }
+    .product-row-menu-popover button:hover { background: #f4f7fb; }
+    .product-row-menu-popover button.danger { color: var(--danger); }
     body.products-active .shell { max-width: none; padding: 28px 32px 48px; }
     body.products-active .workspace-header { display: none; }
     body.products-active .portal-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
@@ -1188,6 +1209,29 @@
       .entity-row > .status-pill, .entity-row > .small-actions { grid-column: 2; justify-self: start; }
       .case-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .product-case-choices { grid-template-columns: 1fr; }
+      .product-preview-card { display: none; }
+      .product-editor-layout { grid-template-columns: 1fr; }
+      body.products-active #productsPanel > .section > .panel-toolbar { flex-direction: column; }
+      body.products-active #productsPanel > .section > .panel-toolbar .small-actions { width: 100%; }
+      body.products-active #productsPanel > .section > .panel-toolbar .button { flex: 1; }
+      .product-category-tree { grid-template-columns: 1fr 1fr; }
+      .product-table-panel { padding: 12px; }
+      .product-table { min-width: 0; }
+      .product-table thead { display: none; }
+      .product-table tbody { display: grid; gap: 10px; }
+      .product-table tr { padding: 12px; display: grid; grid-template-columns: 1fr 1fr; gap: 9px 12px; border: 1px solid var(--line); border-radius: 8px; }
+      .product-table td { padding: 0; display: grid; gap: 3px; border: 0; font-size: 11px; }
+      .product-table td::before { content: attr(data-label); color: var(--muted); font-size: 9px; font-weight: 800; }
+      .product-table td:first-child { grid-column: 1 / -1; }
+      .product-table td:first-child::before { display: none; }
+      .product-table td:last-child { justify-self: end; align-self: end; }
+      .product-table-product { min-width: 0; }
+      .product-table-footer { align-items: flex-start; flex-direction: column; gap: 5px; }
+      .product-row-menu-popover { right: 0; top: auto; bottom: 38px; }
+      .category-dialog { padding: 18px; }
+      .category-management-row { align-items: flex-start; flex-direction: column; }
+      .category-management-row .small-actions { width: 100%; }
+      .product-drawer-actions .button { flex: 1; }
       .save-bar { position: sticky; bottom: 0; z-index: 3; padding: 12px 0; background: var(--page); }
     }
   </style>
@@ -1429,7 +1473,7 @@
               <div class="product-table-panel">
                 <div class="product-filterbar"><input id="productSearch" type="search" placeholder="搜索产品名称、品牌或规格"><select id="productStatusFilter"><option value="all">全部状态</option><option value="active">上架展示</option><option value="hidden">隐藏</option><option value="draft">草稿</option></select><span id="productFilterCount" class="result-count">0 个产品</span></div>
                 <div class="product-table-wrap"><table class="product-table"><thead><tr><th>产品</th><th>分类</th><th>价格说明</th><th>关联案例</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="productList"></tbody></table></div>
-                <div class="product-table-footer"><span id="productListSummary">按当前分类展示产品。</span><span>每页最多展示 50 个</span></div>
+                <div class="product-table-footer"><span id="productListSummary">按当前分类展示产品。</span><span id="productListDisplayState">已显示全部</span></div>
               </div>
             </div>
             <div id="productMessage" class="message"></div>
@@ -1439,8 +1483,7 @@
             <div class="panel-toolbar">
               <h2 id="productDetailTitle">产品详情</h2>
               <div class="small-actions">
-                <button id="backToProductListFromDetailBtn" class="button button-secondary" type="button">返回产品列表</button>
-                <button id="editProductFromDetailBtn" class="button button-primary" type="button">编辑产品</button>
+                <button id="backToProductListFromDetailBtn" class="category-close" type="button" aria-label="关闭产品详情">×</button>
               </div>
             </div>
             <div id="productDetailContent"></div>
@@ -1448,31 +1491,25 @@
 
           <div id="productEditorView" class="product-editor-view">
             <div class="panel-toolbar">
-              <h2 id="productEditorTitle">新增产品信息</h2>
+              <div><h2 id="productEditorTitle">新增产品</h2><p class="panel-desc">填写产品信息并预览用户看到的内容。</p></div>
               <button id="backToProductListBtn" class="button button-secondary" type="button">返回产品列表</button>
             </div>
             <div class="product-editor-layout">
               <div class="product-editor-card">
+                <h3 style="margin:0 0 18px">产品信息</h3>
                 <div class="form-grid">
-              <div class="field">
-                <label for="product_category_id">所属分类</label>
-                <select id="product_category_id"></select>
-              </div>
-              <div class="field">
-                <label for="product_status">展示状态</label>
-                <select id="product_status">
+              <select id="product_status" hidden>
                   <option value="active">上架展示</option>
                   <option value="hidden">隐藏</option>
                   <option value="draft">草稿</option>
-                </select>
-              </div>
+              </select>
               <div class="field">
                 <label for="product_name">产品名称</label>
                 <input id="product_name" maxlength="120" placeholder="例如：柔光瓷砖 750x1500">
               </div>
               <div class="field">
-                <label for="product_price_text">价格说明</label>
-                <input id="product_price_text" maxlength="80" placeholder="例如：到店咨询 / ¥199/㎡ 起">
+                <label for="product_category_id">所属分类</label>
+                <select id="product_category_id"></select>
               </div>
               <div class="field">
                 <label for="product_brand">品牌</label>
@@ -1483,11 +1520,15 @@
                 <input id="product_spec" maxlength="200">
               </div>
               <div class="field full">
-                <label for="product_summary">简介</label>
+                <label for="product_price_text">价格说明</label>
+                <input id="product_price_text" maxlength="80" placeholder="例如：到店咨询 / ¥199/㎡ 起">
+              </div>
+              <div class="field full">
+                <label for="product_summary">产品简介</label>
                 <textarea id="product_summary" maxlength="300" placeholder="一句话说明产品亮点"></textarea>
               </div>
               <div class="field full">
-                <label for="product_description">说明</label>
+                <label for="product_description">详细说明</label>
                 <textarea id="product_description" maxlength="3000" placeholder="材质、适用空间、风格、注意事项等"></textarea>
               </div>
               <div class="field full">
@@ -1506,13 +1547,14 @@
               </div>
                 </div>
                 <div class="save-bar">
-                  <button id="saveProductBtn" class="button button-primary" type="button" style="width:auto; min-width:160px">新增产品</button>
-                  <button id="cancelProductEditBtn" class="button button-secondary" type="button" style="display:none">取消编辑</button>
+                  <button id="cancelProductEditBtn" class="button button-secondary" type="button">取消</button>
+                  <button id="saveProductDraftBtn" class="button button-secondary" type="button">保存草稿</button>
+                  <button id="saveProductBtn" class="button button-primary" type="button" style="width:auto">保存并上架</button>
                 </div>
               </div>
               <aside class="product-preview-card">
-                <h3>右侧预览</h3>
-                <div id="productLivePreview"></div>
+                <h3>App 页面预览</h3>
+                <div class="product-phone-preview"><div class="product-phone-screen"><div id="productLivePreview"></div></div></div>
               </aside>
             </div>
           </div>
@@ -1543,10 +1585,10 @@
 
       <div id="categoryEditor" class="category-modal" role="dialog" aria-modal="true" aria-labelledby="categoryEditorTitle">
         <div class="category-dialog">
-          <div id="categoryEditorTitle" class="category-editor-title">分类管理</div>
-          <p class="panel-desc">集中管理一级分类和二级分类，产品分类最多支持两级。</p>
+          <div class="category-dialog-head"><div><div id="categoryEditorTitle" class="category-editor-title">分类管理</div><p class="panel-desc">集中管理一级分类和二级分类，产品分类最多支持两级。</p></div><button id="closeCategoryEditorBtn" class="category-close" type="button" aria-label="关闭分类管理">×</button></div>
+          <div class="category-tree-head"><b>现有分类</b><button id="newRootCategoryBtn" class="button button-primary" type="button" style="width:auto">新增一级分类</button></div>
           <div id="categoryManagementTree" class="category-management-tree"></div>
-          <div class="form-grid">
+          <div id="categoryFormSection" class="category-form-section"><div class="form-grid">
             <div class="field full">
               <label for="category_parent_id">分类层级</label>
               <select id="category_parent_id"></select>
@@ -1559,11 +1601,7 @@
               <label for="category_sort_order">排序</label>
               <input id="category_sort_order" type="number" value="0">
             </div>
-          </div>
-          <div class="small-actions" style="justify-content:flex-end">
-            <button id="cancelCategoryEditBtn" class="button button-secondary" type="button">取消</button>
-            <button id="saveCategoryBtn" class="button button-primary" type="button">保存分类</button>
-          </div>
+          </div><div class="small-actions" style="justify-content:flex-end"><button id="cancelCategoryEditBtn" class="button button-secondary" type="button">取消编辑</button><button id="saveCategoryBtn" class="button button-primary" type="button" style="width:auto">保存分类</button></div></div>
           <div id="categoryMessage" class="message"></div>
         </div>
       </div>
@@ -1953,25 +1991,28 @@
       `;
     }
 
-    function resetCategoryForm() {
+    function resetCategoryForm(closeModal = true) {
       editingCategoryId = null;
       $('category_parent_id').value = '';
       $('category_name').value = '';
       $('category_sort_order').value = '0';
       $('saveCategoryBtn').textContent = '保存分类';
-      $('categoryEditorTitle').textContent = '新增产品分类';
+      $('categoryEditorTitle').textContent = '分类管理';
       setMessage('categoryMessage', '');
-      $('categoryEditor').classList.remove('active');
+      $('categoryFormSection').classList.remove('active');
+      if (closeModal) $('categoryEditor').classList.remove('active');
     }
 
     function startRootCategory() {
-      resetCategoryForm();
+      resetCategoryForm(false);
+      $('categoryEditorTitle').textContent = '新增一级分类';
       $('categoryEditor').classList.add('active');
+      $('categoryFormSection').classList.add('active');
       $('category_name').focus();
     }
 
     function openCategoryManagement() {
-      resetCategoryForm();
+      resetCategoryForm(false);
       $('categoryEditorTitle').textContent = '分类管理';
       $('categoryEditor').classList.add('active');
     }
@@ -1985,6 +2026,7 @@
       $('categoryEditorTitle').textContent = parent ? `新增二级分类：${parent.name}` : '新增二级分类';
       $('saveCategoryBtn').textContent = '保存分类';
       $('categoryEditor').classList.add('active');
+      $('categoryFormSection').classList.add('active');
       $('category_name').focus();
     }
 
@@ -2017,9 +2059,9 @@
         $(field).value = field === 'product_status' ? 'active' : '';
       }
       $('product_category_id').value = '';
-      $('saveProductBtn').textContent = '新增产品';
-      $('productEditorTitle').textContent = '新增产品信息';
-      $('cancelProductEditBtn').style.display = 'none';
+      $('saveProductBtn').textContent = '保存并上架';
+      $('productEditorTitle').textContent = '新增产品';
+      $('cancelProductEditBtn').style.display = 'inline-flex';
       renderProductImages();
       renderProductCaseChoices();
       renderProductLivePreview();
@@ -2039,8 +2081,8 @@
         ? [...product.image_urls]
         : (product.cover_url ? [product.cover_url] : []);
       selectedProductCaseIds = new Set(productLinkedCases(product.id).map((item) => Number(item.id)));
-      $('saveProductBtn').textContent = '保存产品';
-      $('productEditorTitle').textContent = '编辑产品信息';
+      $('saveProductBtn').textContent = '保存并上架';
+      $('productEditorTitle').textContent = '编辑产品';
       $('cancelProductEditBtn').style.display = 'inline-flex';
       renderProductImages();
       renderProductCaseChoices();
@@ -2081,33 +2123,32 @@
       const description = String(product?.description || '').trim();
       const hasExtraDescription = description && description !== summary;
       const linkedCases = productLinkedCases(product.id);
+      const statusLabel = { active: '上架展示', hidden: '已隐藏', draft: '草稿' }[product.status] || product.status;
       $('productDetailTitle').textContent = title;
       $('productDetailContent').innerHTML = `
-        <div class="product-detail-gallery">
-          ${images.length
-            ? images.map((url) => `
-              <div class="product-detail-image"><img src="${escapeHtml(displayImageUrl(url))}" alt=""></div>
-            `).join('')
-            : `<div class="product-detail-image">暂无图片</div>`}
+        <div class="product-drawer-cover">${images[0] ? `<img src="${escapeHtml(displayImageUrl(images[0]))}" alt="">` : '暂无产品图片'}</div>
+        <span class="product-detail-status ${escapeHtml(product.status || '')}">${escapeHtml(statusLabel)}</span>
+        <div class="product-detail-rows">
+          <div class="product-detail-row"><span>所属分类</span><b>${escapeHtml(category || '未分类')}</b></div>
+          <div class="product-detail-row"><span>价格说明</span><b>${escapeHtml(product?.price_text || '价格可咨询')}</b></div>
+          <div class="product-detail-row"><span>品牌规格</span><b>${escapeHtml([product?.brand, product?.spec].filter(Boolean).join(' · ') || '暂未填写')}</b></div>
+          <div class="product-detail-row"><span>图片数量</span><b>${images.length} 张</b></div>
+          <div class="product-detail-row"><span>更新时间</span><b>${escapeHtml(product.updated_at ? formatTime(product.updated_at) : '-')}</b></div>
         </div>
-        <div class="product-detail-card">
-          <h3 class="product-detail-title">${escapeHtml(title)}</h3>
-          <div class="product-detail-price">${escapeHtml(product?.price_text || '价格可咨询')}</div>
-          ${category ? `<div><span class="status-pill">${escapeHtml(category)}</span></div>` : ''}
-          ${(product?.brand || product?.spec) ? `
-            <div class="product-detail-meta">
-              ${[
-                product?.brand ? `品牌：${escapeHtml(product.brand)}` : '',
-                product?.spec ? `规格：${escapeHtml(product.spec)}` : '',
-              ].filter(Boolean).join(' · ')}
-            </div>
-          ` : ''}
+        <div class="product-drawer-section">
+          <h3>产品说明</h3>
           <p class="product-detail-copy">${escapeHtml(summary)}</p>
           ${hasExtraDescription ? `<p class="product-detail-copy">${escapeHtml(description)}</p>` : ''}
-          <div><b>关联案例（${linkedCases.length}）</b></div>
+        </div>
+        <div class="product-drawer-section">
+          <h3>关联案例（${linkedCases.length}）</h3>
           <div class="product-linked-cases">
             ${linkedCases.length ? linkedCases.map((item) => `<div class="product-linked-case"><b>${escapeHtml(item.title || '未命名案例')}</b><span>${escapeHtml(caseStatusLabel(item.status))}</span></div>`).join('') : '<div class="upload-note">该产品暂未关联案例。</div>'}
           </div>
+        </div>
+        <div class="product-drawer-actions">
+          <button class="button button-secondary" type="button" data-action="toggleProductStatus" data-id="${product.id}">${product.status === 'active' ? '隐藏产品' : '上架展示'}</button>
+          <button class="button button-primary" type="button" data-action="editProduct" data-id="${product.id}" style="width:auto">编辑产品</button>
         </div>
       `;
     }
@@ -2137,6 +2178,9 @@
           .some((value) => String(value || '').toLowerCase().includes(keyword)));
       }
       $('productFilterCount').textContent = `${visibleProducts.length} 个产品`;
+      $('productListDisplayState').textContent = visibleProducts.length === merchantProducts.length
+        ? '已显示全部产品'
+        : `已显示 ${visibleProducts.length} 个筛选结果`;
       if (!visibleProducts.length) {
         $('productListSummary').textContent = '当前筛选条件下暂无产品。';
         $('productList').innerHTML = '<tr><td colspan="7"><div class="product-empty">没有找到符合条件的产品，可以调整搜索、分类或状态筛选。</div></td></tr>';
@@ -2148,13 +2192,13 @@
       $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
       $('productList').innerHTML = visibleProducts.map((product) => `
         <tr>
-          <td><div class="product-table-product"><div class="product-table-thumb">${productCoverUrl(product) ? `<img src="${escapeHtml(displayImageUrl(productCoverUrl(product)))}" alt="">` : '产品图'}</div><div><b>${escapeHtml(product.name || '未命名产品')}</b><small>${escapeHtml(product.brand || product.spec || '暂无品牌规格')}</small></div></div></td>
-          <td>${escapeHtml(categoryName(product.category_id) || '未分类')}</td>
-          <td>${escapeHtml(product.price_text || '价格可咨询')}</td>
-          <td>${productLinkedCases(product.id).length} 个</td>
-          <td><span class="status-pill">${{ active: '上架展示', hidden: '已隐藏', draft: '草稿' }[product.status] || product.status}</span></td>
-          <td>${escapeHtml(product.updated_at ? formatTime(product.updated_at) : '-')}</td>
-          <td><div class="product-table-actions"><button class="text-button" type="button" data-action="viewProduct" data-id="${product.id}">详情</button><button class="text-button" type="button" data-action="editProduct" data-id="${product.id}">编辑</button><button class="text-button danger" type="button" data-action="deleteProduct" data-id="${product.id}">删除</button></div></td>
+          <td data-label="产品"><div class="product-table-product"><div class="product-table-thumb">${productCoverUrl(product) ? `<img src="${escapeHtml(displayImageUrl(productCoverUrl(product)))}" alt="">` : '产品图'}</div><div><b>${escapeHtml(product.name || '未命名产品')}</b><small>${escapeHtml(product.brand || product.spec || '暂无品牌规格')}</small></div></div></td>
+          <td data-label="分类">${escapeHtml(categoryName(product.category_id) || '未分类')}</td>
+          <td data-label="价格说明">${escapeHtml(product.price_text || '价格可咨询')}</td>
+          <td data-label="关联案例">${productLinkedCases(product.id).length} 个</td>
+          <td data-label="状态"><span class="product-detail-status ${escapeHtml(product.status || '')}">${{ active: '上架展示', hidden: '已隐藏', draft: '草稿' }[product.status] || product.status}</span></td>
+          <td data-label="更新时间">${escapeHtml(product.updated_at ? formatTime(product.updated_at) : '-')}</td>
+          <td data-label="操作"><details class="product-row-menu"><summary aria-label="产品操作">···</summary><div class="product-row-menu-popover"><button type="button" data-action="viewProduct" data-id="${product.id}">查看详情</button><button type="button" data-action="editProduct" data-id="${product.id}">编辑产品</button><button class="danger" type="button" data-action="deleteProduct" data-id="${product.id}">删除产品</button></div></details></td>
         </tr>
       `).join('');
     }
@@ -2579,6 +2623,21 @@
       }
     }
 
+    async function toggleProductStatus(product) {
+      const nextStatus = product.status === 'active' ? 'hidden' : 'active';
+      selectedProductCaseIds = new Set(productLinkedCases(product.id).map((item) => Number(item.id)));
+      const savedProduct = await api(`/users/merchant-products/${product.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({ ...product, status: nextStatus }),
+      });
+      merchantProducts = merchantProducts.map((item) => Number(item.id) === Number(savedProduct.id) ? savedProduct : item);
+      await syncProductCaseLinks(savedProduct);
+      await Promise.all([loadProducts(), loadCases()]);
+      const refreshed = merchantProducts.find((item) => Number(item.id) === Number(product.id));
+      if (refreshed) renderProductDetail(refreshed);
+      setMessage('productMessage', nextStatus === 'active' ? '产品已上架展示' : '产品已隐藏', 'ok');
+    }
+
     function renderConsultations() {
       const visible = consultations.filter((item) => consultationFilter === 'all'
         || (consultationFilter === 'unread' && Number(item.unread_count || 0) > 0)
@@ -2804,6 +2863,8 @@
 
     $('openCategoryEditorBtn').addEventListener('click', openCategoryManagement);
     document.querySelector('[data-open-category-editor]').addEventListener('click', openCategoryManagement);
+    $('newRootCategoryBtn').addEventListener('click', startRootCategory);
+    $('closeCategoryEditorBtn').addEventListener('click', () => resetCategoryForm(true));
     $('newProductBtn').addEventListener('click', () => {
       resetProductForm();
       showProductEditorView();
@@ -2813,10 +2874,6 @@
       showProductListView();
     });
     $('backToProductListFromDetailBtn').addEventListener('click', showProductListView);
-    $('editProductFromDetailBtn').addEventListener('click', () => {
-      const item = merchantProducts.find((product) => Number(product.id) === Number(viewingProductId));
-      if (item) fillProductForm(item);
-    });
 
     document.querySelectorAll('.tab').forEach((tab) => {
       tab.addEventListener('click', () => showPanel(tab.dataset.panel));
@@ -3040,12 +3097,13 @@
       }
     });
 
-    $('cancelCategoryEditBtn').addEventListener('click', resetCategoryForm);
+    $('cancelCategoryEditBtn').addEventListener('click', () => resetCategoryForm(false));
     $('categoryEditor').addEventListener('click', (event) => {
-      if (event.target === $('categoryEditor')) resetCategoryForm();
+      if (event.target === $('categoryEditor')) resetCategoryForm(true);
     });
 
-    $('saveProductBtn').addEventListener('click', async () => {
+    async function saveProductWithStatus(status) {
+      $('product_status').value = status;
       const body = {
         category_id: $('product_category_id').value || null,
         name: $('product_name').value.trim(),
@@ -3067,6 +3125,8 @@
         setMessage('productMessage', '请先登录商家账号后再保存产品。', 'error');
         return;
       }
+      const saveButtons = [$('saveProductBtn'), $('saveProductDraftBtn')];
+      saveButtons.forEach((button) => { button.disabled = true; });
       try {
         const path = editingProductId
           ? `/users/merchant-products/${editingProductId}`
@@ -3080,11 +3140,16 @@
         await Promise.all([loadProducts(), loadCases()]);
         resetProductForm();
         showProductListView();
-        setMessage('productMessage', '产品已保存', 'ok');
+        setMessage('productMessage', status === 'active' ? '产品已保存并上架' : '产品草稿已保存', 'ok');
       } catch (error) {
         setMessage('productMessage', error.message, 'error');
+      } finally {
+        saveButtons.forEach((button) => { button.disabled = false; });
       }
-    });
+    }
+
+    $('saveProductBtn').addEventListener('click', () => saveProductWithStatus('active'));
+    $('saveProductDraftBtn').addEventListener('click', () => saveProductWithStatus('draft'));
 
     $('cancelProductEditBtn').addEventListener('click', () => {
       resetProductForm();
@@ -3107,6 +3172,7 @@
           $('categoryEditorTitle').textContent = item.parent_id ? '编辑二级分类' : '编辑一级分类';
           $('saveCategoryBtn').textContent = '保存分类';
           $('categoryEditor').classList.add('active');
+          $('categoryFormSection').classList.add('active');
           $('category_name').focus();
         } else if (action === 'addChildCategory') {
           startChildCategory(id);
@@ -3119,7 +3185,10 @@
           selectedChildCategoryId = button.dataset.id;
           renderProductCategories();
         } else if (action === 'deleteCategory') {
-          if (!confirm('确定删除这个分类吗？')) return;
+          const category = productCategories.find((item) => Number(item.id) === id);
+          const productCount = merchantProducts.filter((product) => Number(product.category_id) === id).length;
+          const childCount = productCategories.filter((item) => Number(item.parent_id) === id).length;
+          if (!confirm(`确定删除“${category?.name || '这个分类'}”吗？当前包含 ${productCount} 个产品${childCount ? `、${childCount} 个子分类` : ''}。`)) return;
           if (token()) await api(`/users/merchant-product-categories/${id}`, { method: 'DELETE' });
           productCategories = productCategories.filter((category) => Number(category.id) !== id);
           renderProductCategories();
@@ -3130,6 +3199,9 @@
         } else if (action === 'editProduct') {
           const item = merchantProducts.find((product) => Number(product.id) === id);
           if (item) fillProductForm(item);
+        } else if (action === 'toggleProductStatus') {
+          const item = merchantProducts.find((product) => Number(product.id) === id);
+          if (item) await toggleProductStatus(item);
         } else if (action === 'deleteProduct') {
           if (!confirm('确定删除这个产品吗？')) return;
           if (token()) await api(`/users/merchant-products/${id}`, { method: 'DELETE' });
