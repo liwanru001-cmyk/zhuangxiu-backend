@@ -965,9 +965,6 @@
     .product-row-menu-popover button { min-height: 32px; padding: 0 9px; border: 0; border-radius: 5px; background: transparent; cursor: pointer; text-align: left; font-size: 11px; font-weight: 800; }
     .product-row-menu-popover button:hover { background: #f4f7fb; }
     .product-row-menu-popover button.danger { color: var(--danger); }
-    body.products-active .shell { max-width: none; padding: 28px 32px 48px; }
-    body.products-active .workspace-header { display: none; }
-    body.products-active .portal-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
     body.products-active #productsPanel > .section > .panel-toolbar { margin-bottom: 22px; align-items: flex-start; }
     body.products-active #productsPanel > .section > .panel-toolbar h2 { font-size: 28px; }
     body.products-active #productsPanel > .section > .panel-toolbar .panel-desc { margin: 7px 0 0; font-size: 13px; }
@@ -1110,8 +1107,6 @@
     .profile-preview-identity small, .profile-preview-copy { color: var(--muted); font-size: 9px; line-height: 1.6; }
     .profile-preview-copy { margin-top: 12px; }
     .profile-trust-note { margin-bottom: 14px; padding: 12px 14px; border: 1px solid #f1d7a8; border-radius: 7px; color: #8a5b13; background: #fff8e8; font-size: 11px; line-height: 1.6; }
-    body.profile-active .shell { max-width: none; padding: 28px 32px 48px; }
-    body.profile-active .portal-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
     .profile-summary { margin-bottom: 14px; padding: 16px 18px; display: grid; grid-template-columns: 1fr auto; gap: 18px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .profile-summary h2 { margin: 0; font-size: 17px; }
     .profile-summary p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
@@ -1177,12 +1172,38 @@
     .case-preview-meta, .case-preview-copy { color: var(--muted); font-size: 10px; line-height: 1.6; }
     .case-preview-tags { margin: 9px 0; display: flex; flex-wrap: wrap; gap: 5px; }
     .case-preview-tags span { padding: 4px 6px; border-radius: 5px; color: var(--blue-dark); background: #e9f1fc; font-size: 9px; font-weight: 800; }
-    body.cases-active .shell { max-width: none; padding: 28px 32px 48px; }
-    body.cases-active .workspace-header { display: none; }
-    body.cases-active .portal-layout { grid-template-columns: 210px minmax(0, 1fr); gap: 24px; }
     body.cases-active #casesPanel > .panel-toolbar { align-items: flex-start; }
     body.cases-active #casesPanel > .panel-toolbar h2 { font-size: 28px; }
     body.cases-active #newCaseBtn { width: auto; min-height: 40px; padding: 0 14px; border-radius: 7px; box-shadow: none; }
+    body.portal-workspace .shell,
+    body.portal-workspace.products-active .shell,
+    body.portal-workspace.cases-active .shell,
+    body.portal-workspace.profile-active .shell {
+      max-width: none;
+      padding: 28px 32px 48px;
+    }
+    body.portal-workspace .portal-layout,
+    body.portal-workspace.products-active .portal-layout,
+    body.portal-workspace.cases-active .portal-layout,
+    body.portal-workspace.profile-active .portal-layout {
+      grid-template-columns: 210px minmax(0, 1fr);
+      gap: 24px;
+    }
+    body.portal-workspace .workspace-header,
+    body.portal-workspace.products-active .workspace-header,
+    body.portal-workspace.cases-active .workspace-header {
+      min-height: 64px;
+      margin-bottom: 20px;
+      display: flex;
+    }
+    body.portal-workspace .workspace-panel { min-height: 560px; }
+    #productMainToolbar,
+    #caseMainToolbar { min-height: 40px; margin-bottom: 14px; justify-content: flex-end; }
+    #productMainToolbar > div:first-child,
+    #caseMainToolbar > div:first-child { display: none; }
+    #productMainToolbar .small-actions { justify-content: flex-end; }
+    #newCaseBtn,
+    #productMainToolbar .button { width: auto; min-height: 40px; padding: 0 14px; border-radius: 7px; box-shadow: none; }
     .button-small { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; font-size: 11px; font-weight: 800; }
     .chat-messages { height: 330px; padding: 12px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
     .chat-message { max-width: 78%; margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; background: #fff; font-size: 12px; line-height: 1.55; }
@@ -1216,6 +1237,17 @@
 
     @media (max-width: 900px) {
       .login-shell, .portal-layout { grid-template-columns: 1fr; }
+      body.portal-workspace .shell,
+      body.portal-workspace.products-active .shell,
+      body.portal-workspace.cases-active .shell,
+      body.portal-workspace.profile-active .shell { padding: 18px 16px 36px; }
+      body.portal-workspace .portal-layout,
+      body.portal-workspace.products-active .portal-layout,
+      body.portal-workspace.cases-active .portal-layout,
+      body.portal-workspace.profile-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
+      body.portal-workspace .workspace-header,
+      body.portal-workspace.products-active .workspace-header,
+      body.portal-workspace.cases-active .workspace-header { min-height: 76px; }
       .login-shell { min-height: auto; gap: 24px; }
       .portal-sidebar { position: static; overflow-x: auto; }
       .merchant-identity { display: none; }
@@ -1233,22 +1265,16 @@
       .profile-section-button { min-width: 150px; }
       .profile-basic-layout { grid-template-columns: 1fr; }
       .profile-store-preview { display: none; }
-      body.profile-active .shell { padding: 18px 16px 36px; }
-      body.profile-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
       .product-filterbar { grid-template-columns: 1fr; }
       .product-table-panel .product-filterbar { grid-template-columns: 1fr; }
       .product-management-layout { grid-template-columns: 1fr; }
       .product-category-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      body.products-active .shell { padding: 18px 16px 36px; }
-      body.products-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
       .product-category-sidebar { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
       #productDetailView.active { grid-template-columns: 1fr; }
       #productDetailView > .panel-toolbar, #productDetailContent { grid-column: 1; }
       .case-card-grid { grid-template-columns: 1fr; }
       .case-filterbar { grid-template-columns: 1fr; }
       .case-editor-layout { grid-template-columns: 1fr; }
-      body.cases-active .shell { padding: 18px 16px 36px; }
-      body.cases-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
       .case-image-grid, .case-product-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .hero { grid-template-columns: 1fr; }
       .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid, .product-editor-layout { grid-template-columns: 1fr; }
@@ -1823,6 +1849,7 @@
     }
 
     function showPanel(panelId) {
+      const panelChanged = activePanelId !== panelId;
       if (activePanelId === 'profilePanel' && panelId !== 'profilePanel' && profileDirty) {
         if (!confirm('店铺资料还有未保存修改，确定离开吗？')) return false;
         profileDirty = false;
@@ -1849,6 +1876,7 @@
       if (panelId === 'casesPanel') loadCases();
       if (panelId === 'consultationsPanel') loadConsultations();
       if (panelId === 'companiesPanel') loadCompanies();
+      if (panelChanged) window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       return true;
     }
 
