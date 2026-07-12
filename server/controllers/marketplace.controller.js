@@ -330,6 +330,22 @@ function daysSince(value) {
   return Math.max(0, Math.floor((Date.now() - timestamp) / 86400000));
 }
 
+function mapWorkbenchItem(row) {
+  return {
+    id: `${row.item_type || 'item'}:${row.item_id || 0}`,
+    type: row.item_type || 'item',
+    title: row.title || '待处理事项',
+    projectId: row.project_id ? Number(row.project_id) : null,
+    projectName: row.project_name || '未关联工地',
+    personId: row.person_id ? Number(row.person_id) : null,
+    personName: row.person_name || '未指定人员',
+    personRole: row.person_role || '',
+    dueAt: isoOrNull(row.due_at),
+    submittedAt: isoOrNull(row.submitted_at),
+    waitingHours: row.waiting_hours === undefined ? null : toNumber(row.waiting_hours),
+  };
+}
+
 function mapCompanyMemberRow(row) {
   return {
     memberId: row.member_id,
@@ -2264,6 +2280,235 @@ async function getCompanyWorkbenchSummary(req, res) {
     [companyId, companyId]
   );
 
+  const [todayTodoItemRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT *
+     FROM (
+       SELECT 'task' AS item_type,
+              task.id AS item_id,
+              task.task_name AS title,
+              task.project_id,
+              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+              responsible.id AS person_id,
+              responsible.nickname AS person_name,
+              '项目负责人' AS person_role,
+              task.planned_end AS due_at,
+              task.updated_at AS submitted_at,
+              NULL AS waiting_hours
+       FROM renovation_tasks task
+       JOIN company_projects cp ON cp.project_id = task.project_id
+       JOIN renovation_projects project ON project.id = task.project_id
+       LEFT JOIN users responsible
+         ON responsible.id = (
+           SELECT ppe_resp.responsible_user_id
+           FROM project_participants_ext ppe_resp
+           WHERE ppe_resp.project_id = task.project_id
+             AND ppe_resp.status <> 'removed'
+             AND (
+               ppe_resp.company_id = ?
+               OR (ppe_resp.participant_type = 'company' AND ppe_resp.participant_id = ?)
+             )
+             AND ppe_resp.responsible_user_id IS NOT NULL
+           ORDER BY ppe_resp.id DESC
+           LIMIT 1
+         )
+       WHERE task.status <> 2
+         AND task.planned_start <= CURDATE()
+         AND task.planned_end >= CURDATE()
+
+       UNION ALL
+
+       SELECT 'action' AS item_type,
+              item.id AS item_id,
+              item.content AS title,
+              item.project_id,
+              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+              assigned_user.id AS person_id,
+              assigned_user.nickname AS person_name,
+              CASE
+                WHEN pm.role IN ('owner', 'owner_member') THEN '业主'
+                WHEN cm.user_id IS NOT NULL THEN '公司成员'
+                ELSE '项目成员'
+              END AS person_role,
+              item.due_date AS due_at,
+              item.created_at AS submitted_at,
+              NULL AS waiting_hours
+       FROM project_action_items item
+       JOIN company_projects cp ON cp.project_id = item.project_id
+       JOIN renovation_projects project ON project.id = item.project_id
+       LEFT JOIN project_action_item_assignees assigned ON assigned.item_id = item.id
+       LEFT JOIN users assigned_user ON assigned_user.id = assigned.user_id
+       LEFT JOIN company_members cm
+         ON cm.company_id = ?
+        AND cm.user_id = assigned.user_id
+        AND cm.status = 'active'
+       LEFT JOIN project_members pm
+         ON pm.project_id = item.project_id
+        AND pm.user_id = assigned.user_id
+        AND pm.status = 1
+       WHERE item.status = 'pending'
+         AND item.due_date = CURDATE()
+     ) workbench_todos
+     ORDER BY due_at ASC, submitted_at ASC, item_id ASC
+     LIMIT 3`,
+    [companyId, companyId, companyId, companyId, companyId]
+  );
+
+  const [pendingConsultationItemRows] = await db.query(
+    `SELECT 'consultation' AS item_type,
+            c.id AS item_id,
+            '咨询待回复' AS title,
+            NULL AS project_id,
+            COALESCE(NULLIF(c.project_city, ''), '未关联工地') AS project_name,
+            requester.id AS person_id,
+            requester.nickname AS person_name,
+            '咨询用户' AS person_role,
+            NULL AS due_at,
+            COALESCE(last_msg.created_at, c.created_at) AS submitted_at,
+            TIMESTAMPDIFF(HOUR, COALESCE(last_msg.created_at, c.created_at), NOW()) AS waiting_hours
+     FROM consultation_targets target
+     JOIN designer_consultations c ON c.id = target.consultation_id
+     LEFT JOIN users requester ON requester.id = c.user_id
+     LEFT JOIN consultation_messages last_msg
+       ON last_msg.id = (
+         SELECT msg.id
+         FROM consultation_messages msg
+         WHERE msg.consultation_id = c.id
+         ORDER BY msg.created_at DESC, msg.id DESC
+         LIMIT 1
+       )
+     LEFT JOIN company_members sender_member
+       ON sender_member.company_id = ?
+      AND sender_member.user_id = last_msg.sender_id
+      AND sender_member.status = 'active'
+     WHERE target.target_type = 'company'
+       AND target.target_id = ?
+       AND COALESCE(c.status, 'pending') NOT IN ('closed', 'cancelled', 'archived')
+       AND (
+         last_msg.id IS NULL
+         OR sender_member.id IS NULL
+       )
+     ORDER BY COALESCE(last_msg.created_at, c.created_at) ASC, c.id ASC
+     LIMIT 3`,
+    [companyId, companyId]
+  );
+
+  const [upcomingDeadlineItemRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT *
+     FROM (
+       SELECT 'task' AS item_type,
+              task.id AS item_id,
+              task.task_name AS title,
+              task.project_id,
+              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+              responsible.id AS person_id,
+              responsible.nickname AS person_name,
+              '项目负责人' AS person_role,
+              task.planned_end AS due_at,
+              task.updated_at AS submitted_at,
+              NULL AS waiting_hours
+       FROM renovation_tasks task
+       JOIN company_projects cp ON cp.project_id = task.project_id
+       JOIN renovation_projects project ON project.id = task.project_id
+       LEFT JOIN users responsible
+         ON responsible.id = (
+           SELECT ppe_resp.responsible_user_id
+           FROM project_participants_ext ppe_resp
+           WHERE ppe_resp.project_id = task.project_id
+             AND ppe_resp.status <> 'removed'
+             AND (
+               ppe_resp.company_id = ?
+               OR (ppe_resp.participant_type = 'company' AND ppe_resp.participant_id = ?)
+             )
+             AND ppe_resp.responsible_user_id IS NOT NULL
+           ORDER BY ppe_resp.id DESC
+           LIMIT 1
+         )
+       WHERE task.status <> 2
+         AND task.planned_end >= CURDATE()
+         AND task.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+
+       UNION ALL
+
+       SELECT 'progress' AS item_type,
+              item.id AS item_id,
+              item.title,
+              item.project_id,
+              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+              creator.id AS person_id,
+              creator.nickname AS person_name,
+              '创建人' AS person_role,
+              item.planned_end AS due_at,
+              item.updated_at AS submitted_at,
+              NULL AS waiting_hours
+       FROM project_progress_items item
+       JOIN company_projects cp ON cp.project_id = item.project_id
+       JOIN renovation_projects project ON project.id = item.project_id
+       LEFT JOIN users creator ON creator.id = item.created_by
+       WHERE item.status NOT IN (2, 3)
+         AND item.planned_end IS NOT NULL
+         AND item.planned_end >= CURDATE()
+         AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+
+       UNION ALL
+
+       SELECT 'action' AS item_type,
+              action.id AS item_id,
+              action.content AS title,
+              action.project_id,
+              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+              assigned_user.id AS person_id,
+              assigned_user.nickname AS person_name,
+              CASE
+                WHEN cm.user_id IS NOT NULL THEN '公司成员'
+                ELSE '项目成员'
+              END AS person_role,
+              action.due_date AS due_at,
+              action.created_at AS submitted_at,
+              NULL AS waiting_hours
+       FROM project_action_items action
+       JOIN company_projects cp ON cp.project_id = action.project_id
+       JOIN renovation_projects project ON project.id = action.project_id
+       LEFT JOIN project_action_item_assignees assigned ON assigned.item_id = action.id
+       LEFT JOIN users assigned_user ON assigned_user.id = assigned.user_id
+       LEFT JOIN company_members cm
+         ON cm.company_id = ?
+        AND cm.user_id = assigned.user_id
+        AND cm.status = 'active'
+       WHERE action.status = 'pending'
+         AND action.due_date >= CURDATE()
+         AND action.due_date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+     ) workbench_deadlines
+     ORDER BY due_at ASC, submitted_at ASC, item_id ASC
+     LIMIT 3`,
+    [companyId, companyId, companyId, companyId, companyId]
+  );
+
+  const [pendingHandoverItemRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT 'handover' AS item_type,
+            handover.id AS item_id,
+            handover.title,
+            handover.project_id,
+            COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+            COALESCE(target_user.id, creator.id) AS person_id,
+            COALESCE(target_user.nickname, creator.nickname) AS person_name,
+            CASE WHEN target_user.id IS NULL THEN '提交人' ELSE '待确认人' END AS person_role,
+            NULL AS due_at,
+            handover.created_at AS submitted_at,
+            NULL AS waiting_hours
+     FROM project_handovers handover
+     JOIN company_projects cp ON cp.project_id = handover.project_id
+     JOIN renovation_projects project ON project.id = handover.project_id
+     LEFT JOIN users target_user ON target_user.id = handover.target_user_id
+     LEFT JOIN users creator ON creator.id = handover.created_by
+     WHERE handover.status = 'pending_confirm'
+     ORDER BY handover.created_at ASC, handover.id ASC
+     LIMIT 3`,
+    [companyId, companyId]
+  );
+
   const todo = todayTodoRows[0] || {};
   const pendingConsultation = pendingConsultationRows[0] || {};
   const deadline = upcomingDeadlineRows[0] || {};
@@ -2292,6 +2537,7 @@ async function getCompanyWorkbenchSummary(req, res) {
       summary: todayTodoTotal > 0
         ? `今日共${todayTodoTotal}项待办，涉及${todayTodoProjects}个项目、${todayTodoMembers}名公司成员，业主待确认${todayTodoOwners}项`
         : '今日暂无待办事项',
+      items: todayTodoItemRows.map(mapWorkbenchItem),
     },
     pendingConsultations: {
       total: pendingConsultationTotal,
@@ -2300,6 +2546,7 @@ async function getCompanyWorkbenchSummary(req, res) {
       summary: pendingConsultationTotal > 0
         ? `当前有${pendingConsultationTotal}条咨询待回复，最早已等待${oldestWaitingHours}小时`
         : '当前暂无待回复咨询',
+      items: pendingConsultationItemRows.map(mapWorkbenchItem),
     },
     upcomingDeadlines: {
       total: deadlineTotal,
@@ -2308,6 +2555,7 @@ async function getCompanyWorkbenchSummary(req, res) {
       summary: deadlineTotal > 0
         ? `未来3天有${deadlineTotal}项事项到期，涉及${deadlineProjects}个项目，最近一项${nearestDueSummary(deadline.nearest_due_at)}`
         : '未来3天暂无即将到期事项',
+      items: upcomingDeadlineItemRows.map(mapWorkbenchItem),
     },
     pendingHandovers: {
       total: handoverTotal,
@@ -2316,6 +2564,7 @@ async function getCompanyWorkbenchSummary(req, res) {
       summary: handoverTotal > 0
         ? `当前有${handoverTotal}份设计交底待确认，涉及${handoverProjects}个项目，最早提交于${oldestSubmittedDays}天前`
         : '当前暂无待确认交底',
+      items: pendingHandoverItemRows.map(mapWorkbenchItem),
     },
   });
 }

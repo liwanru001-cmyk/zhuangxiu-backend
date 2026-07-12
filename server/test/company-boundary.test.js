@@ -357,7 +357,7 @@ test('company workbench summary uses explicit company project links', async () =
           owner_count: 3,
         }]];
       }
-      if (/FROM consultation_targets target/.test(sql)) {
+      if (/COUNT\(\*\) AS total[\s\S]*FROM consultation_targets target/.test(sql)) {
         assert.deepEqual(params, [9, 9]);
         return [[{
           total: 5,
@@ -375,13 +375,81 @@ test('company workbench summary uses explicit company project links', async () =
           nearest_due_at: new Date(Date.now() + 24 * 3600000).toISOString(),
         }]];
       }
-      if (/FROM project_handovers handover/.test(sql)) {
+      if (/COUNT\(DISTINCT handover\.project_id\) AS project_count/.test(sql)) {
         assert.match(sql, /handover\.status = 'pending_confirm'/);
         assert.deepEqual(params, [9, 9]);
         return [[{
           total: 3,
           project_count: 3,
           oldest_submitted_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+        }]];
+      }
+      if (/workbench_todos/.test(sql)) {
+        assert.match(sql, /project_participants_ext ppe/);
+        assert.match(sql, /ppe_resp\.company_id = \?/);
+        assert.deepEqual(params, [9, 9, 9, 9, 9]);
+        return [[{
+          item_type: 'action',
+          item_id: 101,
+          title: '确认水电验收',
+          project_id: 11,
+          project_name: '星河湾工地',
+          person_id: 42,
+          person_name: '项目经理张三',
+          person_role: '公司成员',
+          due_at: new Date().toISOString(),
+          submitted_at: new Date().toISOString(),
+          waiting_hours: null,
+        }]];
+      }
+      if (/SELECT 'consultation' AS item_type/.test(sql)) {
+        assert.deepEqual(params, [9, 9]);
+        return [[{
+          item_type: 'consultation',
+          item_id: 201,
+          title: '咨询待回复',
+          project_id: null,
+          project_name: '杭州',
+          person_id: 51,
+          person_name: '业主李四',
+          person_role: '咨询用户',
+          due_at: null,
+          submitted_at: new Date(Date.now() - 18 * 3600000).toISOString(),
+          waiting_hours: 18,
+        }]];
+      }
+      if (/workbench_deadlines/.test(sql)) {
+        assert.match(sql, /project_progress_items item/);
+        assert.match(sql, /item\.status NOT IN \(2, 3\)/);
+        assert.deepEqual(params, [9, 9, 9, 9, 9]);
+        return [[{
+          item_type: 'progress',
+          item_id: 301,
+          title: '泥木阶段验收',
+          project_id: 12,
+          project_name: '江南里工地',
+          person_id: 61,
+          person_name: '工长王五',
+          person_role: '创建人',
+          due_at: new Date(Date.now() + 24 * 3600000).toISOString(),
+          submitted_at: new Date().toISOString(),
+          waiting_hours: null,
+        }]];
+      }
+      if (/SELECT 'handover' AS item_type/.test(sql)) {
+        assert.deepEqual(params, [9, 9]);
+        return [[{
+          item_type: 'handover',
+          item_id: 401,
+          title: '设计交底确认',
+          project_id: 13,
+          project_name: '湖滨工地',
+          person_id: 71,
+          person_name: '项目经理赵六',
+          person_role: '待确认人',
+          due_at: null,
+          submitted_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+          waiting_hours: null,
         }]];
       }
       throw new Error(`unexpected query: ${sql}`);
@@ -405,7 +473,12 @@ test('company workbench summary uses explicit company project links', async () =
   assert.equal(res.payload.data.pendingConsultations.total, 5);
   assert.equal(res.payload.data.upcomingDeadlines.total, 4);
   assert.equal(res.payload.data.pendingHandovers.total, 3);
-  assert.equal(queries.length, 5);
+  assert.equal(res.payload.data.todayTodos.items[0].projectName, '星河湾工地');
+  assert.equal(res.payload.data.todayTodos.items[0].personName, '项目经理张三');
+  assert.equal(res.payload.data.pendingConsultations.items[0].personRole, '咨询用户');
+  assert.equal(res.payload.data.upcomingDeadlines.items[0].projectName, '江南里工地');
+  assert.equal(res.payload.data.pendingHandovers.items[0].personName, '项目经理赵六');
+  assert.equal(queries.length, 9);
 });
 
 test('company workbench summary rejects ordinary company members', async () => {
