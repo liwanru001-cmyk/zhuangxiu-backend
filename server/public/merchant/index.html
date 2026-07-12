@@ -586,8 +586,10 @@
     .product-list-view.hidden { display: none; }
     .product-editor-view { display: none; }
     .product-editor-view.active { display: block; }
-    .product-detail-view { display: none; }
-    .product-detail-view.active { display: block; }
+    .product-detail-view,
+    .case-detail-view { display: none; }
+    .product-detail-view.active,
+    .case-detail-view.active { display: block; }
     .product-card-grid {
       display: grid;
       grid-template-columns: repeat(3, minmax(260px, 1fr));
@@ -940,6 +942,9 @@
     .product-table-product small { margin-top: 4px; color: var(--muted); }
     .product-table-actions { display: flex; gap: 8px; white-space: nowrap; }
     .product-table-footer { padding-top: 16px; display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
+    .product-pagination { display: flex; align-items: center; gap: 8px; }
+    .product-page-button { min-width: 32px; min-height: 30px; padding: 0 9px; border: 1px solid var(--line); border-radius: 6px; color: var(--ink); background: #fff; cursor: pointer; font-size: 10px; font-weight: 800; }
+    .product-page-button:disabled { cursor: not-allowed; opacity: .45; }
     .product-case-choices { max-height: 230px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
     .product-case-choice { padding: 11px; display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 11px; }
     .product-case-choice input { width: auto; margin-top: 2px; }
@@ -1078,8 +1083,13 @@
     .profile-anchor-nav { display: flex; flex-wrap: wrap; gap: 6px; }
     .profile-anchor { min-height: 34px; padding: 0 11px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: #f5f7fa; cursor: pointer; font-size: 11px; font-weight: 800; }
     .profile-anchor:hover { color: var(--blue-dark); border-color: #c9d9ec; background: #fff; }
+    .profile-toolbar-state { display: grid; justify-items: end; gap: 4px; }
     .dirty-state { color: var(--muted); font-size: 10px; font-weight: 800; white-space: nowrap; }
     .dirty-state.active { color: #b54708; }
+    .dirty-state.warning { color: #b54708; }
+    .save-bar-status { color: var(--muted); font-size: 11px; font-weight: 800; }
+    .save-bar-status.ok { color: #087a5b; }
+    .save-bar-status.warning { color: #b54708; }
     .profile-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
     .profile-section-nav { position: sticky; top: 88px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .profile-section-nav h3 { margin: 4px 6px 10px; font-size: 13px; }
@@ -1127,6 +1137,8 @@
     .entity-row small { display: block; margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.45; }
     .status-pill { padding: 4px 7px; border-radius: 5px; color: var(--mint); background: rgba(22,163,123,.09); font-size: 10px; font-weight: 850; }
     .empty-state { padding: 48px 20px; color: var(--muted); text-align: center; font-size: 13px; line-height: 1.7; }
+    .empty-state.compact { padding: 20px 14px; border: 1px dashed #d9e1ec; border-radius: 8px; background: #fbfcfe; }
+    .empty-state strong { display: block; margin-bottom: 5px; color: var(--ink); font-size: 14px; }
     .detail-form { margin-top: 18px; }
     .case-card-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .case-card { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
@@ -1145,6 +1157,8 @@
     .choice-button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; color: var(--muted); font-size: 11px; font-weight: 800; }
     .choice-button.selected { color: var(--blue-dark); border-color: #9ebde2; background: #edf4fc; }
     .case-product-choices { max-height: 210px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .case-product-tools { margin-bottom: 8px; display: grid; grid-template-columns: 180px 1fr; gap: 8px; align-items: center; }
+    .case-product-tools select { min-height: 36px; }
     .case-product-choice { padding: 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 11px; }
     .case-product-choice input { width: auto; }
     .case-management-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
@@ -1172,6 +1186,10 @@
     .case-preview-meta, .case-preview-copy { color: var(--muted); font-size: 10px; line-height: 1.6; }
     .case-preview-tags { margin: 9px 0; display: flex; flex-wrap: wrap; gap: 5px; }
     .case-preview-tags span { padding: 4px 6px; border-radius: 5px; color: var(--blue-dark); background: #e9f1fc; font-size: 9px; font-weight: 800; }
+    .case-detail-gallery { margin-top: 12px; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .case-detail-thumb { aspect-ratio: 1.2; display: grid; place-items: center; overflow: hidden; border: 1px solid var(--line); border-radius: 7px; color: var(--muted); background: #f5f7fa; font-size: 10px; }
+    .case-detail-thumb img { width: 100%; height: 100%; object-fit: cover; }
+    .case-detail-product-action { align-self: center; white-space: nowrap; }
     body.cases-active #casesPanel > .panel-toolbar { align-items: flex-start; }
     body.cases-active #casesPanel > .panel-toolbar h2 { font-size: 28px; }
     body.cases-active #newCaseBtn { width: auto; min-height: 40px; padding: 0 14px; border-radius: 7px; box-shadow: none; }
@@ -1222,6 +1240,17 @@
     .company-summary-card { padding: 14px; border: 1px solid var(--line); border-radius: 7px; background: #f8fafc; }
     .company-summary-card b { display: block; font-size: 22px; }
     .company-summary-card span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; }
+    .company-detail-shell { display: grid; gap: 14px; }
+    .company-hero { padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+    .company-hero-main { display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 12px; align-items: center; }
+    .company-hero h3 { margin: 0; font-size: 18px; }
+    .company-hero p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.5; }
+    .company-hero-meta { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 6px; }
+    .company-section-panel { padding: 16px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .company-section-head { margin-bottom: 14px; display: flex; justify-content: space-between; gap: 12px; align-items: flex-start; }
+    .company-section-head h3 { margin: 0; font-size: 17px; }
+    .company-section-head p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .company-project-meta { color: var(--muted); font-size: 11px; }
     .company-subnav { display: flex; gap: 6px; margin: 12px 0 16px; padding-bottom: 10px; overflow-x: auto; border-bottom: 1px solid var(--line); }
     .company-subtab { min-height: 34px; padding: 0 11px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; white-space: nowrap; font-size: 10px; font-weight: 850; }
     .company-subtab.active { color: var(--blue-dark); border-color: #bed0e7; background: #edf4fc; }
@@ -1275,7 +1304,11 @@
       .case-card-grid { grid-template-columns: 1fr; }
       .case-filterbar { grid-template-columns: 1fr; }
       .case-editor-layout { grid-template-columns: 1fr; }
+      .case-product-tools { grid-template-columns: 1fr; }
       .case-image-grid, .case-product-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .company-hero { grid-template-columns: 1fr; }
+      .company-hero-meta { justify-content: flex-start; }
+      .company-section-head { flex-direction: column; }
       .hero { grid-template-columns: 1fr; }
       .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid, .product-editor-layout { grid-template-columns: 1fr; }
       .product-card-grid { grid-template-columns: 1fr; }
@@ -1331,6 +1364,8 @@
       .category-management-row .small-actions { width: 100%; }
       .product-drawer-actions .button { flex: 1; }
       .case-preview-card { display: none; }
+      .case-detail-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .case-product-tools { grid-template-columns: 1fr; }
       .case-table { min-width: 0; }
       .case-table thead { display: none; }
       .case-table tbody { display: grid; gap: 10px; padding: 10px; }
@@ -1430,7 +1465,7 @@
       </section>
 
       <form id="profilePanel" class="workspace-panel">
-        <div class="profile-toolbar"><div><b>店铺资料编辑</b><div class="upload-note">按分区完善资料，内容统一保存。</div></div><span id="profileDirtyState" class="dirty-state">当前内容已保存</span></div>
+        <div class="profile-toolbar"><div><b>店铺资料编辑</b><div class="upload-note">按分区完善资料，内容统一保存。</div></div><div class="profile-toolbar-state"><span id="profileDirtyState" class="dirty-state">当前内容已保存</span><span id="profileSaveHint" class="dirty-state">保存后同步到 App 展示页</span></div></div>
         <div class="profile-summary"><div><h2 id="profileSummaryName">店铺资料</h2><p id="profileSummaryText">完善资料后会同步到移动端店铺展示页</p></div><div id="profileSummaryScore" class="profile-score">0%</div></div>
         <div class="profile-workspace"><aside class="profile-section-nav"><h3>资料分区</h3><button class="profile-section-button active" type="button" data-profile-section="profileBasicSection">店铺展示 <span id="profileBasicState" class="profile-section-state">待补充</span></button><button class="profile-section-button" type="button" data-profile-section="profileContactSection">经营联系 <span id="profileContactState" class="profile-section-state">待补充</span></button><button class="profile-section-button" type="button" data-profile-section="profileCategorySection">主营与服务 <span id="profileCategoryState" class="profile-section-state">待补充</span></button><button class="profile-section-button" type="button" data-profile-section="profileTrustSection">资质认证 <span id="profileTrustState" class="profile-section-state">待补充</span></button></aside><div class="profile-section-content">
         <section id="profileBasicSection" class="section profile-edit-section active">
@@ -1549,6 +1584,7 @@
         </div></div>
 
         <div class="save-bar">
+          <span id="profileSaveState" class="save-bar-status"></span>
           <button id="applyVerifiedMerchantBtn" class="button button-secondary" type="button" style="width:auto; min-width:160px">申请入驻</button>
           <button id="saveBtn" class="button button-primary" type="submit" style="width:auto; min-width:160px">保存商家资料</button>
         </div>
@@ -1576,7 +1612,7 @@
               <div class="product-table-panel">
                 <div class="product-filterbar"><input id="productSearch" type="search" placeholder="搜索产品名称、品牌或规格"><select id="productStatusFilter"><option value="all">全部状态</option><option value="active">上架展示</option><option value="hidden">隐藏</option><option value="draft">草稿</option></select><span id="productFilterCount" class="result-count">0 个产品</span></div>
                 <div class="product-table-wrap"><table class="product-table"><thead><tr><th>产品</th><th>分类</th><th>价格说明</th><th>关联案例</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="productList"></tbody></table></div>
-                <div class="product-table-footer"><span id="productListSummary">按当前分类展示产品。</span><span id="productListDisplayState">已显示全部</span></div>
+                <div class="product-table-footer"><span id="productListSummary">按当前分类展示产品。</span><div class="product-pagination"><button id="productPrevPageBtn" class="product-page-button" type="button">上一页</button><span id="productListDisplayState">第 1 / 1 页</span><button id="productNextPageBtn" class="product-page-button" type="button">下一页</button></div></div>
               </div>
             </div>
             <div id="productMessage" class="message"></div>
@@ -1666,15 +1702,19 @@
 
       <section id="casesPanel" class="workspace-panel">
         <div id="caseMainToolbar" class="panel-toolbar"><div><h2>案例管理</h2><p class="panel-desc">维护真实案例、图片、标签和关联产品。</p></div><button id="newCaseBtn" class="button button-primary" type="button">新增案例</button></div>
-        <div id="caseListView"><div class="case-management-panel"><div class="case-filterbar"><input id="caseSearch" type="search" placeholder="搜索案例名称、城市或说明"><select id="caseStatusFilter"><option value="all">全部状态</option><option value="published">已发布</option><option value="draft">草稿</option><option value="hidden">已隐藏</option></select><span id="caseFilterCount" class="case-result-count">0 个案例</span></div><div class="case-table-wrap"><table class="case-table"><thead><tr><th>案例</th><th>城市 / 面积</th><th>标签</th><th>关联产品</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="caseList"></tbody></table></div><div class="case-table-footer"><span id="caseListSummary">案例内容列表</span><span id="caseListDisplayState">已显示全部案例</span></div></div><div id="caseMessage" class="message"></div></div>
+        <div id="caseListView"><div class="case-management-panel"><div class="case-filterbar"><input id="caseSearch" type="search" placeholder="搜索案例名称、城市或说明"><select id="caseStatusFilter"><option value="all">全部状态</option><option value="published">已发布</option><option value="draft">草稿</option><option value="hidden">已隐藏</option></select><span id="caseFilterCount" class="case-result-count">0 个案例</span></div><div class="case-table-wrap"><table class="case-table"><thead><tr><th>案例</th><th>城市 / 面积</th><th>标签</th><th>关联产品</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="caseList"></tbody></table></div><div class="case-table-footer"><span id="caseListSummary">案例内容列表</span><div class="product-pagination"><button id="casePrevPageBtn" class="product-page-button" type="button">上一页</button><span id="caseListDisplayState">第 1 / 1 页</span><button id="caseNextPageBtn" class="product-page-button" type="button">下一页</button></div></div></div><div id="caseMessage" class="message"></div></div>
         <div id="caseEditorView" style="display:none">
           <div class="panel-toolbar"><div><h2 id="caseEditorTitle">新增案例</h2><p class="panel-desc">填写案例信息并预览用户看到的内容。</p></div><button id="cancelCaseEditBtn" class="button button-secondary" type="button">返回案例列表</button></div>
-          <div class="case-editor-layout"><section class="case-editor-card"><h3>案例信息</h3><div class="form-grid detail-form"><div class="field"><label for="case_title">案例名称</label><input id="case_title" maxlength="120"></div><div class="field"><label for="case_status">保存状态</label><select id="case_status"><option value="draft">保存为草稿</option><option value="published">保存并发布</option><option value="hidden">保存并隐藏</option></select></div><div class="field"><label for="case_city">城市</label><select id="case_city"></select></div><div class="field"><label for="case_area">面积范围</label><select id="case_area"><option value="">请选择</option><option value="60㎡以下">60㎡以下</option><option value="60-90㎡">60-90㎡</option><option value="90-120㎡">90-120㎡</option><option value="120-150㎡">120-150㎡</option><option value="150㎡以上">150㎡以上</option></select></div><div class="field full"><label for="case_budget">预算范围</label><input id="case_budget" maxlength="80" placeholder="例如：20-30 万"></div><div class="field full"><label for="case_description">案例说明</label><textarea id="case_description" maxlength="3000" placeholder="介绍设计重点、使用材料和最终效果"></textarea></div><div class="field full"><label>空间标签</label><div id="caseSpaceChoices" class="choice-row"></div></div><div class="field full"><label>风格标签</label><div id="caseStyleChoices" class="choice-row"></div></div><div class="field full"><label>案例图片</label><div id="caseImagePreview" class="case-image-grid"></div><div class="upload-actions" style="margin-top:10px"><label class="button button-secondary" for="caseImageFile">上传案例图片</label><span id="caseImageStatus" class="upload-note">最多 12 张，第一张为封面</span></div><input id="caseImageFile" class="file-input" type="file" accept="image/*" multiple></div><div class="field full"><label>关联店铺产品</label><div id="caseProductChoices" class="case-product-choices"></div></div></div><div class="save-bar"><button id="saveCaseBtn" class="button button-primary" type="button" style="width:auto">保存案例</button></div></section><aside class="case-preview-card"><h3>App 页面预览</h3><div class="case-preview-phone"><div id="caseLivePreview" class="case-preview-screen"></div></div></aside></div>
+          <div class="case-editor-layout"><section class="case-editor-card"><h3>案例信息</h3><div class="form-grid detail-form"><div class="field"><label for="case_title">案例名称</label><input id="case_title" maxlength="120"></div><div class="field"><label for="case_status">保存状态</label><select id="case_status"><option value="draft">保存为草稿</option><option value="published">保存并发布</option><option value="hidden">保存并隐藏</option></select></div><div class="field"><label for="case_city">城市</label><select id="case_city"></select></div><div class="field"><label for="case_area">面积范围</label><select id="case_area"><option value="">请选择</option><option value="60㎡以下">60㎡以下</option><option value="60-90㎡">60-90㎡</option><option value="90-120㎡">90-120㎡</option><option value="120-150㎡">120-150㎡</option><option value="150㎡以上">150㎡以上</option></select></div><div class="field full"><label for="case_budget">预算范围</label><input id="case_budget" maxlength="80" placeholder="例如：20-30 万"></div><div class="field full"><label for="case_description">案例说明</label><textarea id="case_description" maxlength="3000" placeholder="介绍设计重点、使用材料和最终效果"></textarea></div><div class="field full"><label>空间标签</label><div id="caseSpaceChoices" class="choice-row"></div></div><div class="field full"><label>风格标签</label><div id="caseStyleChoices" class="choice-row"></div></div><div class="field full"><label>案例图片</label><div id="caseImagePreview" class="case-image-grid"></div><div class="upload-actions" style="margin-top:10px"><label class="button button-secondary" for="caseImageFile">上传案例图片</label><span id="caseImageStatus" class="upload-note">最多 12 张，第一张为封面</span></div><input id="caseImageFile" class="file-input" type="file" accept="image/*" multiple></div><div class="field full"><label>关联店铺产品</label><div class="case-product-tools"><select id="caseProductCategoryFilter" aria-label="按产品分类筛选"></select><span id="caseProductFilterHint" class="upload-note">只展示上架产品。</span></div><div id="caseProductChoices" class="case-product-choices"></div></div></div><div class="save-bar"><button id="saveCaseBtn" class="button button-primary" type="button" style="width:auto">保存案例</button></div></section><aside class="case-preview-card"><h3>App 页面预览</h3><div class="case-preview-phone"><div id="caseLivePreview" class="case-preview-screen"></div></div></aside></div>
+        </div>
+        <div id="caseDetailView" class="case-detail-view">
+          <div class="panel-toolbar"><h2 id="caseDetailTitle">案例详情</h2><div class="small-actions"><button id="backToCaseListFromDetailBtn" class="category-close" type="button" aria-label="关闭案例详情">×</button></div></div>
+          <div id="caseDetailContent"></div>
         </div>
       </section>
 
       <section id="consultationsPanel" class="workspace-panel">
-        <div class="management-grid"><div class="management-list"><div class="management-list-head"><h2>咨询会话</h2><button id="reloadConsultationsBtn" class="button-small" type="button">刷新</button></div><div class="consultation-filters"><button class="consultation-filter active" type="button" data-consultation-filter="all">全部</button><button class="consultation-filter" type="button" data-consultation-filter="unread">未读</button><button class="consultation-filter" type="button" data-consultation-filter="closed">已结束</button></div><div id="consultationList" class="entity-list"></div><div id="consultationMessage" class="message"></div></div><div class="management-detail"><div class="management-list-head"><h2 id="consultationDetailTitle">选择一个会话</h2><span id="consultationDetailStatus" class="status-pill" style="display:none"></span></div><div id="consultationContext" class="consultation-context">选择左侧咨询后查看咨询来源和消息记录</div><div id="consultationMessages" class="chat-messages"><div class="empty-state">选择左侧咨询后查看消息记录</div></div><div id="quickReplies" class="quick-replies"><button class="quick-reply" type="button" data-quick-reply="您好，已经收到您的咨询，请问您主要想了解哪方面的信息？">确认需求</button><button class="quick-reply" type="button" data-quick-reply="方便的话，请补充所在城市和具体需求，我们会尽快为您说明。">补充信息</button><button class="quick-reply" type="button" data-quick-reply="感谢咨询，相关信息已经整理好，我们继续在这里沟通。">继续沟通</button></div><div class="reply-row"><input id="consultationReply" maxlength="1000" placeholder="输入回复内容，Ctrl/Command + Enter 发送" disabled><button id="sendConsultationReplyBtn" class="button button-primary" type="button" disabled>发送</button></div><div id="consultationSendState" class="send-state"></div></div></div>
+        <div class="management-grid"><div class="management-list"><div class="management-list-head"><h2>咨询会话</h2><button id="reloadConsultationsBtn" class="button-small" type="button">刷新</button></div><div class="consultation-filters"><button class="consultation-filter active" type="button" data-consultation-filter="all">全部</button><button class="consultation-filter" type="button" data-consultation-filter="unread">未读</button><button class="consultation-filter" type="button" data-consultation-filter="closed">已结束</button></div><div id="consultationList" class="entity-list"></div><div class="case-table-footer"><span id="consultationListSummary">0 个会话</span><div class="product-pagination"><button id="consultationPrevPageBtn" class="product-page-button" type="button">上一页</button><span id="consultationPageState">第 1 / 1 页</span><button id="consultationNextPageBtn" class="product-page-button" type="button">下一页</button></div></div><div id="consultationMessage" class="message"></div></div><div class="management-detail"><div class="management-list-head"><h2 id="consultationDetailTitle">选择一个会话</h2><span id="consultationDetailStatus" class="status-pill" style="display:none"></span></div><div id="consultationContext" class="consultation-context">选择左侧咨询后查看咨询来源和消息记录</div><div id="consultationMessages" class="chat-messages"><div class="empty-state">选择左侧咨询后查看消息记录</div></div><div id="quickReplies" class="quick-replies"><button class="quick-reply" type="button" data-quick-reply="您好，已经收到您的咨询，请问您主要想了解哪方面的信息？">确认需求</button><button class="quick-reply" type="button" data-quick-reply="方便的话，请补充所在城市和具体需求，我们会尽快为您说明。">补充信息</button><button class="quick-reply" type="button" data-quick-reply="感谢咨询，相关信息已经整理好，我们继续在这里沟通。">继续沟通</button></div><div class="reply-row"><input id="consultationReply" maxlength="1000" placeholder="输入回复内容，Ctrl/Command + Enter 发送" disabled><button id="sendConsultationReplyBtn" class="button button-primary" type="button" disabled>发送</button></div><div id="consultationSendState" class="send-state"></div></div></div>
       </section>
 
       <section id="companiesPanel" class="workspace-panel">
@@ -1764,10 +1804,12 @@
     let currentProfile = null;
     let merchantCases = [];
     let editingCaseId = null;
+    let viewingCaseId = null;
     let caseImageUrls = [];
     let selectedCaseSpace = '';
     let selectedCaseStyle = '';
     let selectedCaseProductIds = new Set();
+    let caseProductCategoryFilter = 'all';
     let consultations = [];
     let activeConsultationId = null;
     let consultationFilter = 'all';
@@ -1777,12 +1819,18 @@
     let activeCompanyId = null;
     let activeCompany = null;
     let activeCompanyData = null;
-    let activeCompanySection = 'overview';
+    let activeCompanySection = 'profile';
     let profileDirty = false;
     let productSearchQuery = '';
     let productStatusFilter = 'all';
+    let productPage = 1;
+    const productPageSize = 10;
     let caseSearchQuery = '';
     let caseStatusFilter = 'all';
+    let casePage = 1;
+    const casePageSize = 10;
+    let consultationPage = 1;
+    const consultationPageSize = 10;
     let activeProfileSection = 'profileBasicSection';
     let activePanelId = 'overviewPanel';
 
@@ -1803,7 +1851,7 @@
 
     function setMessage(id, text, type = '') {
       const el = $(id);
-      el.textContent = text || '';
+      el.textContent = type === 'error' ? friendlyApiMessage(text) : (text || '');
       el.className = `message ${type}`.trim();
       el.setAttribute('role', type === 'error' ? 'alert' : 'status');
     }
@@ -1815,6 +1863,20 @@
         .replaceAll('>', '&gt;')
         .replaceAll('"', '&quot;')
         .replaceAll("'", '&#39;');
+    }
+
+    function friendlyApiMessage(message, status = 0) {
+      const text = String(message || '').trim();
+      if (status === 401 || /登录已过期|unauthorized/i.test(text)) return '登录已过期，请重新登录';
+      if (status === 403 || /(^|[^0-9])403([^0-9]|$)|权限|forbidden/i.test(text)) return '当前账号暂无此功能权限，请确认店铺、公司或入驻状态。';
+      if (status >= 500 || /服务器内部错误|internal server|code\s*[:：]?\s*500/i.test(text)) return '服务器暂时没有处理成功，请稍后刷新重试。';
+      if (/响应格式|unexpected token|json|解析失败/i.test(text)) return '服务器返回内容异常，请刷新页面后再试。';
+      if (/failed to fetch|network|timeout|超时/i.test(text)) return '网络连接不稳定，请检查网络后重试。';
+      return text || '请求失败，请稍后重试。';
+    }
+
+    function emptyState(title, detail = '', extraClass = '') {
+      return `<div class="empty-state ${extraClass}"><strong>${escapeHtml(title)}</strong>${detail ? escapeHtml(detail) : ''}</div>`;
     }
 
     function formatTime(value) {
@@ -1911,7 +1973,7 @@
       try {
         json = await res.json();
       } catch (_) {
-        throw new Error(res.status === 404 ? '当前页面没有连接到商家后端，请使用正式商家中心地址' : '服务器响应异常，请稍后重试');
+        throw new Error(res.status === 404 ? '当前页面没有连接到商家后端，请使用正式商家中心地址' : friendlyApiMessage('服务器响应格式错误', res.status));
       }
       if (res.status === 401 && token()) {
         localStorage.removeItem(TOKEN_KEY);
@@ -1921,8 +1983,7 @@
       }
       if (!res.ok || (json.code && json.code >= 400)) {
         const message = json.message || '请求失败';
-        if (res.status === 403) throw new Error(message.includes('权限') ? message : `当前账号无权执行此操作：${message}`);
-        throw new Error(message);
+        throw new Error(friendlyApiMessage(message, res.status || json.code));
       }
       return json.data;
     }
@@ -1943,7 +2004,7 @@
         throw new Error('登录已过期，请重新登录');
       }
       if (!res.ok || !json || (json.code && json.code >= 400)) {
-        throw new Error(json?.message || (res.status === 404 ? '图片上传接口不可用，请使用正式商家中心地址' : '图片上传失败'));
+        throw new Error(res.status === 404 ? '图片上传接口不可用，请使用正式商家中心地址' : friendlyApiMessage(json?.message || '图片上传失败', res.status || json?.code));
       }
       return json.data.url;
     }
@@ -2040,7 +2101,7 @@
     }
 
     function productLinkedCases(productId) {
-      return merchantCases.filter((item) => (item.items || []).some((linked) => Number(linked.product_id) === Number(productId)));
+      return merchantCases.filter((item) => (item.items || []).some((linked) => Number(linked.product_id ?? linked.productId ?? linked.id) === Number(productId)));
     }
 
     function renderProductCaseChoices() {
@@ -2050,7 +2111,7 @@
           <input type="checkbox" data-product-case="${item.id}" ${selectedProductCaseIds.has(Number(item.id)) ? 'checked' : ''} ${canAssociate ? '' : 'disabled'}>
           <span><b>${escapeHtml(item.title || '未命名案例')}</b><small>${escapeHtml(caseStatusLabel(item.status))} · ${escapeHtml(item.city || '未填写城市')}</small></span>
         </label>
-      `).join('') : '<div class="empty-state" style="grid-column:1/-1">还没有案例，可先保存产品，再到案例管理中创建案例。</div>';
+      `).join('') : `<div style="grid-column:1/-1">${emptyState('还没有可关联的案例', '可先保存产品，再到案例管理中创建案例。', 'compact')}</div>`;
       $('productCaseHint').textContent = canAssociate
         ? `已选择 ${selectedProductCaseIds.size} 个案例，保存产品后同步更新关联。`
         : '只有上架展示的产品可以关联案例；保存后会解除已有案例关联。';
@@ -2288,20 +2349,24 @@
         visibleProducts = visibleProducts.filter((product) => [product.name, product.brand, product.spec, product.summary]
           .some((value) => String(value || '').toLowerCase().includes(keyword)));
       }
-      $('productFilterCount').textContent = `${visibleProducts.length} 个产品`;
-      $('productListDisplayState').textContent = visibleProducts.length === merchantProducts.length
-        ? '已显示全部产品'
-        : `已显示 ${visibleProducts.length} 个筛选结果`;
-      if (!visibleProducts.length) {
+      const filteredCount = visibleProducts.length;
+      const pageCount = Math.max(1, Math.ceil(filteredCount / productPageSize));
+      productPage = Math.min(Math.max(1, productPage), pageCount);
+      const pagedProducts = visibleProducts.slice((productPage - 1) * productPageSize, productPage * productPageSize);
+      $('productFilterCount').textContent = `${filteredCount} 个产品`;
+      $('productListDisplayState').textContent = `第 ${productPage} / ${pageCount} 页`;
+      $('productPrevPageBtn').disabled = productPage <= 1;
+      $('productNextPageBtn').disabled = productPage >= pageCount;
+      if (!filteredCount) {
         $('productListSummary').textContent = '当前筛选条件下暂无产品。';
-        $('productList').innerHTML = '<tr><td colspan="7"><div class="product-empty">没有找到符合条件的产品，可以调整搜索、分类或状态筛选。</div></td></tr>';
+        $('productList').innerHTML = `<tr><td colspan="7">${emptyState('没有找到符合条件的产品', '可以调整搜索、分类或状态筛选，也可以新增产品。', 'compact')}</td></tr>`;
         return;
       }
       const currentCategory = selectedChildCategoryId !== 'all'
         ? categoryName(selectedChildCategoryId)
         : (selectedRootCategoryId === 'uncategorized' ? '未分类' : (selectedRootCategoryId !== 'all' ? categoryName(selectedRootCategoryId) : '全部产品'));
-      $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
-      $('productList').innerHTML = visibleProducts.map((product) => `
+      $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${filteredCount} 个，每页 10 个。`;
+      $('productList').innerHTML = pagedProducts.map((product) => `
         <tr>
           <td data-label="产品"><div class="product-table-product"><div class="product-table-thumb">${productCoverUrl(product) ? `<img src="${escapeHtml(displayImageUrl(productCoverUrl(product)))}" alt="">` : '产品图'}</div><div><b>${escapeHtml(product.name || '未命名产品')}</b><small>${escapeHtml(product.brand || product.spec || '暂无品牌规格')}</small></div></div></td>
           <td data-label="分类">${escapeHtml(categoryName(product.category_id) || '未分类')}</td>
@@ -2482,6 +2547,8 @@
       renderChips();
       updateVerifiedMerchantStatus(profile?.verified_merchant);
       profileDirty = false;
+      $('profileSaveState').className = 'save-bar-status';
+      $('profileSaveState').textContent = profile?.updated_at ? `上次保存：${formatTime(profile.updated_at)}` : '';
       updateProfileEditingState();
     }
 
@@ -2499,8 +2566,14 @@
       $('profileSummaryName').textContent = $('shop_name').value.trim() || '店铺资料';
       $('profileSummaryScore').textContent = `${score}%`;
       $('profileSummaryText').textContent = score === 100 ? '基础展示资料已经完整' : '继续完善图片、服务区域和联系方式';
+      const trustChanged = ['license_url', 'authorization_url'].some((id) => String($(id).value || '') !== String(currentProfile?.[id] || ''));
       $('profileDirtyState').textContent = profileDirty ? '有未保存修改' : '当前内容已保存';
-      $('profileDirtyState').classList.toggle('active', profileDirty);
+      $('profileDirtyState').classList.toggle('active', profileDirty && !trustChanged);
+      $('profileDirtyState').classList.toggle('warning', profileDirty && trustChanged);
+      $('profileSaveHint').textContent = trustChanged
+        ? '保存资质材料后，入驻状态可能重新进入审核'
+        : (profileDirty ? '保存后同步到 App 店铺展示页' : '内容已同步到当前表单');
+      $('profileSaveHint').classList.toggle('warning', trustChanged);
       updateProfileSectionStates();
       renderProfileLivePreview();
     }
@@ -2626,6 +2699,105 @@
       return { draft: '草稿', published: '已发布', hidden: '已隐藏' }[status] || status || '草稿';
     }
 
+    function caseTags(item) {
+      return [...(item?.tags?.space || []), ...(item?.tags?.style || [])].filter(Boolean);
+    }
+
+    function caseImages(item) {
+      const images = Array.isArray(item?.images) ? item.images.filter(Boolean) : [];
+      const cover = item?.cover_image || '';
+      return images.length ? images : (cover ? [cover] : []);
+    }
+
+    function caseLinkedProducts(item) {
+      return (item?.items || []).map((linked) => {
+        const linkedId = linked.product_id ?? linked.productId ?? linked.id;
+        const product = merchantProducts.find((candidate) => Number(candidate.id) === Number(linkedId));
+        return {
+          id: linkedId,
+          name: product?.name || linked.product_name || '未命名产品',
+          meta: [productDisplayCategory(product), product?.brand || linked.brand, product?.spec || linked.model].filter(Boolean).join(' · '),
+          status: product?.status || '',
+        };
+      });
+    }
+
+    function productMatchesCaseCategoryFilter(product) {
+      if (caseProductCategoryFilter === 'all') return true;
+      const selectedId = Number(caseProductCategoryFilter || 0);
+      const categoryId = Number(product?.category_id || 0);
+      if (!selectedId || !categoryId) return false;
+      if (categoryId === selectedId) return true;
+      return productCategories.some((category) => Number(category.parent_id) === selectedId && Number(category.id) === categoryId);
+    }
+
+    function renderCaseProductCategoryOptions() {
+      const activeCategories = productCategories.filter((category) => category.status === 'active');
+      if (caseProductCategoryFilter !== 'all' && !activeCategories.some((category) => Number(category.id) === Number(caseProductCategoryFilter))) {
+        caseProductCategoryFilter = 'all';
+      }
+      $('caseProductCategoryFilter').innerHTML = '<option value="all">全部上架产品</option>' + activeCategories
+        .map((category) => `<option value="${category.id}">${escapeHtml(categoryName(category.id))}</option>`)
+        .join('');
+      $('caseProductCategoryFilter').value = caseProductCategoryFilter;
+    }
+
+    function showCaseListView() {
+      viewingCaseId = null;
+      $('caseDetailView').classList.remove('active');
+      $('caseEditorView').style.display = 'none';
+      $('caseMainToolbar').style.display = 'flex';
+      $('caseListView').style.display = 'block';
+    }
+
+    function showCaseDetailView(item) {
+      if (!item) return;
+      viewingCaseId = Number(item.id || 0);
+      $('caseListView').style.display = 'none';
+      $('caseEditorView').style.display = 'none';
+      $('caseMainToolbar').style.display = 'none';
+      $('caseDetailView').classList.add('active');
+      renderCaseDetail(item);
+    }
+
+    function renderCaseDetail(item) {
+      const images = caseImages(item);
+      const tags = caseTags(item);
+      const linkedProducts = caseLinkedProducts(item);
+      $('caseDetailTitle').textContent = item?.title || '案例详情';
+      $('caseDetailContent').innerHTML = `
+        <div class="product-drawer-cover">${images[0] ? `<img src="${escapeHtml(displayImageUrl(images[0]))}" alt="">` : '暂无案例封面'}</div>
+        <span class="product-detail-status ${escapeHtml(item.status || '')}">${escapeHtml(caseStatusLabel(item.status))}</span>
+        <div class="product-detail-rows">
+          <div class="product-detail-row"><span>城市面积</span><b>${escapeHtml([item.city, item.area_range].filter(Boolean).join(' · ') || '暂未填写')}</b></div>
+          <div class="product-detail-row"><span>预算范围</span><b>${escapeHtml(item.budget_range || '暂未填写')}</b></div>
+          <div class="product-detail-row"><span>案例标签</span><b>${escapeHtml(tags.join(' / ') || '暂无标签')}</b></div>
+          <div class="product-detail-row"><span>图片数量</span><b>${images.length} 张</b></div>
+          <div class="product-detail-row"><span>更新时间</span><b>${escapeHtml(item.updated_at ? formatTime(item.updated_at) : '-')}</b></div>
+        </div>
+        <div class="product-drawer-section">
+          <h3>案例说明</h3>
+          <p class="product-detail-copy">${escapeHtml(item.description || '暂未填写案例说明。')}</p>
+        </div>
+        <div class="product-drawer-section">
+          <h3>案例图片（${images.length}）</h3>
+          <div class="case-detail-gallery">
+            ${images.length ? images.map((url, index) => `<div class="case-detail-thumb"><img src="${escapeHtml(displayImageUrl(url))}" alt="案例图片 ${index + 1}"></div>`).join('') : '<div class="upload-note">该案例暂未上传图片。</div>'}
+          </div>
+        </div>
+        <div class="product-drawer-section">
+          <h3>关联产品（${linkedProducts.length}）</h3>
+          <div class="product-linked-cases">
+            ${linkedProducts.length ? linkedProducts.map((product) => `<div class="product-linked-case"><div><b>${escapeHtml(product.name)}</b><span>${escapeHtml(product.meta || '产品信息待完善')}</span></div>${product.id ? `<button class="text-button case-detail-product-action" type="button" data-action="viewProduct" data-id="${product.id}">查看产品</button>` : `<span>${escapeHtml({ active: '上架展示', hidden: '已隐藏', draft: '草稿' }[product.status] || '已关联')}</span>`}</div>`).join('') : '<div class="upload-note">该案例暂未关联产品。</div>'}
+          </div>
+        </div>
+        <div class="product-drawer-actions">
+          <button class="button button-secondary" type="button" data-case-action="${item.status === 'published' ? 'hide' : 'publish'}" data-id="${item.id}">${item.status === 'published' ? '隐藏案例' : '发布案例'}</button>
+          <button class="button button-primary" type="button" data-case-action="edit" data-id="${item.id}" style="width:auto">编辑案例</button>
+        </div>
+      `;
+    }
+
     function renderCases() {
       let visibleCases = [...merchantCases];
       if (caseStatusFilter !== 'all') visibleCases = visibleCases.filter((item) => item.status === caseStatusFilter);
@@ -2634,21 +2806,31 @@
         visibleCases = visibleCases.filter((item) => [item.title, item.city, item.area_range, item.description]
           .some((value) => String(value || '').toLowerCase().includes(keyword)));
       }
-      $('caseFilterCount').textContent = `${visibleCases.length} 个案例`;
-      $('caseListSummary').textContent = visibleCases.length ? `当前共显示 ${visibleCases.length} 个案例。` : '当前筛选条件下暂无案例。';
-      $('caseListDisplayState').textContent = visibleCases.length === merchantCases.length ? '已显示全部案例' : `已显示 ${visibleCases.length} 个筛选结果`;
-      $('caseList').innerHTML = visibleCases.length ? visibleCases.map((item) => {
-        const tags = [...(item.tags?.space || []), ...(item.tags?.style || [])];
+      const filteredCount = visibleCases.length;
+      const pageCount = Math.max(1, Math.ceil(filteredCount / casePageSize));
+      casePage = Math.min(Math.max(1, casePage), pageCount);
+      const pagedCases = visibleCases.slice((casePage - 1) * casePageSize, casePage * casePageSize);
+      $('caseFilterCount').textContent = `${filteredCount} 个案例`;
+      $('caseListSummary').textContent = filteredCount ? `共 ${filteredCount} 个案例，每页 10 个。` : '当前筛选条件下暂无案例。';
+      $('caseListDisplayState').textContent = `第 ${casePage} / ${pageCount} 页`;
+      $('casePrevPageBtn').disabled = casePage <= 1;
+      $('caseNextPageBtn').disabled = casePage >= pageCount;
+      $('caseList').innerHTML = filteredCount ? pagedCases.map((item) => {
+        const tags = caseTags(item);
+        const linkedProducts = caseLinkedProducts(item);
+        const linkedProductText = linkedProducts.length
+          ? linkedProducts.slice(0, 2).map((product) => product.name).join(' / ') + (linkedProducts.length > 2 ? ` 等 ${linkedProducts.length} 个` : '')
+          : '暂未关联';
         return `<tr>
           <td data-label="案例"><div class="case-table-main"><div class="case-table-cover">${item.cover_image ? `<img src="${escapeHtml(displayImageUrl(item.cover_image))}" alt="">` : '暂无封面'}</div><div><b>${escapeHtml(item.title || '未命名案例')}</b><small>${escapeHtml(item.description || '暂无案例说明')}</small></div></div></td>
           <td data-label="城市 / 面积">${escapeHtml([item.city, item.area_range].filter(Boolean).join(' · ') || '暂未填写')}</td>
           <td data-label="标签">${escapeHtml(tags.join(' / ') || '暂无标签')}</td>
-          <td data-label="关联产品">${(item.items || []).length} 个</td>
+          <td data-label="关联产品">${escapeHtml(linkedProductText)}</td>
           <td data-label="状态"><span class="product-detail-status ${escapeHtml(item.status || '')}">${escapeHtml(caseStatusLabel(item.status))}</span></td>
           <td data-label="更新时间">${escapeHtml(item.updated_at ? formatTime(item.updated_at) : '-')}</td>
-          <td data-label="操作"><details class="product-row-menu"><summary aria-label="案例操作">···</summary><div class="product-row-menu-popover"><button type="button" data-case-action="edit" data-id="${item.id}">编辑案例</button>${item.status === 'published' ? `<button type="button" data-case-action="hide" data-id="${item.id}">隐藏案例</button>` : `<button type="button" data-case-action="publish" data-id="${item.id}">发布案例</button>`}<button class="danger" type="button" data-case-action="delete" data-id="${item.id}">删除案例</button></div></details></td>
+          <td data-label="操作"><details class="product-row-menu"><summary aria-label="案例操作">···</summary><div class="product-row-menu-popover"><button type="button" data-case-action="view" data-id="${item.id}">查看详情</button><button type="button" data-case-action="edit" data-id="${item.id}">编辑案例</button>${item.status === 'published' ? `<button type="button" data-case-action="hide" data-id="${item.id}">隐藏案例</button>` : `<button type="button" data-case-action="publish" data-id="${item.id}">发布案例</button>`}<button class="danger" type="button" data-case-action="delete" data-id="${item.id}">删除案例</button></div></details></td>
         </tr>`;
-      }).join('') : '<tr><td colspan="7"><div class="empty-state">没有找到符合条件的案例，可以调整搜索或状态筛选。</div></td></tr>';
+      }).join('') : `<tr><td colspan="7">${emptyState('没有找到符合条件的案例', '可以调整搜索或状态筛选，也可以新增案例。', 'compact')}</td></tr>`;
       updateOverview();
     }
 
@@ -2664,13 +2846,23 @@
       renderCases();
       renderProducts();
       if ($('productEditorView').classList.contains('active')) renderProductCaseChoices();
+      if (viewingCaseId && $('caseDetailView').classList.contains('active')) {
+        const refreshedCase = merchantCases.find((item) => Number(item.id) === Number(viewingCaseId));
+        if (refreshedCase) renderCaseDetail(refreshedCase);
+        else showCaseListView();
+      }
     }
 
     function renderCaseChoices() {
       $('caseSpaceChoices').innerHTML = caseSpaceOptions.map((value) => `<button class="choice-button ${selectedCaseSpace === value ? 'selected' : ''}" type="button" data-case-space="${value}">${value}</button>`).join('');
       $('caseStyleChoices').innerHTML = caseStyleOptions.map((value) => `<button class="choice-button ${selectedCaseStyle === value ? 'selected' : ''}" type="button" data-case-style="${value}">${value}</button>`).join('');
-      const products = merchantProducts.filter((product) => product.status === 'active');
-      $('caseProductChoices').innerHTML = products.length ? products.map((product) => `<label class="case-product-choice"><input type="checkbox" data-case-product="${product.id}" ${selectedCaseProductIds.has(Number(product.id)) ? 'checked' : ''}><span><b>${escapeHtml(product.name || '未命名产品')}</b><small>${escapeHtml(categoryName(product.category_id) || '未分类')}</small></span></label>`).join('') : '<div class="empty-state" style="grid-column:1/-1">请先发布店铺产品，再将产品关联到案例。</div>';
+      renderCaseProductCategoryOptions();
+      const activeProducts = merchantProducts.filter((product) => product.status === 'active');
+      const products = activeProducts.filter(productMatchesCaseCategoryFilter);
+      $('caseProductFilterHint').textContent = activeProducts.length
+        ? `当前显示 ${products.length} / ${activeProducts.length} 个上架产品。`
+        : '只展示上架产品。';
+      $('caseProductChoices').innerHTML = products.length ? products.map((product) => `<label class="case-product-choice"><input type="checkbox" data-case-product="${product.id}" ${selectedCaseProductIds.has(Number(product.id)) ? 'checked' : ''}><span><b>${escapeHtml(product.name || '未命名产品')}</b><small>${escapeHtml(categoryName(product.category_id) || '未分类')}</small></span></label>`).join('') : `<div class="empty-state compact" style="grid-column:1/-1"><strong>${activeProducts.length ? '当前分类没有上架产品' : '暂无上架产品'}</strong>${activeProducts.length ? '可以切换分类，或先去产品管理上架产品。' : '请先发布店铺产品，再将产品关联到案例。'}</div>`;
       renderCaseLivePreview();
     }
 
@@ -2712,12 +2904,14 @@
       caseImageUrls = Array.isArray(item?.images) && item.images.length ? [...item.images] : (item?.cover_image ? [item.cover_image] : []);
       selectedCaseSpace = item?.tags?.space?.[0] || '';
       selectedCaseStyle = item?.tags?.style?.[0] || '';
-      selectedCaseProductIds = new Set((item?.items || []).map((product) => Number(product.product_id)).filter(Boolean));
+      selectedCaseProductIds = new Set((item?.items || []).map((product) => Number(product.product_id ?? product.productId ?? product.id)).filter(Boolean));
+      caseProductCategoryFilter = 'all';
       renderCaseChoices();
       renderCaseImages();
       renderCaseLivePreview();
       $('caseListView').style.display = 'none';
       $('caseMainToolbar').style.display = 'none';
+      $('caseDetailView').classList.remove('active');
       $('caseEditorView').style.display = 'block';
     }
 
@@ -2727,9 +2921,8 @@
       selectedCaseSpace = '';
       selectedCaseStyle = '';
       selectedCaseProductIds = new Set();
-      $('caseEditorView').style.display = 'none';
-      $('caseMainToolbar').style.display = 'flex';
-      $('caseListView').style.display = 'block';
+      caseProductCategoryFilter = 'all';
+      showCaseListView();
     }
 
     async function saveCase() {
@@ -2777,14 +2970,27 @@
         .map((item) => [Number(item.id), item]));
       activeProducts.set(productId, product);
       const changedCases = merchantCases.filter((item) => {
-        const currentlyLinked = (item.items || []).some((linked) => Number(linked.product_id) === productId);
+        const currentlyLinked = (item.items || []).some((linked) => Number(linked.product_id ?? linked.productId ?? linked.id) === productId);
         return currentlyLinked !== desiredCaseIds.has(Number(item.id));
       });
       for (const item of changedCases) {
         const shouldLink = desiredCaseIds.has(Number(item.id));
         const retainedItems = (item.items || [])
-          .filter((linked) => Number(linked.product_id) !== productId && activeProducts.has(Number(linked.product_id)))
-          .map((linked, index) => ({ ...linked, sort_order: index }));
+          .filter((linked) => {
+            const linkedId = Number(linked.product_id ?? linked.productId ?? linked.id);
+            return linkedId !== productId && activeProducts.has(linkedId);
+          })
+          .map((linked, index) => {
+            const linkedId = Number(linked.product_id ?? linked.productId ?? linked.id);
+            const linkedProduct = activeProducts.get(linkedId);
+            return {
+              product_id: linkedId,
+              product_name: linkedProduct?.name || linked.product_name || '',
+              brand: linkedProduct?.brand || linked.brand || '',
+              model: linkedProduct?.spec || linked.model || '',
+              sort_order: index,
+            };
+          });
         if (shouldLink) {
           retainedItems.push({
             product_id: productId,
@@ -2820,8 +3026,16 @@
       const visible = consultations.filter((item) => consultationFilter === 'all'
         || (consultationFilter === 'unread' && Number(item.unread_count || 0) > 0)
         || (consultationFilter === 'closed' && ['closed', 'cancelled', 'archived'].includes(item.status)));
+      const filteredCount = visible.length;
+      const pageCount = Math.max(1, Math.ceil(filteredCount / consultationPageSize));
+      consultationPage = Math.min(Math.max(1, consultationPage), pageCount);
+      const pagedConsultations = visible.slice((consultationPage - 1) * consultationPageSize, consultationPage * consultationPageSize);
       document.querySelectorAll('[data-consultation-filter]').forEach((button) => button.classList.toggle('active', button.dataset.consultationFilter === consultationFilter));
-      $('consultationList').innerHTML = visible.length ? visible.map((item) => `
+      $('consultationListSummary').textContent = `共 ${filteredCount} 个会话，每页 10 个`;
+      $('consultationPageState').textContent = `第 ${consultationPage} / ${pageCount} 页`;
+      $('consultationPrevPageBtn').disabled = consultationPage <= 1;
+      $('consultationNextPageBtn').disabled = consultationPage >= pageCount;
+      $('consultationList').innerHTML = pagedConsultations.length ? pagedConsultations.map((item) => `
         <button class="entity-row ${Number(item.consultation_id) === Number(activeConsultationId) ? 'active' : ''}" type="button" data-consultation-id="${item.consultation_id}"><div class="entity-thumb">${escapeHtml((item.peer_nickname || '用户').slice(0, 1))}</div><div><b>${escapeHtml(item.peer_nickname || '咨询用户')}</b><small>${escapeHtml(item.last_message || item.consultation_content || '暂无消息')}</small><small>${escapeHtml(item.last_message_at ? formatTime(item.last_message_at) : '')}</small></div>${Number(item.unread_count || 0) ? `<span class="status-pill">${item.unread_count} 未读</span>` : ''}</button>`).join('') : `<div class="empty-state">${consultationFilter === 'unread' ? '当前没有未读咨询。' : consultationFilter === 'closed' ? '当前没有已结束咨询。' : '当前暂无用户咨询。'}</div>`;
       updateOverview();
     }
@@ -2887,7 +3101,7 @@
 
     function renderCompanies() {
       $('companyList').innerHTML = companies.length ? companies.map((company) => `
-        <button class="entity-row ${Number(company.id) === Number(activeCompanyId) ? 'active' : ''}" type="button" data-company-id="${company.id}"><div class="entity-thumb">${company.logo_url ? `<img src="${escapeHtml(displayImageUrl(company.logo_url))}" alt="">` : escapeHtml((company.name || '公司').slice(0, 1))}</div><div><b>${escapeHtml(company.name || '未命名公司')}</b><small>${escapeHtml(company.city || company.service_area || '服务区域待完善')}</small></div><span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span></button>`).join('') : '<div class="empty-state">当前账号还没有创建或管理装修公司。</div>';
+        <button class="entity-row ${Number(company.id) === Number(activeCompanyId) ? 'active' : ''}" type="button" data-company-id="${company.id}"><div class="entity-thumb">${company.logo_url ? `<img src="${escapeHtml(displayImageUrl(company.logo_url))}" alt="">` : escapeHtml((company.name || '公司').slice(0, 1))}</div><div><b>${escapeHtml(company.name || '未命名公司')}</b><small>${escapeHtml(company.city || company.service_area || '服务区域待完善')}</small></div><span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span></button>`).join('') : emptyState('暂无装修公司', '当前账号还没有创建或管理装修公司。', 'compact');
     }
 
     async function loadCompanies() {
@@ -2913,32 +3127,54 @@
     }
 
     function companySubnav() {
-      const tabs = [['overview', '公司概览'], ['profile', '公司资料'], ['members', '团队成员'], ['projects', '关联项目'], ['workbench', '公司工作台']];
+      const tabs = [['profile', '公司资料'], ['members', '团队成员'], ['projects', '关联项目'], ['workbench', '公司工作台']];
       return `<div class="company-subnav">${tabs.map(([value, label]) => `<button class="company-subtab ${activeCompanySection === value ? 'active' : ''}" type="button" data-company-section="${value}">${label}</button>`).join('')}</div>`;
     }
 
     function renderCompanySection() {
       if (!activeCompanyData) return;
       const { company, members, projects, workbench } = activeCompanyData;
+      if (!['profile', 'members', 'projects', 'workbench'].includes(activeCompanySection)) activeCompanySection = 'profile';
       const canManage = canManageActiveCompany();
+      const role = activeCompany?.memberRole || activeCompany?.member_role || (canManage ? 'admin' : 'staff');
       const todo = workbench?.todayTodos || workbench?.today_todos || {};
       const consultation = workbench?.pendingConsultations || workbench?.pending_consultations || {};
       const deadlines = workbench?.upcomingDeadlines || workbench?.upcoming_deadlines || {};
       const handovers = workbench?.pendingHandovers || workbench?.pending_handovers || {};
+      const companyLogo = company.logo_url ? `<img src="${escapeHtml(displayImageUrl(company.logo_url))}" alt="">` : escapeHtml((company.name || '公司').slice(0, 1));
+      const header = `
+        <div class="company-hero">
+          <div class="company-hero-main">
+            <div class="entity-thumb">${companyLogo}</div>
+            <div>
+              <h3>${escapeHtml(company.name || '未命名装修公司')}</h3>
+              <p>${escapeHtml([company.city, company.service_area].filter(Boolean).join(' · ') || '服务区域待完善')}</p>
+            </div>
+          </div>
+          <div class="company-hero-meta">
+            <span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span>
+            <span class="status-pill">${escapeHtml(companyRoleLabel(role))}</span>
+            <span class="status-pill">${canManage ? '可管理' : '只读查看'}</span>
+          </div>
+        </div>
+        <div class="company-summary-grid">
+          <div class="company-summary-card"><b>${members.length}</b><span>团队成员</span></div>
+          <div class="company-summary-card"><b>${projects.length}</b><span>关联项目</span></div>
+          <div class="company-summary-card"><b>${Number(todo.total || 0)}</b><span>今日待办</span></div>
+          <div class="company-summary-card"><b>${Number(consultation.total || 0)}</b><span>待回复咨询</span></div>
+        </div>`;
       let content = '';
-      if (activeCompanySection === 'overview') {
-        content = `<div class="company-summary-grid"><div class="company-summary-card"><b>${members.length}</b><span>团队成员</span></div><div class="company-summary-card"><b>${projects.length}</b><span>关联项目</span></div><div class="company-summary-card"><b>${Number(todo.total || 0)}</b><span>今日待办</span></div><div class="company-summary-card"><b>${Number(consultation.total || 0)}</b><span>待回复咨询</span></div></div><div class="company-info-list"><div class="company-info-row"><span>认证状态</span><b>${escapeHtml(companyStatusLabel(company))}</b></div><div class="company-info-row"><span>服务区域</span><b>${escapeHtml(company.service_area || '待完善')}</b></div><div class="company-info-row"><span>联系电话</span><b>${escapeHtml(company.contact_phone || '待完善')}</b></div><div class="company-info-row"><span>当前权限</span><b>${canManage ? '可管理公司资料与成员' : '只读查看'}</b></div></div>`;
-      } else if (activeCompanySection === 'profile') {
-        content = `<div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" value="${escapeHtml(company.name || '')}" maxlength="120" ${canManage ? '' : 'disabled'}></div><div class="field"><label>所在城市</label><input id="company_city" value="${escapeHtml(company.city || '')}" maxlength="80" ${canManage ? '' : 'disabled'}></div><div class="field"><label>服务区域</label><input id="company_service_area" value="${escapeHtml(company.service_area || '')}" maxlength="120" ${canManage ? '' : 'disabled'}></div><div class="field"><label>联系电话</label><input id="company_contact_phone" value="${escapeHtml(company.contact_phone || '')}" maxlength="30" ${canManage ? '' : 'disabled'}></div><div class="field full"><label>详细地址</label><input id="company_address" value="${escapeHtml(company.address || '')}" maxlength="255" ${canManage ? '' : 'disabled'}></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000" ${canManage ? '' : 'disabled'}>${escapeHtml(company.intro || '')}</textarea></div></div>${canManage ? `<div class="save-bar"><button class="button button-primary" type="button" data-company-save="${company.id}">保存公司资料</button></div>` : '<div class="message">当前账号没有编辑公司资料的权限。</div>'}`;
+      if (activeCompanySection === 'profile') {
+        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>公司资料</h3><p>维护装修公司的公开基础信息，认证状态由后台审核控制。</p></div><span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span></div><div class="company-info-list"><div class="company-info-row"><span>当前权限</span><b>${canManage ? '可编辑公司资料' : '只读查看公司资料'}</b></div><div class="company-info-row"><span>认证状态</span><b>${escapeHtml(companyStatusLabel(company))}</b></div></div><div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" value="${escapeHtml(company.name || '')}" maxlength="120" ${canManage ? '' : 'disabled'}></div><div class="field"><label>所在城市</label><input id="company_city" value="${escapeHtml(company.city || '')}" maxlength="80" ${canManage ? '' : 'disabled'}></div><div class="field"><label>服务区域</label><input id="company_service_area" value="${escapeHtml(company.service_area || '')}" maxlength="120" ${canManage ? '' : 'disabled'}></div><div class="field"><label>联系电话</label><input id="company_contact_phone" value="${escapeHtml(company.contact_phone || '')}" maxlength="30" ${canManage ? '' : 'disabled'}></div><div class="field full"><label>详细地址</label><input id="company_address" value="${escapeHtml(company.address || '')}" maxlength="255" ${canManage ? '' : 'disabled'}></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000" ${canManage ? '' : 'disabled'}>${escapeHtml(company.intro || '')}</textarea></div></div>${canManage ? `<div class="save-bar"><button class="button button-primary" type="button" data-company-save="${company.id}">保存公司资料</button></div>` : '<div class="message">当前账号没有编辑公司资料的权限。</div>'}</div>`;
       } else if (activeCompanySection === 'members') {
-        content = `<div class="management-list-head"><h2>团队成员</h2><span class="upload-note">共 ${members.length} 人</span></div><div class="entity-list">${members.length ? members.map((member) => { const role = member.memberRole || member.member_role || 'staff'; const memberId = member.memberId || member.member_id || member.id; return `<div class="entity-row"><div class="entity-thumb">${escapeHtml((member.displayName || member.display_name || member.nickname || '成员').slice(0, 1))}</div><div><b>${escapeHtml(member.displayName || member.display_name || member.nickname || '公司成员')}</b><small>${escapeHtml(member.title || companyRoleLabel(role))}</small></div>${canManage && role !== 'owner' ? `<div class="small-actions"><select class="member-role-select" data-company-member-role="${memberId}">${['admin','designer','supervisor','project_manager','staff','customer_service'].map((value) => `<option value="${value}" ${role === value ? 'selected' : ''}>${companyRoleLabel(value)}</option>`).join('')}</select><button class="text-button danger" type="button" data-company-member-remove="${memberId}">移除</button></div>` : `<span class="status-pill">${companyRoleLabel(role)}</span>`}</div>`; }).join('') : '<div class="empty-state">暂无团队成员</div>'}</div>`;
+        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>团队成员</h3><p>仅负责人和管理员可以调整成员角色或移除成员。</p></div><span class="upload-note">共 ${members.length} 人</span></div><div class="entity-list">${members.length ? members.map((member) => { const role = member.memberRole || member.member_role || 'staff'; const memberId = member.memberId || member.member_id || member.id; return `<div class="entity-row"><div class="entity-thumb">${escapeHtml((member.displayName || member.display_name || member.nickname || '成员').slice(0, 1))}</div><div><b>${escapeHtml(member.displayName || member.display_name || member.nickname || '公司成员')}</b><small>${escapeHtml(member.title || companyRoleLabel(role))}</small></div>${canManage && role !== 'owner' ? `<div class="small-actions"><select class="member-role-select" data-company-member-role="${memberId}">${['admin','designer','supervisor','project_manager','staff','customer_service'].map((value) => `<option value="${value}" ${role === value ? 'selected' : ''}>${companyRoleLabel(value)}</option>`).join('')}</select><button class="text-button danger" type="button" data-company-member-remove="${memberId}">移除</button></div>` : `<span class="status-pill">${companyRoleLabel(role)}</span>`}</div>`; }).join('') : emptyState('暂无团队成员', '公司成员加入后会显示在这里。', 'compact')}</div></div>`;
       } else if (activeCompanySection === 'projects') {
-        content = `<div class="management-list-head"><h2>关联项目</h2><span class="upload-note">只展示公司明确关联或可靠推断的项目</span></div><div class="entity-list">${projects.length ? projects.map((project) => `<div class="entity-row"><div class="entity-thumb">项</div><div><b>${escapeHtml(project.projectName || project.project_name || project.name || '装修项目')}</b><small>${escapeHtml([project.projectCode || project.project_code, project.responsibleName || project.responsible_name].filter(Boolean).join(' · ') || '公司关联项目')}</small></div><span class="status-pill">${escapeHtml(project.roleType || project.role_type || '参与')}</span></div>`).join('') : '<div class="empty-state">暂无明确关联项目</div>'}</div>`;
+        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>关联项目</h3><p>只展示公司明确关联或可靠推断的项目，不因为单个员工参与就扩大公司权限。</p></div><span class="upload-note">共 ${projects.length} 个项目</span></div><div class="entity-list">${projects.length ? projects.map((project) => `<div class="entity-row"><div class="entity-thumb">项</div><div><b>${escapeHtml(project.projectName || project.project_name || project.name || '装修项目')}</b><small>${escapeHtml([project.projectCode || project.project_code, project.responsibleName || project.responsible_name].filter(Boolean).join(' · ') || '公司关联项目')}</small><span class="company-project-meta">${escapeHtml(project.stageName || project.stage_name || project.status || '')}</span></div><span class="status-pill">${escapeHtml(project.roleType || project.role_type || '参与')}</span></div>`).join('') : emptyState('暂无明确关联项目', '项目绑定公司或公司身份参与后，会显示在这里。', 'compact')}</div></div>`;
       } else {
         const cards = [['今日待办', todo], ['待回复咨询', consultation], ['即将到期', deadlines], ['待确认交底', handovers]];
-        content = workbench ? `<div class="company-summary-grid">${cards.map(([title, value]) => `<div class="workbench-detail-card"><h3>${title}</h3><b>${Number(value.total || 0)}</b><p>${escapeHtml(value.summary || '当前暂无需要关注的信息')}</p></div>`).join('')}</div>` : '<div class="empty-state">当前账号没有查看公司级工作台的权限，或工作台数据暂不可用。</div>';
+        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>公司工作台</h3><p>汇总公司关联项目的协同信息，第一版只展示数量和摘要。</p></div><span class="upload-note">${workbench?.generatedAt || workbench?.generated_at ? `更新于 ${formatTime(workbench.generatedAt || workbench.generated_at)}` : '实时读取'}</span></div>${workbench ? `<div class="company-summary-grid">${cards.map(([title, value]) => `<div class="workbench-detail-card"><h3>${title}</h3><b>${Number(value.total || 0)}</b><p>${escapeHtml(value.summary || '当前暂无需要关注的信息')}</p></div>`).join('')}</div>` : emptyState('工作台数据暂不可用', '当前账号可能没有查看公司级工作台的权限，或工作台接口暂未返回数据。', 'compact')}</div>`;
       }
-      $('companyDetail').innerHTML = companySubnav() + content;
+      $('companyDetail').innerHTML = `<div class="company-detail-shell">${header}${companySubnav()}${content}</div>`;
     }
 
     async function openCompany(id) {
@@ -2953,7 +3189,7 @@
       ]);
       const projects = Array.isArray(projectData) ? projectData : (projectData?.items || []);
       activeCompanyData = { company, members: Array.isArray(members) ? members : [], projects, workbench };
-      activeCompanySection = 'overview';
+      activeCompanySection = 'profile';
       $('companyDetailTitle').textContent = company.name || '装修公司';
       renderCompanySection();
     }
@@ -2983,14 +3219,18 @@
       payload.case_count = caseCount;
       payload.consultation_enabled = $('consultation_enabled').checked;
       setMessage('profileMessage', '正在保存...');
+      $('profileSaveState').className = 'save-bar-status';
+      $('profileSaveState').textContent = '正在同步店铺资料...';
       await api('/users/merchant-profile', {
         method: 'PUT',
         body: JSON.stringify(payload)
       });
-      currentProfile = { ...(currentProfile || {}), ...payload };
+      currentProfile = { ...(currentProfile || {}), ...payload, updated_at: new Date().toISOString() };
       profileDirty = false;
       updateProfileEditingState();
       updateOverview();
+      $('profileSaveState').className = 'save-bar-status ok';
+      $('profileSaveState').textContent = `保存成功：${formatTime(currentProfile.updated_at)}`;
       setMessage('profileMessage', '商家资料已保存', 'ok');
     }
 
@@ -3069,12 +3309,16 @@
 
     $('productSearch').addEventListener('input', () => {
       productSearchQuery = $('productSearch').value.trim();
+      productPage = 1;
       renderProducts();
     });
     $('productStatusFilter').addEventListener('change', () => {
       productStatusFilter = $('productStatusFilter').value;
+      productPage = 1;
       renderProducts();
     });
+    $('productPrevPageBtn').addEventListener('click', () => { if (productPage > 1) { productPage -= 1; renderProducts(); } });
+    $('productNextPageBtn').addEventListener('click', () => { productPage += 1; renderProducts(); });
     $('product_status').addEventListener('change', () => {
       if ($('product_status').value !== 'active') selectedProductCaseIds = new Set();
       renderProductCaseChoices();
@@ -3089,8 +3333,12 @@
 
     $('newCaseBtn').addEventListener('click', () => openCaseEditor());
     $('cancelCaseEditBtn').addEventListener('click', closeCaseEditor);
-    $('caseSearch').addEventListener('input', () => { caseSearchQuery = $('caseSearch').value.trim(); renderCases(); });
-    $('caseStatusFilter').addEventListener('change', () => { caseStatusFilter = $('caseStatusFilter').value; renderCases(); });
+    $('backToCaseListFromDetailBtn').addEventListener('click', showCaseListView);
+    $('caseSearch').addEventListener('input', () => { caseSearchQuery = $('caseSearch').value.trim(); casePage = 1; renderCases(); });
+    $('caseStatusFilter').addEventListener('change', () => { caseStatusFilter = $('caseStatusFilter').value; casePage = 1; renderCases(); });
+    $('casePrevPageBtn').addEventListener('click', () => { if (casePage > 1) { casePage -= 1; renderCases(); } });
+    $('caseNextPageBtn').addEventListener('click', () => { casePage += 1; renderCases(); });
+    $('caseProductCategoryFilter').addEventListener('change', () => { caseProductCategoryFilter = $('caseProductCategoryFilter').value; renderCaseChoices(); });
     ['case_title', 'case_city', 'case_area', 'case_budget', 'case_description'].forEach((id) => {
       $(id).addEventListener('input', renderCaseLivePreview);
       $(id).addEventListener('change', renderCaseLivePreview);
@@ -3102,6 +3350,8 @@
     });
 
     $('reloadConsultationsBtn').addEventListener('click', loadConsultations);
+    $('consultationPrevPageBtn').addEventListener('click', () => { if (consultationPage > 1) { consultationPage -= 1; renderConsultations(); } });
+    $('consultationNextPageBtn').addEventListener('click', () => { consultationPage += 1; renderConsultations(); });
     $('sendConsultationReplyBtn').addEventListener('click', () => sendConsultationReply());
     $('consultationReply').addEventListener('keydown', (event) => {
       if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
@@ -3109,7 +3359,7 @@
         sendConsultationReply();
       }
     });
-    document.querySelectorAll('[data-consultation-filter]').forEach((button) => button.addEventListener('click', () => { consultationFilter = button.dataset.consultationFilter; renderConsultations(); }));
+    document.querySelectorAll('[data-consultation-filter]').forEach((button) => button.addEventListener('click', () => { consultationFilter = button.dataset.consultationFilter; consultationPage = 1; renderConsultations(); }));
     document.querySelectorAll('[data-quick-reply]').forEach((button) => button.addEventListener('click', () => {
       if ($('consultationReply').disabled) return;
       $('consultationReply').value = button.dataset.quickReply;
@@ -3120,9 +3370,10 @@
       activeCompanyId = null;
       activeCompany = null;
       activeCompanyData = null;
+      activeCompanySection = 'profile';
       renderCompanies();
       $('companyDetailTitle').textContent = '新建装修公司';
-      $('companyDetail').innerHTML = `<div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" maxlength="120"></div><div class="field"><label>所在城市</label><input id="company_city" maxlength="80"></div><div class="field"><label>服务区域</label><input id="company_service_area" maxlength="120"></div><div class="field"><label>联系电话</label><input id="company_contact_phone" maxlength="30"></div><div class="field full"><label>详细地址</label><input id="company_address" maxlength="255"></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000"></textarea></div></div><div class="save-bar"><button class="button button-primary" type="button" data-company-create>创建装修公司</button></div>`;
+      $('companyDetail').innerHTML = `<div class="company-section-panel"><div class="company-section-head"><div><h3>公司资料</h3><p>先创建基础资料，后续可在后台完成认证和展示开通。</p></div></div><div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" maxlength="120"></div><div class="field"><label>所在城市</label><input id="company_city" maxlength="80"></div><div class="field"><label>服务区域</label><input id="company_service_area" maxlength="120"></div><div class="field"><label>联系电话</label><input id="company_contact_phone" maxlength="30"></div><div class="field full"><label>详细地址</label><input id="company_address" maxlength="255"></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000"></textarea></div></div><div class="save-bar"><button class="button button-primary" type="button" data-company-create>创建装修公司</button></div></div>`;
     });
 
     [...productFields, 'product_category_id'].forEach((field) => {
@@ -3244,12 +3495,17 @@
         return;
       }
       $('saveBtn').disabled = true;
+      const previousSaveText = $('saveBtn').textContent;
+      $('saveBtn').textContent = '保存中...';
       try {
         await saveProfile();
       } catch (error) {
         setMessage('profileMessage', error.message, 'error');
+        $('profileSaveState').className = 'save-bar-status warning';
+        $('profileSaveState').textContent = '保存未完成，请检查提示后重试。';
       } finally {
         $('saveBtn').disabled = false;
+        $('saveBtn').textContent = previousSaveText;
       }
     });
 
@@ -3364,10 +3620,12 @@
         } else if (action === 'selectRootCategory') {
           selectedRootCategoryId = button.dataset.id;
           selectedChildCategoryId = 'all';
+          productPage = 1;
           renderProductCategories();
         } else if (action === 'selectChildCategory') {
           selectedRootCategoryId = button.dataset.parentId || selectedRootCategoryId;
           selectedChildCategoryId = button.dataset.id;
+          productPage = 1;
           renderProductCategories();
         } else if (action === 'deleteCategory') {
           const category = productCategories.find((item) => Number(item.id) === id);
@@ -3380,7 +3638,9 @@
           renderProducts();
         } else if (action === 'viewProduct') {
           const item = merchantProducts.find((product) => Number(product.id) === id);
-          if (item) showProductDetailView(item);
+          if (item) {
+            if (showPanel('productsPanel')) showProductDetailView(item);
+          }
         } else if (action === 'editProduct') {
           const item = merchantProducts.find((product) => Number(product.id) === id);
           if (item) fillProductForm(item);
@@ -3438,11 +3698,21 @@
         if (caseButton) {
           const id = Number(caseButton.dataset.id);
           const action = caseButton.dataset.caseAction;
-          if (action === 'edit') openCaseEditor(merchantCases.find((item) => Number(item.id) === id));
-          if (action === 'publish') await api(`/users/merchant/dashboard/cases/${id}/publish`, { method: 'POST', body: '{}' });
-          if (action === 'hide') await api(`/users/merchant/dashboard/cases/${id}/hide`, { method: 'POST', body: '{}' });
-          if (action === 'delete' && confirm('确定删除这个案例吗？')) await api(`/users/merchant/dashboard/cases/${id}`, { method: 'DELETE' });
-          if (action !== 'edit') await loadCases();
+          const item = merchantCases.find((candidate) => Number(candidate.id) === id);
+          if (action === 'view') {
+            showCaseDetailView(item);
+          } else if (action === 'edit') {
+            openCaseEditor(item);
+          } else if (action === 'publish') {
+            await api(`/users/merchant/dashboard/cases/${id}/publish`, { method: 'POST', body: '{}' });
+            await loadCases();
+          } else if (action === 'hide') {
+            await api(`/users/merchant/dashboard/cases/${id}/hide`, { method: 'POST', body: '{}' });
+            await loadCases();
+          } else if (action === 'delete' && confirm('确定删除这个案例吗？')) {
+            await api(`/users/merchant/dashboard/cases/${id}`, { method: 'DELETE' });
+            await loadCases();
+          }
           return;
         }
         if (consultationButton) { await openConsultation(consultationButton.dataset.consultationId); return; }
