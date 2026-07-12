@@ -863,6 +863,76 @@
       font-weight: 600;
       white-space: pre-wrap;
     }
+    .product-management-layout {
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 16px;
+      align-items: start;
+    }
+    .product-category-sidebar,
+    .product-table-panel {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--card-shadow);
+    }
+    .product-category-sidebar { padding: 14px; }
+    .product-category-head {
+      min-height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border-bottom: 1px solid var(--line);
+      margin-bottom: 8px;
+      padding: 0 4px 10px;
+    }
+    .product-category-head b { font-size: 13px; }
+    .product-category-tree { display: grid; gap: 4px; }
+    .product-category-item {
+      width: 100%;
+      min-height: 38px;
+      padding: 0 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      border: 0;
+      border-radius: 6px;
+      color: var(--ink);
+      background: transparent;
+      cursor: pointer;
+      text-align: left;
+      font-size: 11px;
+      font-weight: 750;
+    }
+    .product-category-item.child { padding-left: 24px; color: var(--muted); }
+    .product-category-item.active { color: var(--blue-dark); background: #edf4fc; }
+    .product-category-item span { color: var(--muted); font-size: 10px; }
+    .product-table-panel { min-width: 0; overflow: hidden; }
+    .product-table-panel .product-filterbar { margin: 0; padding: 14px; border-bottom: 1px solid var(--line); }
+    .product-table-wrap { overflow-x: auto; }
+    .product-table { width: 100%; min-width: 820px; border-collapse: collapse; }
+    .product-table th,
+    .product-table td { padding: 13px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; font-size: 11px; }
+    .product-table th { color: var(--muted); background: #f8fafc; font-size: 10px; font-weight: 850; }
+    .product-table tr:last-child td { border-bottom: 0; }
+    .product-table-product { min-width: 210px; display: grid; grid-template-columns: 52px minmax(0, 1fr); gap: 10px; align-items: center; }
+    .product-table-thumb { width: 52px; height: 52px; border: 1px solid var(--line); border-radius: 6px; display: grid; place-items: center; overflow: hidden; color: var(--muted); background: #f5f7fa; font-size: 9px; }
+    .product-table-thumb img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .product-table-product b,
+    .product-table-product small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .product-table-product small { margin-top: 4px; color: var(--muted); }
+    .product-table-actions { display: flex; gap: 8px; white-space: nowrap; }
+    .product-table-footer { padding: 12px 14px; display: flex; justify-content: space-between; color: var(--muted); font-size: 10px; }
+    .product-case-choices { max-height: 230px; overflow-y: auto; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .product-case-choice { padding: 11px; display: flex; gap: 9px; align-items: flex-start; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 11px; }
+    .product-case-choice input { width: auto; margin-top: 2px; }
+    .product-case-choice b, .product-case-choice small { display: block; }
+    .product-case-choice small { margin-top: 3px; color: var(--muted); }
+    .product-linked-cases { display: grid; gap: 8px; }
+    .product-linked-case { padding: 11px 12px; display: flex; justify-content: space-between; gap: 12px; border: 1px solid var(--line); border-radius: 7px; background: #f8fafc; font-size: 11px; }
+    .product-linked-case span { color: var(--muted); }
 
     .login-shell {
       max-width: 1120px;
@@ -1028,6 +1098,8 @@
       .overview-status-tags { justify-content: flex-start; }
       .profile-toolbar { align-items: flex-start; flex-direction: column; }
       .product-filterbar { grid-template-columns: 1fr; }
+      .product-management-layout { grid-template-columns: 1fr; }
+      .product-category-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .case-card-grid { grid-template-columns: 1fr; }
       .case-image-grid, .case-product-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .hero { grid-template-columns: 1fr; }
@@ -1060,6 +1132,7 @@
       .entity-thumb { width: 42px; height: 42px; }
       .entity-row > .status-pill, .entity-row > .small-actions { grid-column: 2; justify-self: start; }
       .case-image-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .product-case-choices { grid-template-columns: 1fr; }
       .save-bar { position: sticky; bottom: 0; z-index: 3; padding: 12px 0; background: var(--page); }
     }
   </style>
@@ -1283,28 +1356,27 @@
       <section id="productsPanel" class="workspace-panel">
         <section class="section" style="margin-top:0">
           <div class="panel-toolbar">
-            <h2>产品展示管理</h2>
+            <div><h2>产品管理</h2><p class="panel-desc">管理产品分类、展示状态、关联案例和店铺产品内容。</p></div>
             <div class="small-actions">
-              <button id="openCategoryEditorBtn" class="button button-secondary" type="button">新增产品分类</button>
-              <button id="newProductBtn" class="button button-primary" type="button">新增产品信息</button>
+              <button id="openCategoryEditorBtn" class="button button-secondary" type="button">分类管理</button>
+              <button id="newProductBtn" class="button button-primary" type="button">新增产品</button>
             </div>
           </div>
 
           <div id="productListView" class="product-list-view">
-            <div class="category-card">
-              <div class="category-card-header">
-                <div class="category-card-title">分类导航</div>
-                <div class="category-card-note">第一行切换一级分类，第二行切换二级分类。分类新增在右上角按钮里完成。</div>
+            <div class="product-management-layout">
+              <aside class="product-category-sidebar">
+                <div class="product-category-head"><b>产品分类</b><button class="text-button" type="button" data-open-category-editor>管理</button></div>
+                <div id="productCategoryTree" class="product-category-tree"></div>
+                <div id="rootCategoryTabs" hidden></div>
+                <div id="childCategoryTabs" hidden></div>
+              </aside>
+              <div class="product-table-panel">
+                <div class="product-filterbar"><input id="productSearch" type="search" placeholder="搜索产品名称、品牌或规格"><select id="productStatusFilter"><option value="all">全部状态</option><option value="active">上架展示</option><option value="hidden">隐藏</option><option value="draft">草稿</option></select><span id="productFilterCount" class="result-count">0 个产品</span></div>
+                <div class="product-table-wrap"><table class="product-table"><thead><tr><th>产品</th><th>分类</th><th>价格说明</th><th>关联案例</th><th>状态</th><th>更新时间</th><th>操作</th></tr></thead><tbody id="productList"></tbody></table></div>
+                <div class="product-table-footer"><span id="productListSummary">按当前分类展示产品。</span><span>每页最多展示 50 个</span></div>
               </div>
-              <div id="rootCategoryTabs" class="category-tabs"></div>
-              <div id="childCategoryTabs" class="category-tabs"></div>
             </div>
-            <div class="product-filterbar"><input id="productSearch" type="search" placeholder="搜索产品名称、品牌或规格"><select id="productStatusFilter"><option value="all">全部状态</option><option value="active">上架展示</option><option value="hidden">隐藏</option><option value="draft">草稿</option></select><span id="productFilterCount" class="result-count">0 个产品</span></div>
-            <div class="product-list-heading">
-              <h3>已上传产品</h3>
-              <span id="productListSummary">按当前分类展示产品卡片。</span>
-            </div>
-            <div id="productList" class="product-card-grid"></div>
             <div id="productMessage" class="message"></div>
           </div>
 
@@ -1371,6 +1443,11 @@
                   <span id="productImageStatus" class="upload-note">第一张会作为产品卡片主图</span>
                 </div>
                 <input id="productImageFile" class="file-input" type="file" accept="image/*" multiple>
+              </div>
+              <div class="field full">
+                <label>关联案例</label>
+                <div id="productCaseChoices" class="product-case-choices"></div>
+                <div id="productCaseHint" class="upload-note" style="margin-top:8px">只有上架展示的产品可以关联案例。</div>
               </div>
                 </div>
                 <div class="save-bar">
@@ -1486,6 +1563,7 @@
     let editingProductId = null;
     let viewingProductId = null;
     let productImageUrls = [];
+    let selectedProductCaseIds = new Set();
     let selectedRootCategoryId = 'all';
     let selectedChildCategoryId = 'all';
     let currentProfile = null;
@@ -1705,7 +1783,7 @@
       $('product_category_id').innerHTML = `<option value="">未分类</option>${productOptions}`;
 
       const roots = productCategories.filter((item) => !item.parent_id);
-      if (selectedRootCategoryId !== 'all' && !roots.some((item) => Number(item.id) === Number(selectedRootCategoryId))) {
+      if (!['all', 'uncategorized'].includes(selectedRootCategoryId) && !roots.some((item) => Number(item.id) === Number(selectedRootCategoryId))) {
         selectedRootCategoryId = 'all';
         selectedChildCategoryId = 'all';
       }
@@ -1733,7 +1811,38 @@
             `<button class="category-tab" type="button" data-action="addChildCategory" data-id="${selectedRootCategoryId}">+ 二级分类</button>`,
           ].join('');
 
+      const productCountForCategory = (categoryId) => merchantProducts.filter((product) => Number(product.category_id) === Number(categoryId)).length;
+      $('productCategoryTree').innerHTML = [
+        `<button class="product-category-item ${selectedRootCategoryId === 'all' ? 'active' : ''}" type="button" data-action="selectRootCategory" data-id="all">全部产品 <span>${merchantProducts.length}</span></button>`,
+        `<button class="product-category-item ${selectedRootCategoryId === 'uncategorized' ? 'active' : ''}" type="button" data-action="selectRootCategory" data-id="uncategorized">未分类 <span>${productCountForCategory(0)}</span></button>`,
+        ...roots.map((root) => {
+          const rootChildren = productCategories.filter((item) => Number(item.parent_id) === Number(root.id));
+          const rootCount = merchantProducts.filter((product) => Number(product.category_id) === Number(root.id) || rootChildren.some((child) => Number(child.id) === Number(product.category_id))).length;
+          return [
+            `<button class="product-category-item ${Number(selectedRootCategoryId) === Number(root.id) && selectedChildCategoryId === 'all' ? 'active' : ''}" type="button" data-action="selectRootCategory" data-id="${root.id}">${escapeHtml(root.name)} <span>${rootCount}</span></button>`,
+            ...rootChildren.map((child) => `<button class="product-category-item child ${Number(selectedChildCategoryId) === Number(child.id) ? 'active' : ''}" type="button" data-action="selectChildCategory" data-parent-id="${root.id}" data-id="${child.id}">${escapeHtml(child.name)} <span>${productCountForCategory(child.id)}</span></button>`),
+          ].join('');
+        }),
+      ].join('');
+
       renderProducts();
+    }
+
+    function productLinkedCases(productId) {
+      return merchantCases.filter((item) => (item.items || []).some((linked) => Number(linked.product_id) === Number(productId)));
+    }
+
+    function renderProductCaseChoices() {
+      const canAssociate = $('product_status').value === 'active';
+      $('productCaseChoices').innerHTML = merchantCases.length ? merchantCases.map((item) => `
+        <label class="product-case-choice">
+          <input type="checkbox" data-product-case="${item.id}" ${selectedProductCaseIds.has(Number(item.id)) ? 'checked' : ''} ${canAssociate ? '' : 'disabled'}>
+          <span><b>${escapeHtml(item.title || '未命名案例')}</b><small>${escapeHtml(caseStatusLabel(item.status))} · ${escapeHtml(item.city || '未填写城市')}</small></span>
+        </label>
+      `).join('') : '<div class="empty-state" style="grid-column:1/-1">还没有案例，可先保存产品，再到案例管理中创建案例。</div>';
+      $('productCaseHint').textContent = canAssociate
+        ? `已选择 ${selectedProductCaseIds.size} 个案例，保存产品后同步更新关联。`
+        : '只有上架展示的产品可以关联案例；保存后会解除已有案例关联。';
     }
 
     function renderProductImages() {
@@ -1833,6 +1942,7 @@
     function resetProductForm() {
       editingProductId = null;
       productImageUrls = [];
+      selectedProductCaseIds = new Set();
       for (const field of productFields) {
         $(field).value = field === 'product_status' ? 'active' : '';
       }
@@ -1841,6 +1951,7 @@
       $('productEditorTitle').textContent = '新增产品信息';
       $('cancelProductEditBtn').style.display = 'none';
       renderProductImages();
+      renderProductCaseChoices();
       renderProductLivePreview();
     }
 
@@ -1857,10 +1968,12 @@
       productImageUrls = Array.isArray(product.image_urls) && product.image_urls.length
         ? [...product.image_urls]
         : (product.cover_url ? [product.cover_url] : []);
+      selectedProductCaseIds = new Set(productLinkedCases(product.id).map((item) => Number(item.id)));
       $('saveProductBtn').textContent = '保存产品';
       $('productEditorTitle').textContent = '编辑产品信息';
       $('cancelProductEditBtn').style.display = 'inline-flex';
       renderProductImages();
+      renderProductCaseChoices();
       renderProductLivePreview();
       showPanel('productsPanel');
       showProductEditorView();
@@ -1897,6 +2010,7 @@
       const summary = productDisplaySummary(product);
       const description = String(product?.description || '').trim();
       const hasExtraDescription = description && description !== summary;
+      const linkedCases = productLinkedCases(product.id);
       $('productDetailTitle').textContent = title;
       $('productDetailContent').innerHTML = `
         <div class="product-detail-gallery">
@@ -1920,6 +2034,10 @@
           ` : ''}
           <p class="product-detail-copy">${escapeHtml(summary)}</p>
           ${hasExtraDescription ? `<p class="product-detail-copy">${escapeHtml(description)}</p>` : ''}
+          <div><b>关联案例（${linkedCases.length}）</b></div>
+          <div class="product-linked-cases">
+            ${linkedCases.length ? linkedCases.map((item) => `<div class="product-linked-case"><b>${escapeHtml(item.title || '未命名案例')}</b><span>${escapeHtml(caseStatusLabel(item.status))}</span></div>`).join('') : '<div class="upload-note">该产品暂未关联案例。</div>'}
+          </div>
         </div>
       `;
     }
@@ -1929,6 +2047,8 @@
       let visibleProducts = [...merchantProducts];
       if (selectedChildCategoryId !== 'all') {
         visibleProducts = visibleProducts.filter((product) => Number(product.category_id) === Number(selectedChildCategoryId));
+      } else if (selectedRootCategoryId === 'uncategorized') {
+        visibleProducts = visibleProducts.filter((product) => !product.category_id);
       } else if (selectedRootCategoryId !== 'all') {
         const childIds = productCategories
           .filter((item) => Number(item.parent_id) === Number(selectedRootCategoryId))
@@ -1949,31 +2069,23 @@
       $('productFilterCount').textContent = `${visibleProducts.length} 个产品`;
       if (!visibleProducts.length) {
         $('productListSummary').textContent = '当前筛选条件下暂无产品。';
-        $('productList').innerHTML = '<div class="product-empty">没有找到符合条件的产品，可以调整搜索、分类或状态筛选。</div>';
+        $('productList').innerHTML = '<tr><td colspan="7"><div class="product-empty">没有找到符合条件的产品，可以调整搜索、分类或状态筛选。</div></td></tr>';
         return;
       }
       const currentCategory = selectedChildCategoryId !== 'all'
         ? categoryName(selectedChildCategoryId)
-        : (selectedRootCategoryId !== 'all' ? categoryName(selectedRootCategoryId) : '全部产品');
+        : (selectedRootCategoryId === 'uncategorized' ? '未分类' : (selectedRootCategoryId !== 'all' ? categoryName(selectedRootCategoryId) : '全部产品'));
       $('productListSummary').textContent = `当前分类：${currentCategory}，共 ${visibleProducts.length} 个。`;
       $('productList').innerHTML = visibleProducts.map((product) => `
-        <div class="product-card">
-          <div class="product-thumb">${productCoverUrl(product) ? `<img src="${escapeHtml(displayImageUrl(productCoverUrl(product)))}" alt="">` : '产品图片'}</div>
-          <div class="product-card-body">
-            <div class="list-item-title">${escapeHtml(product.name || '未命名产品')}</div>
-            <div class="list-item-meta">${escapeHtml(categoryName(product.category_id) || '未分类')}</div>
-            <div class="list-item-title" style="color:var(--danger)">${escapeHtml(product.price_text || '价格可咨询')}</div>
-            <div class="list-item-meta">${escapeHtml(product.summary || product.description || '暂无简介')}</div>
-            <div class="small-actions" style="align-items:center; justify-content:space-between">
-              <span class="status-pill">${{ active: '上架展示', hidden: '已隐藏', draft: '草稿' }[product.status] || product.status}</span>
-              <span class="small-actions">
-                <button class="text-button" type="button" data-action="viewProduct" data-id="${product.id}">详情</button>
-                <button class="text-button" type="button" data-action="editProduct" data-id="${product.id}">编辑</button>
-                <button class="text-button danger" type="button" data-action="deleteProduct" data-id="${product.id}">删除</button>
-              </span>
-            </div>
-          </div>
-        </div>
+        <tr>
+          <td><div class="product-table-product"><div class="product-table-thumb">${productCoverUrl(product) ? `<img src="${escapeHtml(displayImageUrl(productCoverUrl(product)))}" alt="">` : '产品图'}</div><div><b>${escapeHtml(product.name || '未命名产品')}</b><small>${escapeHtml(product.brand || product.spec || '暂无品牌规格')}</small></div></div></td>
+          <td>${escapeHtml(categoryName(product.category_id) || '未分类')}</td>
+          <td>${escapeHtml(product.price_text || '价格可咨询')}</td>
+          <td>${productLinkedCases(product.id).length} 个</td>
+          <td><span class="status-pill">${{ active: '上架展示', hidden: '已隐藏', draft: '草稿' }[product.status] || product.status}</span></td>
+          <td>${escapeHtml(product.updated_at ? formatTime(product.updated_at) : '-')}</td>
+          <td><div class="product-table-actions"><button class="text-button" type="button" data-action="viewProduct" data-id="${product.id}">详情</button><button class="text-button" type="button" data-action="editProduct" data-id="${product.id}">编辑</button><button class="text-button danger" type="button" data-action="deleteProduct" data-id="${product.id}">删除</button></div></td>
+        </tr>
       `).join('');
     }
 
@@ -2276,6 +2388,8 @@
         setMessage('caseMessage', error.message, 'error');
       }
       renderCases();
+      renderProducts();
+      if ($('productEditorView').classList.contains('active')) renderProductCaseChoices();
     }
 
     function renderCaseChoices() {
@@ -2346,6 +2460,53 @@
       await loadCases();
       closeCaseEditor();
       setMessage('caseMessage', '案例已保存', 'ok');
+    }
+
+    function dashboardCasePayload(item, linkedItems) {
+      return {
+        title: item.title || '',
+        city: item.city || '',
+        area_range: item.area_range || '',
+        budget_range: item.budget_range || '',
+        cover_image: item.cover_image || '',
+        images: Array.isArray(item.images) ? item.images : [],
+        description: item.description || '',
+        tags: item.tags || { space: [], style: [] },
+        items: linkedItems,
+      };
+    }
+
+    async function syncProductCaseLinks(product) {
+      const productId = Number(product?.id || 0);
+      if (!productId) return;
+      const desiredCaseIds = product.status === 'active' ? selectedProductCaseIds : new Set();
+      const activeProducts = new Map(merchantProducts
+        .filter((item) => item.status === 'active' || Number(item.id) === productId)
+        .map((item) => [Number(item.id), item]));
+      activeProducts.set(productId, product);
+      const changedCases = merchantCases.filter((item) => {
+        const currentlyLinked = (item.items || []).some((linked) => Number(linked.product_id) === productId);
+        return currentlyLinked !== desiredCaseIds.has(Number(item.id));
+      });
+      for (const item of changedCases) {
+        const shouldLink = desiredCaseIds.has(Number(item.id));
+        const retainedItems = (item.items || [])
+          .filter((linked) => Number(linked.product_id) !== productId && activeProducts.has(Number(linked.product_id)))
+          .map((linked, index) => ({ ...linked, sort_order: index }));
+        if (shouldLink) {
+          retainedItems.push({
+            product_id: productId,
+            product_name: product.name || '',
+            brand: product.brand || '',
+            model: product.spec || '',
+            sort_order: retainedItems.length,
+          });
+        }
+        await api(`/users/merchant/dashboard/cases/${item.id}`, {
+          method: 'PUT',
+          body: JSON.stringify(dashboardCasePayload(item, retainedItems)),
+        });
+      }
     }
 
     function renderConsultations() {
@@ -2572,6 +2733,7 @@
     });
 
     $('openCategoryEditorBtn').addEventListener('click', startRootCategory);
+    document.querySelector('[data-open-category-editor]').addEventListener('click', startRootCategory);
     $('newProductBtn').addEventListener('click', () => {
       resetProductForm();
       showProductEditorView();
@@ -2607,6 +2769,17 @@
     $('productStatusFilter').addEventListener('change', () => {
       productStatusFilter = $('productStatusFilter').value;
       renderProducts();
+    });
+    $('product_status').addEventListener('change', () => {
+      if ($('product_status').value !== 'active') selectedProductCaseIds = new Set();
+      renderProductCaseChoices();
+    });
+    $('productCaseChoices').addEventListener('change', (event) => {
+      const input = event.target.closest('[data-product-case]');
+      if (!input) return;
+      const id = Number(input.dataset.productCase);
+      if (input.checked) selectedProductCaseIds.add(id); else selectedProductCaseIds.delete(id);
+      renderProductCaseChoices();
     });
 
     $('newCaseBtn').addEventListener('click', () => openCaseEditor());
@@ -2829,8 +3002,12 @@
           ? `/users/merchant-products/${editingProductId}`
           : '/users/merchant-products';
         const method = editingProductId ? 'PUT' : 'POST';
-        await api(path, { method, body: JSON.stringify(body) });
-        await loadProducts();
+        const savedProduct = await api(path, { method, body: JSON.stringify(body) });
+        merchantProducts = editingProductId
+          ? merchantProducts.map((item) => Number(item.id) === Number(savedProduct.id) ? savedProduct : item)
+          : [savedProduct, ...merchantProducts];
+        await syncProductCaseLinks(savedProduct);
+        await Promise.all([loadProducts(), loadCases()]);
         resetProductForm();
         showProductListView();
         setMessage('productMessage', '产品已保存', 'ok');
@@ -2868,6 +3045,7 @@
           selectedChildCategoryId = 'all';
           renderProductCategories();
         } else if (action === 'selectChildCategory') {
+          selectedRootCategoryId = button.dataset.parentId || selectedRootCategoryId;
           selectedChildCategoryId = button.dataset.id;
           renderProductCategories();
         } else if (action === 'deleteCategory') {

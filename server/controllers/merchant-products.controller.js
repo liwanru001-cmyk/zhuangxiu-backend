@@ -78,6 +78,8 @@ function mapProduct(row) {
     price_text: row.price_text || '',
     sort_order: Number(row.sort_order || 0),
     status: row.status || 'active',
+    created_at: row.created_at || null,
+    updated_at: row.updated_at || null,
   };
 }
 
