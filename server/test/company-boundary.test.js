@@ -607,7 +607,7 @@ test('company logo or license changes move company verification back to pending'
       if (/UPDATE companies/.test(sql)) {
         updates.push({ sql, params });
         assert.match(sql, /verification_status = CASE/);
-        assert.equal(params[8], 1);
+        assert.equal(params[11], 1);
         return [{ affectedRows: 1 }];
       }
       if (/FROM companies c/.test(sql) && /WHERE c\.id = \?/.test(sql)) {

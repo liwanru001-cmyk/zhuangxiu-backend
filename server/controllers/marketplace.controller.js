@@ -37,6 +37,17 @@ function valuesDiffer(nextValue, currentValue) {
   return String(nextValue || '').trim() !== String(currentValue || '').trim();
 }
 
+function parseNullableCoordinate(value) {
+  if (value === undefined || value === null || value === '') return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizeMapProvider(value) {
+  const provider = String(value || '').trim();
+  return provider === 'tianditu' ? provider : '';
+}
+
 async function listBusinessCatalog(req, res) {
   const [rows] = await db.query(
     `SELECT child.id, child.parent_id, child.code, child.name, child.level,
@@ -109,6 +120,9 @@ function mapCompanyRow(row) {
     service_area: row.service_area || '',
     city: row.city || '',
     address: row.address || '',
+    longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+    latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+    map_provider: row.map_provider || '',
     contact_phone: row.contact_phone || '',
     license_url: row.license_url || '',
     verification_status: row.verification_status || 'unverified',
@@ -209,6 +223,9 @@ function companyPayload(body = {}) {
     service_area: String(body.service_area || '').trim().slice(0, 120),
     city: String(body.city || '').trim().slice(0, 50),
     address: String(body.address || '').trim().slice(0, 255),
+    longitude: parseNullableCoordinate(body.longitude),
+    latitude: parseNullableCoordinate(body.latitude),
+    map_provider: normalizeMapProvider(body.map_provider),
     contact_phone: String(body.contact_phone || '').trim().slice(0, 30),
     license_url: String(body.license_url || '').trim().slice(0, 500),
   };
@@ -565,7 +582,8 @@ async function listCompaniesFromNewTables(req, pageSpec) {
 
   const [rows] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
-            c.city, c.address, c.contact_phone, c.source, c.legacy_merchant_user_id,
+            c.city, c.address, c.longitude, c.latitude, c.map_provider,
+            c.contact_phone, c.source, c.legacy_merchant_user_id,
             c.license_url, c.verification_status, c.paid_display_status,
             c.paid_display_starts_at, c.paid_display_ends_at,
             c.rating_avg, c.review_count, c.case_count,
@@ -809,7 +827,8 @@ async function searchPublicCompanies(req, res) {
 async function listMyCompanies(req, res) {
   const [rows] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
-            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.city, c.address, c.longitude, c.latitude, c.map_provider,
+            c.contact_phone, c.status, c.source,
             c.license_url, c.verification_status, c.paid_display_status,
             c.paid_display_starts_at, c.paid_display_ends_at,
             c.rating_avg,
@@ -958,7 +977,8 @@ async function listMyProjectCompanies(req, res) {
        GROUP BY company_id
      )
      SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
-            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.city, c.address, c.longitude, c.latitude, c.map_provider,
+            c.contact_phone, c.status, c.source,
             c.license_url, c.verification_status, c.paid_display_status,
             c.paid_display_starts_at, c.paid_display_ends_at,
             c.rating_avg, c.review_count, c.case_count,
@@ -1016,8 +1036,8 @@ async function createCompany(req, res) {
     const [result] = await conn.query(
       `INSERT INTO companies
        (owner_user_id, name, logo_url, intro, service_area, city, address,
-        contact_phone, license_url, status, source)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual')`,
+        longitude, latitude, map_provider, contact_phone, license_url, status, source)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', 'manual')`,
       [
         req.user.id,
         payload.name,
@@ -1026,6 +1046,9 @@ async function createCompany(req, res) {
         payload.service_area,
         payload.city,
         payload.address,
+        payload.longitude,
+        payload.latitude,
+        payload.map_provider || null,
         payload.contact_phone,
         payload.license_url,
       ]
@@ -1088,7 +1111,8 @@ async function updateCompany(req, res) {
   await db.query(
     `UPDATE companies
      SET name = ?, logo_url = ?, intro = ?, service_area = ?, city = ?,
-         address = ?, contact_phone = ?, license_url = ?,
+         address = ?, longitude = ?, latitude = ?, map_provider = ?,
+         contact_phone = ?, license_url = ?,
          verification_status = CASE
            WHEN ? THEN 'pending'
            ELSE verification_status
@@ -1101,6 +1125,9 @@ async function updateCompany(req, res) {
       payload.service_area,
       payload.city,
       payload.address,
+      payload.longitude,
+      payload.latitude,
+      payload.map_provider || null,
       payload.contact_phone,
       payload.license_url,
       imageFieldsChanged ? 1 : 0,
@@ -1278,7 +1305,8 @@ async function getCompany(req, res) {
   if (id > 0) {
     const [rows] = await db.query(
       `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
-              c.city, c.address, c.contact_phone, c.status, c.source,
+              c.city, c.address, c.longitude, c.latitude, c.map_provider,
+              c.contact_phone, c.status, c.source,
               c.license_url, c.verification_status, c.paid_display_status,
               c.paid_display_starts_at, c.paid_display_ends_at,
               c.rating_avg, c.review_count, c.case_count,
@@ -1324,7 +1352,8 @@ async function getPublicCompany(req, res) {
 
   const [rows] = await db.query(
     `SELECT c.id, c.owner_user_id, c.name, c.logo_url, c.intro, c.service_area,
-            c.city, c.address, c.contact_phone, c.status, c.source,
+            c.city, c.address, c.longitude, c.latitude, c.map_provider,
+            c.contact_phone, c.status, c.source,
             c.license_url, c.verification_status, c.paid_display_status,
             c.paid_display_starts_at, c.paid_display_ends_at,
             c.rating_avg, c.review_count, c.case_count,
