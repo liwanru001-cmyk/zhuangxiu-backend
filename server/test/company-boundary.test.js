@@ -729,3 +729,80 @@ test('project member invitation API can invite merchant role', async () => {
   assert.equal(res.payload.message, '关联申请已发送');
   assert.deepEqual(writes, [[1, 1, 2, 'merchant', null]]);
 });
+
+test('company project detail only returns the linked project summary without member contact data', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT c\.id[\s\S]*FROM companies c/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9 }]];
+      }
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{
+          id: 88,
+          project_code: 'MC20260712',
+          project_name: '三居改造',
+          house_area: 100,
+          house_layout: '三室两厅',
+          project_type: 'rough',
+          renovation_method: 'company',
+          budget_range: '20-30万',
+          start_date: '2026-07-01',
+          expected_move_in_date: '2026-10-01',
+          current_stage: 3,
+          status: 1,
+          lifecycle_status: 'active',
+        }]];
+      }
+      if (/FROM project_participants_ext ppe/.test(sql)) {
+        assert.deepEqual(params, [88, 9, 9]);
+        return [[{ role_type: 'contractor', responsible_name: '项目经理' }]];
+      }
+      if (/SELECT name FROM companies/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{ name: '装修不凡软装' }]];
+      }
+      if (/SELECT user\.nickname AS display_name, pm\.role/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{ display_name: '业主Lee', role: 'owner' }, { display_name: '项目经理', role: 'project_manager' }]];
+      }
+      if (/FROM renovation_tasks/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{ total: 10, completed: 4, delayed: 1 }]];
+      }
+      if (/FROM project_progress_items/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{ total: 12, completed: 4, delayed: 2 }]];
+      }
+      if (/design_document_count/.test(sql)) {
+        assert.deepEqual(params, [88, 88, 88, 88, 88]);
+        return [[{
+          design_document_count: 3,
+          handover_count: 2,
+          pending_handover_count: 1,
+          material_count: 8,
+          pending_material_count: 2,
+        }]];
+      }
+      if (/FROM project_inspections/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        return [[{ total: 3, passed: 2, rework: 1 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.getCompanyProjectDetail({
+    user: { id: 42 },
+    params: { id: '9', projectId: '88' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.project.currentStageName, '水电改造');
+  assert.equal(res.payload.data.progress.percent, 40);
+  assert.equal(res.payload.data.members.length, 2);
+  assert.doesNotMatch(JSON.stringify(res.payload.data), /phone/i);
+});

@@ -556,7 +556,7 @@
       background: rgba(47, 115, 232, .10);
       color: var(--blue-dark);
     }
-    .category-modal {
+    .category-modal, .member-identity-modal {
       display: none;
       position: fixed;
       inset: 0;
@@ -566,7 +566,7 @@
       justify-content: center;
       padding: 24px;
     }
-    .category-modal.active { display: flex; }
+    .category-modal.active, .member-identity-modal.active { display: flex; }
     .category-dialog {
       width: min(520px, 100%);
       margin-bottom: 14px;
@@ -576,6 +576,63 @@
       background: #fff;
       box-shadow: 0 24px 80px rgba(23, 32, 51, .18);
     }
+    .member-identity-dialog {
+      width: min(440px, 100%);
+      padding: 22px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: 0 24px 80px rgba(23, 32, 51, .18);
+    }
+    .member-identity-card { display: grid; gap: 16px; }
+    .member-identity-head { display: grid; grid-template-columns: 58px minmax(0, 1fr); gap: 12px; align-items: center; }
+    .member-identity-avatar { width: 58px; height: 58px; display: grid; place-items: center; overflow: hidden; border-radius: 8px; color: var(--blue-dark); background: #edf3fb; font-size: 18px; font-weight: 900; }
+    .member-identity-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .member-identity-head h3 { margin: 0; font-size: 18px; }
+    .member-identity-head p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .member-identity-rows { border-top: 1px solid var(--line); }
+    .member-identity-row { padding: 11px 0; display: grid; grid-template-columns: 96px minmax(0, 1fr); gap: 12px; border-bottom: 1px solid var(--line); font-size: 12px; }
+    .member-identity-row span { color: var(--muted); }
+    .member-card-trigger { font: inherit; }
+    .member-card-link { color: var(--blue); font-size: 11px; font-weight: 850; }
+    .company-project-dialog { width: min(760px, 100%); max-height: min(780px, calc(100vh - 48px)); overflow-y: auto; padding: 22px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: 0 24px 80px rgba(23, 32, 51, .18); }
+    .company-project-detail { display: grid; gap: 14px; }
+    .company-project-hero { padding: 16px; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: center; border: 1px solid #d8e5f4; border-radius: 8px; background: #f7faff; }
+    .company-project-hero h3 { margin: 0; font-size: 19px; }
+    .company-project-hero p { margin: 5px 0 0; color: var(--muted); font-size: 11px; }
+    .company-project-percent { min-width: 76px; color: var(--blue-dark); text-align: right; font-size: 30px; font-weight: 900; }
+    .company-project-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .company-project-section { padding: 15px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .company-project-section.wide { grid-column: 1 / -1; }
+    .company-project-section h4 { margin: 0 0 10px; font-size: 14px; }
+    .company-project-rows { display: grid; }
+    .company-project-row { padding: 9px 0; display: grid; grid-template-columns: 86px minmax(0, 1fr); gap: 10px; border-top: 1px solid var(--line); font-size: 11px; }
+    .company-project-row:first-child { border-top: 0; padding-top: 0; }
+    .company-project-row span { color: var(--muted); }
+    .company-project-stat-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+    .company-project-stat { padding: 11px; border-radius: 7px; background: #f7f9fc; }
+    .company-project-stat b { display: block; font-size: 20px; }
+    .company-project-stat span { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+    .company-project-members { display: flex; flex-wrap: wrap; gap: 7px; }
+    .company-project-member { padding: 6px 8px; border-radius: 6px; color: #405675; background: #f1f5fa; font-size: 10px; font-weight: 700; }
+    .company-profile-editor { display: grid; gap: 16px; }
+    .company-profile-group { padding-top: 16px; border-top: 1px solid var(--line); }
+    .company-profile-group:first-of-type { padding-top: 0; border-top: 0; }
+    .company-profile-group h4 { margin: 0 0 5px; font-size: 14px; }
+    .company-profile-group > p { margin: 0 0 12px; color: var(--muted); font-size: 11px; line-height: 1.55; }
+    .company-image-upload-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .company-upload-preview { height: 148px; display: grid; place-items: center; overflow: hidden; border: 1px dashed #cbd7e6; border-radius: 7px; color: var(--muted); background: #f8fafc; font-size: 11px; }
+    .company-upload-preview img { width: 100%; height: 100%; object-fit: contain; background: #fff; }
+    .company-business-catalog { display: grid; gap: 10px; }
+    .company-business-group { padding: 12px; border: 1px solid var(--line); border-radius: 7px; background: #fbfcfe; }
+    .company-business-group h5 { margin: 0 0 9px; font-size: 12px; }
+    .company-business-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+    .company-business-choice { min-height: 58px; padding: 9px; display: grid; gap: 7px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+    .company-business-choice.is-selected { border-color: #abc3e2; background: #f7faff; }
+    .company-business-choice label { display: flex; gap: 7px; align-items: center; color: var(--ink); font-size: 11px; font-weight: 750; cursor: pointer; }
+    .company-business-choice input { width: 14px; height: 14px; margin: 0; accent-color: var(--blue); }
+    .company-business-primary { color: var(--muted) !important; font-size: 10px !important; font-weight: 650 !important; }
+    .company-profile-readonly { padding: 10px 12px; border: 1px solid #dbe6f2; border-radius: 7px; color: #54708f; background: #f7faff; font-size: 11px; line-height: 1.55; }
     .category-editor-title {
       margin: 0 0 12px;
       color: var(--ink);
@@ -771,7 +828,8 @@
       display: grid;
       grid-template-columns: minmax(0, 1fr) 300px;
       gap: 18px;
-      align-items: start;
+      align-items: stretch;
+      min-height: 620px;
     }
     .product-editor-card,
     .product-preview-card {
@@ -779,8 +837,11 @@
       border-radius: 8px;
       background: #fff;
       padding: 20px;
+      min-height: 620px;
       box-shadow: var(--card-shadow);
     }
+    .product-editor-card { display: flex; flex-direction: column; }
+    .product-editor-card .save-bar { margin-top: auto; }
     .product-editor-card .form-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
@@ -878,7 +939,7 @@
       display: grid;
       grid-template-columns: 230px minmax(0, 1fr);
       gap: 0;
-      align-items: start;
+      align-items: stretch;
       min-height: 650px;
       overflow: hidden;
       border: 1px solid var(--line);
@@ -915,7 +976,7 @@
       gap: 8px;
       border: 0;
       border-radius: 6px;
-      color: var(--ink);
+      color: var(--muted);
       background: transparent;
       cursor: pointer;
       text-align: left;
@@ -923,12 +984,12 @@
       font-weight: 750;
     }
     .product-category-item.child { padding-left: 24px; color: var(--muted); }
-    .product-category-item.active { color: var(--blue-dark); background: #edf4fc; }
+    .product-category-item.active { color: var(--blue-dark); background: #edf4fc; font-weight: 850; }
     .product-category-item span { color: var(--muted); font-size: 10px; }
     .product-table-panel { min-width: 0; overflow: hidden; }
-    .product-table-panel { padding: 18px; }
+    .product-table-panel { padding: 18px; display: flex; flex-direction: column; }
     .product-table-panel .product-filterbar { margin: 0 0 15px; padding: 0; border-bottom: 0; grid-template-columns: minmax(240px, 1fr) 150px auto; }
-    .product-table-wrap { overflow-x: auto; }
+    .product-table-wrap { flex: 1; overflow-x: auto; }
     .product-table { width: 100%; min-width: 820px; border-collapse: collapse; }
     .product-table th,
     .product-table td { padding: 12px 10px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; font-size: 12px; }
@@ -1027,19 +1088,36 @@
     .password-wrap input { padding-right: 68px; }
     .password-toggle { position: absolute; right: 8px; top: 7px; min-height: 32px; padding: 0 9px; border: 0; background: transparent; color: var(--blue-dark); cursor: pointer; font-size: 12px; font-weight: 800; }
 
-    .portal-layout { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 28px; align-items: start; }
-    .portal-sidebar { position: sticky; top: 88px; padding: 14px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--card-shadow); }
+    .portal-layout {
+      --workspace-height: max(640px, calc(100vh - 140px));
+      display: grid;
+      grid-template-columns: 220px minmax(0, 1fr);
+      gap: 28px;
+      align-items: stretch;
+    }
+    .portal-sidebar {
+      position: sticky;
+      top: 88px;
+      min-height: var(--workspace-height);
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+      box-shadow: var(--card-shadow);
+    }
     .merchant-identity { padding: 10px 10px 16px; margin-bottom: 8px; border-bottom: 1px solid var(--line); }
     .merchant-identity strong { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 14px; }
     .merchant-identity span { display: block; margin-top: 5px; color: var(--muted); font-size: 11px; }
-    .portal-menu { display: grid; gap: 4px; }
+    .portal-menu { display: grid; gap: 4px; align-content: start; }
     .portal-menu-label { padding: 14px 12px 5px; color: #98a2b3; font-size: 10px; font-weight: 900; }
     .portal-menu .tab { width: 100%; min-height: 42px; padding: 0 12px; justify-content: flex-start; border: 0; border-radius: 6px; background: transparent; color: var(--muted); }
     .portal-menu .tab.active { color: var(--blue-dark); background: rgba(47,115,232,.09); box-shadow: none; }
     .portal-menu .tab:hover { background: #f4f7fb; }
     .nav-count { min-width: 22px; height: 20px; margin-left: auto; padding: 0 6px; display: inline-grid; place-items: center; border-radius: 10px; color: #667085; background: #eef2f6; font-size: 10px; }
     .portal-menu .tab.active .nav-count { color: var(--blue-dark); background: #dce9fa; }
-    .portal-main { min-width: 0; }
+    .portal-main { min-width: 0; min-height: var(--workspace-height); display: flex; flex-direction: column; }
     .workspace-header { margin-bottom: 20px; }
     .workspace-title h1 { margin: 0; font-size: 30px; }
     .workspace-title p { margin-top: 8px; }
@@ -1090,20 +1168,31 @@
     .save-bar-status { color: var(--muted); font-size: 11px; font-weight: 800; }
     .save-bar-status.ok { color: #087a5b; }
     .save-bar-status.warning { color: #b54708; }
-    .profile-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: start; }
-    .profile-section-nav { position: sticky; top: 88px; padding: 12px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .profile-workspace { display: grid; grid-template-columns: 220px minmax(0, 1fr); gap: 16px; align-items: stretch; }
+    .profile-section-nav {
+      position: sticky;
+      top: 88px;
+      min-height: 620px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #fff;
+    }
     .profile-section-nav h3 { margin: 4px 6px 10px; font-size: 13px; }
     .profile-section-button { width: 100%; min-height: 48px; padding: 7px 10px; display: flex; align-items: center; justify-content: space-between; gap: 10px; border: 0; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; text-align: left; font-size: 11px; font-weight: 850; }
     .profile-section-button.active { color: var(--blue-dark); background: #edf4fc; }
     .profile-section-state { padding: 4px 6px; border-radius: 8px; color: #667085; background: #eef1f4; white-space: nowrap; font-size: 9px; }
     .profile-section-state.complete { color: #087a5b; background: #e8f6f1; }
+    .profile-section-content { min-width: 0; display: flex; flex-direction: column; }
     .profile-edit-section { display: none; margin-top: 0; }
-    .profile-edit-section.active { display: block; }
+    .profile-edit-section.active { min-height: 620px; display: flex; flex: 1; flex-direction: column; }
     .profile-section-heading { margin-bottom: 18px; }
     .profile-section-heading h2 { margin: 0; }
     .profile-section-heading p { margin: 6px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
-    .profile-basic-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
-    .profile-store-preview { position: sticky; top: 88px; }
+    .profile-basic-layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: stretch; flex: 1; }
+    .profile-store-preview { position: sticky; top: 88px; align-self: stretch; padding-left: 20px; border-left: 1px solid var(--line); }
     .profile-store-preview h3 { margin: 0 0 12px; font-size: 14px; }
     .profile-preview-phone { width: 220px; height: 430px; margin: 0 auto; padding: 8px; border-radius: 26px; background: #25282d; }
     .profile-preview-screen { height: 100%; overflow: hidden; border-radius: 19px; background: #f6f4ef; }
@@ -1124,11 +1213,13 @@
     .product-filterbar { margin: 14px 0; display: grid; grid-template-columns: minmax(220px, 1fr) 180px auto; gap: 10px; align-items: center; }
     .product-filterbar input, .product-filterbar select { min-height: 42px; }
     .result-count { color: var(--muted); font-size: 11px; font-weight: 750; white-space: nowrap; }
-    .management-grid { display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); gap: 14px; }
-    .management-list, .management-detail { min-height: 420px; padding: 18px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .management-grid { min-height: 620px; display: grid; grid-template-columns: minmax(280px, .8fr) minmax(360px, 1.2fr); gap: 14px; align-items: stretch; }
+    .management-grid.single-company { grid-template-columns: 1fr; }
+    .management-grid.single-company .management-list { display: none; }
+    .management-list, .management-detail { min-height: 620px; padding: 18px; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .management-list-head { margin-bottom: 14px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
     .management-list-head h2, .management-detail h2 { margin: 0; font-size: 19px; }
-    .entity-list { display: grid; gap: 8px; }
+    .entity-list { display: grid; gap: 8px; align-content: start; }
     .entity-row { width: 100%; padding: 13px; display: grid; grid-template-columns: 48px 1fr auto; gap: 11px; align-items: center; border: 1px solid var(--line); border-radius: 8px; background: #fff; cursor: pointer; text-align: left; }
     .entity-row:hover, .entity-row.active { border-color: #abc3e2; background: #f7faff; }
     .entity-thumb { width: 48px; height: 48px; overflow: hidden; display: grid; place-items: center; border-radius: 7px; color: var(--blue-dark); background: #edf3fb; font-size: 12px; font-weight: 900; }
@@ -1161,10 +1252,10 @@
     .case-product-tools select { min-height: 36px; }
     .case-product-choice { padding: 10px; display: flex; align-items: center; gap: 9px; border: 1px solid var(--line); border-radius: 7px; background: #fff; font-size: 11px; }
     .case-product-choice input { width: auto; }
-    .case-management-panel { overflow: hidden; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .case-management-panel { min-height: 620px; overflow: hidden; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .case-filterbar { padding: 16px; display: grid; grid-template-columns: minmax(240px, 1fr) 160px auto; gap: 9px; border-bottom: 1px solid var(--line); }
     .case-result-count { display: flex; align-items: center; color: var(--muted); font-size: 11px; white-space: nowrap; }
-    .case-table-wrap { overflow-x: auto; }
+    .case-table-wrap { flex: 1; overflow-x: auto; }
     .case-table { width: 100%; min-width: 850px; border-collapse: collapse; }
     .case-table th, .case-table td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; font-size: 11px; }
     .case-table th { color: var(--muted); background: #f8fafc; font-size: 10px; font-weight: 850; }
@@ -1175,8 +1266,10 @@
     .case-table-main b, .case-table-main small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .case-table-main small { margin-top: 4px; color: var(--muted); }
     .case-table-footer { padding: 13px 16px; display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; }
-    .case-editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: start; }
-    .case-editor-card, .case-preview-card { padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--card-shadow); }
+    .case-editor-layout { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 18px; align-items: stretch; min-height: 620px; }
+    .case-editor-card, .case-preview-card { min-height: 620px; padding: 20px; border: 1px solid var(--line); border-radius: 8px; background: #fff; box-shadow: var(--card-shadow); }
+    .case-editor-card { display: flex; flex-direction: column; }
+    .case-editor-card .save-bar { margin-top: auto; }
     .case-editor-card h3, .case-preview-card h3 { margin: 0 0 18px; font-size: 18px; }
     .case-preview-phone { width: 220px; height: 430px; margin: 0 auto; padding: 8px; border-radius: 26px; background: #25282d; }
     .case-preview-screen { height: 100%; padding: 13px; overflow: hidden; border-radius: 19px; background: #f6f4ef; }
@@ -1215,15 +1308,16 @@
       display: flex;
     }
     body.portal-workspace .workspace-panel { min-height: 560px; }
-    #productMainToolbar,
-    #caseMainToolbar { min-height: 40px; margin-bottom: 14px; justify-content: flex-end; }
-    #productMainToolbar > div:first-child,
-    #caseMainToolbar > div:first-child { display: none; }
+    body.portal-workspace .workspace-panel.active { flex: 1; }
+    #productMainToolbar { min-height: 54px; margin-bottom: 22px; align-items: flex-start; justify-content: space-between; }
+    #productMainToolbar > div:first-child { display: block; }
     #productMainToolbar .small-actions { justify-content: flex-end; }
+    #caseMainToolbar { min-height: 40px; margin-bottom: 14px; justify-content: flex-end; }
+    #caseMainToolbar > div:first-child { display: none; }
     #newCaseBtn,
     #productMainToolbar .button { width: auto; min-height: 40px; padding: 0 14px; border-radius: 7px; box-shadow: none; }
     .button-small { min-height: 32px; padding: 0 10px; border: 1px solid var(--line); border-radius: 6px; background: #fff; cursor: pointer; font-size: 11px; font-weight: 800; }
-    .chat-messages { height: 330px; padding: 12px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
+    .chat-messages { min-height: 330px; height: auto; flex: 1; padding: 12px; overflow-y: auto; border: 1px solid var(--line); border-radius: 8px; background: #f8fafc; }
     .chat-message { max-width: 78%; margin: 0 0 10px; padding: 10px 12px; border-radius: 8px; background: #fff; font-size: 12px; line-height: 1.55; }
     .chat-message.mine { margin-left: auto; color: #fff; background: var(--blue); }
     .chat-message small { display: block; margin-top: 5px; opacity: .65; font-size: 9px; }
@@ -1251,14 +1345,10 @@
     .company-section-head h3 { margin: 0; font-size: 17px; }
     .company-section-head p { margin: 5px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
     .company-project-meta { color: var(--muted); font-size: 11px; }
-    .company-subnav { display: flex; gap: 6px; margin: 12px 0 16px; padding-bottom: 10px; overflow-x: auto; border-bottom: 1px solid var(--line); }
-    .company-subtab { min-height: 34px; padding: 0 11px; border: 1px solid transparent; border-radius: 6px; color: var(--muted); background: transparent; cursor: pointer; white-space: nowrap; font-size: 10px; font-weight: 850; }
-    .company-subtab.active { color: var(--blue-dark); border-color: #bed0e7; background: #edf4fc; }
     .company-info-list { margin-top: 14px; display: grid; gap: 0; }
     .company-info-row { padding: 12px 0; display: grid; grid-template-columns: 110px 1fr; gap: 14px; border-bottom: 1px solid var(--line); font-size: 11px; }
     .company-info-row span { color: var(--muted); }
     .company-info-row b { font-weight: 700; }
-    .member-role-select { width: 130px; min-height: 34px; padding: 5px 8px; font-size: 10px; }
     .workbench-detail-card { padding: 15px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
     .workbench-detail-card h3 { margin: 0; font-size: 14px; }
     .workbench-detail-card b { display: block; margin: 12px 0 7px; font-size: 26px; }
@@ -1273,44 +1363,57 @@
       body.portal-workspace .portal-layout,
       body.portal-workspace.products-active .portal-layout,
       body.portal-workspace.cases-active .portal-layout,
-      body.portal-workspace.profile-active .portal-layout { grid-template-columns: 1fr; gap: 18px; }
+      body.portal-workspace.profile-active .portal-layout { grid-template-columns: 1fr; gap: 18px; align-items: start; }
       body.portal-workspace .workspace-header,
       body.portal-workspace.products-active .workspace-header,
       body.portal-workspace.cases-active .workspace-header { min-height: 76px; }
       .login-shell { min-height: auto; gap: 24px; }
-      .portal-sidebar { position: static; overflow-x: auto; }
+      .portal-sidebar { position: static; min-height: 0; overflow-x: auto; }
+      .portal-main { min-height: 0; }
       .merchant-identity { display: none; }
       .portal-menu { display: flex; min-width: max-content; }
       .portal-menu-label { display: none; }
       .portal-menu .tab { width: auto; }
       .overview-grid { grid-template-columns: repeat(2, 1fr); }
       .overview-actions, .overview-lower, .management-grid { grid-template-columns: 1fr; }
+      .management-grid { min-height: 0; align-items: start; }
+      .management-list, .management-detail { min-height: 0; }
       .overview-status { align-items: flex-start; flex-direction: column; }
       .overview-status-tags { justify-content: flex-start; }
       .profile-toolbar { align-items: flex-start; flex-direction: column; }
-      .profile-workspace { grid-template-columns: 1fr; }
-      .profile-section-nav { position: static; display: flex; gap: 6px; overflow-x: auto; }
+      .profile-workspace { grid-template-columns: 1fr; align-items: start; }
+      .profile-section-nav { position: static; min-height: 0; display: flex; flex-direction: row; gap: 6px; overflow-x: auto; }
       .profile-section-nav h3 { display: none; }
       .profile-section-button { min-width: 150px; }
+      .profile-edit-section.active { min-height: 0; display: block; }
       .profile-basic-layout { grid-template-columns: 1fr; }
       .profile-store-preview { display: none; }
       .product-filterbar { grid-template-columns: 1fr; }
       .product-table-panel .product-filterbar { grid-template-columns: 1fr; }
-      .product-management-layout { grid-template-columns: 1fr; }
+      .product-management-layout { grid-template-columns: 1fr; min-height: 0; }
       .product-category-tree { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .product-category-sidebar { min-height: 0; border-right: 0; border-bottom: 1px solid var(--line); }
       #productDetailView.active { grid-template-columns: 1fr; }
       #productDetailView > .panel-toolbar, #productDetailContent { grid-column: 1; }
       .case-card-grid { grid-template-columns: 1fr; }
       .case-filterbar { grid-template-columns: 1fr; }
-      .case-editor-layout { grid-template-columns: 1fr; }
+      .case-management-panel { min-height: 0; }
+      .case-editor-layout { grid-template-columns: 1fr; min-height: 0; align-items: start; }
+      .case-editor-card, .case-preview-card { min-height: 0; }
       .case-product-tools { grid-template-columns: 1fr; }
       .case-image-grid, .case-product-choices { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .company-hero { grid-template-columns: 1fr; }
       .company-hero-meta { justify-content: flex-start; }
+      .company-project-dialog { padding: 18px; }
+      .company-project-hero { grid-template-columns: 1fr; }
+      .company-project-percent { text-align: left; }
+      .company-project-grid { grid-template-columns: 1fr; }
+      .company-image-upload-grid, .company-business-options { grid-template-columns: 1fr; }
       .company-section-head { flex-direction: column; }
       .hero { grid-template-columns: 1fr; }
       .tips, .form-grid, .image-upload-grid, .hours-grid, .field-row, .split-grid, .product-editor-layout { grid-template-columns: 1fr; }
+      .product-editor-layout { min-height: 0; align-items: start; }
+      .product-editor-card, .product-preview-card { min-height: 0; }
       .product-card-grid { grid-template-columns: 1fr; }
       .product-card { grid-template-columns: 1fr; }
       .workspace-header { flex-direction: column; }
@@ -1335,6 +1438,7 @@
       .chat-messages { height: 390px; }
       .reply-row { grid-template-columns: 1fr; }
       .company-summary-grid { grid-template-columns: 1fr; }
+      .company-project-stat-grid { grid-template-columns: 1fr; }
       .entity-row { grid-template-columns: 42px 1fr; }
       .entity-thumb { width: 42px; height: 42px; }
       .entity-row > .status-pill, .entity-row > .small-actions { grid-column: 2; justify-self: start; }
@@ -1434,7 +1538,10 @@
             <button id="casesTab" class="tab" type="button" data-panel="casesPanel">案例管理 <span id="casesNavCount" class="nav-count">0</span></button>
             <button id="consultationsTab" class="tab" type="button" data-panel="consultationsPanel">咨询管理 <span id="consultationsNavCount" class="nav-count">0</span></button>
             <div class="portal-menu-label">公司协作</div>
-            <button id="companiesTab" class="tab" type="button" data-panel="companiesPanel">装修公司 <span id="companiesNavCount" class="nav-count">0</span></button>
+            <button id="companyProfileTab" class="tab" type="button" data-panel="companiesPanel" data-company-nav-section="profile">公司资料 <span id="companiesNavCount" class="nav-count">0</span></button>
+            <button id="companyMembersTab" class="tab" type="button" data-panel="companiesPanel" data-company-nav-section="members">团队成员</button>
+            <button id="companyProjectsTab" class="tab" type="button" data-panel="companiesPanel" data-company-nav-section="projects">关联项目</button>
+            <button id="companyWorkbenchTab" class="tab" type="button" data-panel="companiesPanel" data-company-nav-section="workbench">公司工作台</button>
           </div>
         </aside>
         <div class="portal-main">
@@ -1718,7 +1825,7 @@
       </section>
 
       <section id="companiesPanel" class="workspace-panel">
-        <div class="management-grid"><div class="management-list"><div class="management-list-head"><h2>我的装修公司</h2><button id="newCompanyBtn" class="button-small" type="button">新建</button></div><div id="companyList" class="entity-list"></div><div id="companyMessage" class="message"></div></div><div class="management-detail"><h2 id="companyDetailTitle">选择装修公司</h2><div id="companyDetail"><div class="empty-state">选择左侧公司后查看资料和项目汇总</div></div></div></div>
+        <div id="companyManagementGrid" class="management-grid"><div class="management-list"><div class="management-list-head"><h2>我的装修公司</h2><button id="newCompanyBtn" class="button-small" type="button">新建</button></div><div id="companyList" class="entity-list"></div><div id="companyMessage" class="message"></div></div><div class="management-detail"><h2 id="companyDetailTitle">选择装修公司</h2><div id="companyDetail"><div class="empty-state">选择左侧公司后查看资料和项目汇总</div></div></div></div>
       </section>
 
         </div>
@@ -1744,6 +1851,18 @@
             </div>
           </div><div class="small-actions" style="justify-content:flex-end"><button id="cancelCategoryEditBtn" class="button button-secondary" type="button">取消编辑</button><button id="saveCategoryBtn" class="button button-primary" type="button" style="width:auto">保存分类</button></div></div>
           <div id="categoryMessage" class="message"></div>
+        </div>
+      </div>
+      <div id="memberIdentityModal" class="member-identity-modal" role="dialog" aria-modal="true" aria-labelledby="memberIdentityTitle">
+        <div class="member-identity-dialog">
+          <div class="category-dialog-head"><div><div id="memberIdentityTitle" class="category-editor-title">成员身份卡</div><p class="panel-desc">查看成员在装修公司中的身份信息。</p></div><button id="closeMemberIdentityBtn" class="category-close" type="button" aria-label="关闭成员身份卡">×</button></div>
+          <div id="memberIdentityContent"></div>
+        </div>
+      </div>
+      <div id="companyProjectModal" class="member-identity-modal" role="dialog" aria-modal="true" aria-labelledby="companyProjectTitle">
+        <div class="company-project-dialog">
+          <div class="category-dialog-head"><div><div id="companyProjectTitle" class="category-editor-title">项目详情</div><p class="panel-desc">只读查看当前装修公司关联项目的协作信息。</p></div><button id="closeCompanyProjectBtn" class="category-close" type="button" aria-label="关闭项目详情">×</button></div>
+          <div id="companyProjectContent"></div>
         </div>
       </div>
     </section>
@@ -1820,6 +1939,16 @@
     let activeCompany = null;
     let activeCompanyData = null;
     let activeCompanySection = 'profile';
+    let companyBusinessCatalog = [];
+    let companySelectedBusinessIds = new Set();
+    let companyPrimaryBusinessId = null;
+    let companyBusinessSelectionDirty = false;
+    const companySections = {
+      profile: ['公司资料', '维护装修公司的基础资料、认证状态和公开介绍。'],
+      members: ['团队成员', '查看装修公司团队成员和角色权限。'],
+      projects: ['关联项目', '查看装修公司明确关联的装修项目。'],
+      workbench: ['公司工作台', '汇总公司关联项目中的协同信息。'],
+    };
     let profileDirty = false;
     let productSearchQuery = '';
     let productStatusFilter = 'all';
@@ -1921,7 +2050,9 @@
         panel.classList.toggle('active', panel.id === panelId);
       });
       document.querySelectorAll('.tab').forEach((tab) => {
-        const active = tab.dataset.panel === panelId;
+        const active = tab.dataset.companyNavSection
+          ? panelId === 'companiesPanel' && tab.dataset.companyNavSection === activeCompanySection
+          : tab.dataset.panel === panelId;
         tab.classList.toggle('active', active);
         tab.setAttribute('aria-selected', active ? 'true' : 'false');
       });
@@ -1937,24 +2068,38 @@
       }
       if (panelId === 'casesPanel') loadCases();
       if (panelId === 'consultationsPanel') loadConsultations();
-      if (panelId === 'companiesPanel') loadCompanies();
+      if (panelId === 'companiesPanel' && (panelChanged || !activeCompanyData)) loadCompanies();
       if (panelChanged) window.scrollTo({ top: 0, left: 0, behavior: 'auto' });
       return true;
     }
 
     function updateWorkspaceHeader(panelId) {
+      if (panelId === 'companiesPanel') {
+        const value = companySections[activeCompanySection] || companySections.profile;
+        $('workspaceTitle').textContent = value[0];
+        $('workspaceSubtitle').textContent = value[1];
+        $('reloadBtn').style.display = 'none';
+        return;
+      }
       const headers = {
         overviewPanel: ['商家工作台', '集中查看店铺内容、咨询和装修公司状态。'],
         profilePanel: ['店铺资料', '这些信息会同步到移动端店铺展示页。'],
         productsPanel: ['产品管理', '使用店铺自己的分类维护产品展示内容。'],
         casesPanel: ['案例管理', '维护真实案例、图片、标签和关联产品。'],
         consultationsPanel: ['咨询管理', '查看用户咨询并及时回复消息。'],
-        companiesPanel: ['装修公司', '管理自己负责的装修公司和关联项目。'],
       };
       const value = headers[panelId] || headers.overviewPanel;
       $('workspaceTitle').textContent = value[0];
       $('workspaceSubtitle').textContent = value[1];
       $('reloadBtn').style.display = panelId === 'profilePanel' ? 'inline-flex' : 'none';
+    }
+
+    function updateCompanyNavState() {
+      document.querySelectorAll('[data-company-nav-section]').forEach((tab) => {
+        const active = activePanelId === 'companiesPanel' && tab.dataset.companyNavSection === activeCompanySection;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+      });
     }
 
     function renderTimeOptions() {
@@ -3100,6 +3245,7 @@
     }
 
     function renderCompanies() {
+      $('companyManagementGrid').classList.toggle('single-company', companies.length === 1 && Boolean(activeCompanyId));
       $('companyList').innerHTML = companies.length ? companies.map((company) => `
         <button class="entity-row ${Number(company.id) === Number(activeCompanyId) ? 'active' : ''}" type="button" data-company-id="${company.id}"><div class="entity-thumb">${company.logo_url ? `<img src="${escapeHtml(displayImageUrl(company.logo_url))}" alt="">` : escapeHtml((company.name || '公司').slice(0, 1))}</div><div><b>${escapeHtml(company.name || '未命名公司')}</b><small>${escapeHtml(company.city || company.service_area || '服务区域待完善')}</small></div><span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span></button>`).join('') : emptyState('暂无装修公司', '当前账号还没有创建或管理装修公司。', 'compact');
     }
@@ -3113,7 +3259,19 @@
         companies = [];
         setMessage('companyMessage', error.message, 'error');
       }
-      renderCompanies();
+      if (companies.length === 1) {
+        await openCompany(companies[0].id, { skipListRender: true });
+      } else {
+        $('companyManagementGrid').classList.remove('single-company');
+        renderCompanies();
+        if (!companies.length) {
+          activeCompanyId = null;
+          activeCompany = null;
+          activeCompanyData = null;
+          $('companyDetailTitle').textContent = '选择装修公司';
+          $('companyDetail').innerHTML = emptyState('暂无装修公司', '创建装修公司后，可以在这里管理资料、成员、项目和工作台。', 'compact');
+        }
+      }
       updateOverview();
     }
 
@@ -3126,9 +3284,181 @@
       return activeCompany?.canManage === true || ['owner', 'admin'].includes(role) || Number(activeCompany?.owner_user_id) === Number(currentUser()?.id);
     }
 
-    function companySubnav() {
-      const tabs = [['profile', '公司资料'], ['members', '团队成员'], ['projects', '关联项目'], ['workbench', '公司工作台']];
-      return `<div class="company-subnav">${tabs.map(([value, label]) => `<button class="company-subtab ${activeCompanySection === value ? 'active' : ''}" type="button" data-company-section="${value}">${label}</button>`).join('')}</div>`;
+    function companyMemberStatusLabel(status) {
+      return { active: '正常', pending: '待加入', rejected: '未通过', removed: '已移出' }[status] || '正常';
+    }
+
+    function closeMemberIdentityCard() {
+      $('memberIdentityModal').classList.remove('active');
+      $('memberIdentityContent').innerHTML = '';
+    }
+
+    function openMemberIdentityCard(member) {
+      const role = member.memberRole || member.member_role || 'staff';
+      const memberId = member.memberId || member.member_id || member.id;
+      const displayName = member.displayName || member.display_name || member.nickname || '公司成员';
+      const avatarUrl = member.avatarUrl || member.avatar_url || member.avatar || '';
+      const avatar = avatarUrl
+        ? `<img src="${escapeHtml(displayImageUrl(avatarUrl))}" alt="">`
+        : escapeHtml(displayName.slice(0, 1));
+      const businessNames = (Array.isArray(member.professionalBusinesses) ? member.professionalBusinesses : [])
+        .map((item) => typeof item === 'string' ? item : item?.name)
+        .filter(Boolean);
+      const canRemove = canManageActiveCompany() && role !== 'owner' && Number(memberId) > 0;
+      $('memberIdentityContent').innerHTML = `<div class="member-identity-card"><div class="member-identity-head"><div class="member-identity-avatar">${avatar}</div><div><h3>${escapeHtml(displayName)}</h3><p>装修公司团队成员</p></div></div><div class="member-identity-rows"><div class="member-identity-row"><span>公司身份</span><b>${escapeHtml(companyRoleLabel(role))}</b></div><div class="member-identity-row"><span>成员状态</span><b>${escapeHtml(companyMemberStatusLabel(member.status))}</b></div><div class="member-identity-row"><span>加入时间</span><b>${escapeHtml(formatTime(member.joinedAt || member.joined_at) || '暂未记录')}</b></div><div class="member-identity-row"><span>专业身份</span><b>${escapeHtml(member.professionalId || member.professional_id ? (businessNames.join('、') || '已关联') : '未关联')}</b></div></div><div class="small-actions" style="justify-content:flex-end"><button class="button button-secondary" type="button" data-member-identity-close>关闭</button>${canRemove ? `<button class="button button-secondary" type="button" data-company-member-remove="${memberId}">移出团队</button>` : ''}</div></div>`;
+      $('memberIdentityModal').classList.add('active');
+    }
+
+    function companyProjectRoleLabel(role) {
+      return { designer: '设计协作', supervisor: '监理协作', contractor: '装修公司', client: '业主委托', pm: '项目管理' }[role] || '项目协作';
+    }
+
+    function projectMemberRoleLabel(role) {
+      return { owner: '业主', owner_member: '家庭成员', project_manager: '项目经理', project_supervisor: '监理', designer: '设计师', merchant: '商家' }[role] || '项目成员';
+    }
+
+    function projectTypeLabel(value) {
+      return { refined: '精装', rough: '毛坯', second_hand: '二手房', partial: '局部改造', office: '办公', commercial: '商业' }[value] || '待完善';
+    }
+
+    function renovationMethodLabel(value) {
+      return { self: '自装', company: '装修公司', independent_designer: '独立设计师' }[value] || '待完善';
+    }
+
+    function formatProjectDate(value) {
+      if (!value) return '待完善';
+      const date = new Date(value);
+      if (Number.isNaN(date.getTime())) return String(value);
+      return date.toLocaleDateString('zh-CN', { year: 'numeric', month: '2-digit', day: '2-digit' });
+    }
+
+    function closeCompanyProjectDetail() {
+      $('companyProjectModal').classList.remove('active');
+      $('companyProjectContent').innerHTML = '';
+    }
+
+    function renderCompanyProjectDetail(data) {
+      const project = data?.project || {};
+      const collaboration = data?.collaboration || {};
+      const progress = data?.progress || {};
+      const archive = data?.archive || {};
+      const inspection = data?.inspection || {};
+      const members = Array.isArray(data?.members) ? data.members : [];
+      const projectName = project.projectName || '装修项目';
+      const area = Number(project.houseArea || 0);
+      $('companyProjectTitle').textContent = projectName;
+      $('companyProjectContent').innerHTML = `<div class="company-project-detail"><div class="company-project-hero"><div><h3>${escapeHtml(projectName)}</h3><p>${escapeHtml([project.projectCode, project.currentStageName].filter(Boolean).join(' · ') || '项目协作详情')}</p></div><div class="company-project-percent">${Number(progress.percent || 0)}%</div></div><div class="company-project-grid"><section class="company-project-section"><h4>项目概况</h4><div class="company-project-rows"><div class="company-project-row"><span>项目编号</span><b>${escapeHtml(project.projectCode || '待完善')}</b></div><div class="company-project-row"><span>房屋面积</span><b>${area > 0 ? `${area}㎡` : '待完善'}</b></div><div class="company-project-row"><span>户型</span><b>${escapeHtml(project.houseLayout || '待完善')}</b></div><div class="company-project-row"><span>项目类型</span><b>${escapeHtml(projectTypeLabel(project.projectType))}</b></div><div class="company-project-row"><span>装修方式</span><b>${escapeHtml(renovationMethodLabel(project.renovationMethod))}</b></div><div class="company-project-row"><span>开工时间</span><b>${escapeHtml(formatProjectDate(project.startDate))}</b></div><div class="company-project-row"><span>预计入住</span><b>${escapeHtml(formatProjectDate(project.expectedMoveInDate))}</b></div></div></section><section class="company-project-section"><h4>公司协作</h4><div class="company-project-rows"><div class="company-project-row"><span>装修公司</span><b>${escapeHtml(collaboration.companyName || '装修公司')}</b></div><div class="company-project-row"><span>公司角色</span><b>${escapeHtml(companyProjectRoleLabel(collaboration.roleType))}</b></div><div class="company-project-row"><span>项目负责人</span><b>${escapeHtml(collaboration.responsibleName || '待指定')}</b></div><div class="company-project-row"><span>当前阶段</span><b>${escapeHtml(project.currentStageName || '装修阶段')}</b></div><div class="company-project-row"><span>预算范围</span><b>${escapeHtml(project.budgetRange || '待完善')}</b></div></div></section><section class="company-project-section wide"><h4>项目成员</h4><div class="company-project-members">${members.length ? members.map((member) => `<span class="company-project-member">${escapeHtml(member.displayName || '项目成员')} · ${escapeHtml(projectMemberRoleLabel(member.role))}</span>`).join('') : '<span class="upload-note">暂无可展示的成员信息</span>'}</div></section><section class="company-project-section"><h4>进度管理</h4><div class="company-project-stat-grid"><div class="company-project-stat"><b>${Number(progress.taskCompleted || 0)}/${Number(progress.taskTotal || 0)}</b><span>阶段任务完成</span></div><div class="company-project-stat"><b>${Number(progress.progressItemDelayed || 0)}</b><span>延期事项</span></div><div class="company-project-stat"><b>${Number(progress.progressItemTotal || 0)}</b><span>进度事项</span></div></div></section><section class="company-project-section"><h4>项目档案</h4><div class="company-project-stat-grid"><div class="company-project-stat"><b>${Number(archive.designDocumentCount || 0)}</b><span>设计资料</span></div><div class="company-project-stat"><b>${Number(archive.pendingHandoverCount || 0)}</b><span>待确认交底</span></div><div class="company-project-stat"><b>${Number(archive.materialCount || 0)}</b><span>材料清单</span></div></div></section><section class="company-project-section wide"><h4>验收管理</h4><div class="company-project-stat-grid"><div class="company-project-stat"><b>${Number(inspection.total || 0)}</b><span>验收记录</span></div><div class="company-project-stat"><b>${Number(inspection.passed || 0)}</b><span>已通过</span></div><div class="company-project-stat"><b>${Number(inspection.rework || 0)}</b><span>待整改</span></div></div></section></div><div class="upload-note">此页面仅展示公司有权查看的项目摘要，具体处理仍在 App 的原有项目模块中完成。</div></div>`;
+    }
+
+    async function openCompanyProjectDetail(projectId) {
+      if (!activeCompanyId || !projectId) return;
+      $('companyProjectTitle').textContent = '项目详情';
+      $('companyProjectContent').innerHTML = '<div class="empty-state compact">正在加载项目详情...</div>';
+      $('companyProjectModal').classList.add('active');
+      try {
+        const data = await api(`/companies/${activeCompanyId}/projects/${projectId}/detail`);
+        renderCompanyProjectDetail(data);
+      } catch (error) {
+        $('companyProjectContent').innerHTML = `<div class="empty-state compact"><strong>项目详情暂不可用</strong>${escapeHtml(friendlyApiMessage(error.message))}</div>`;
+      }
+    }
+
+    function companyBusinessIds(company) {
+      return (Array.isArray(company?.businesses) ? company.businesses : [])
+        .map((item) => Number(typeof item === 'object' ? item.id : item))
+        .filter((id) => id > 0);
+    }
+
+    function prepareCompanyBusinessSelection(company) {
+      const businesses = Array.isArray(company?.businesses) ? company.businesses : [];
+      companySelectedBusinessIds = new Set(companyBusinessIds(company));
+      const primary = businesses.find((item) => Number(item?.is_primary) === 1);
+      companyPrimaryBusinessId = Number(primary?.id) || [...companySelectedBusinessIds][0] || null;
+      companyBusinessSelectionDirty = false;
+    }
+
+    function orderedCompanyBusinessIds() {
+      const selected = [...companySelectedBusinessIds];
+      if (!companyPrimaryBusinessId || !companySelectedBusinessIds.has(companyPrimaryBusinessId)) return selected;
+      return [companyPrimaryBusinessId, ...selected.filter((id) => id !== companyPrimaryBusinessId)];
+    }
+
+    function collectCompanyBusinessLeaves(node) {
+      const children = Array.isArray(node?.children) ? node.children : [];
+      if (!children.length) return node?.id ? [node] : [];
+      return children.flatMap(collectCompanyBusinessLeaves);
+    }
+
+    function companyBusinessGroups() {
+      const renovationRoot = companyBusinessCatalog.find((item) => item.code === 'find_renovation');
+      const groups = renovationRoot?.children?.length ? renovationRoot.children : companyBusinessCatalog;
+      return groups.map((group) => ({
+        name: group.name || '主营业务',
+        items: collectCompanyBusinessLeaves(group),
+      })).filter((group) => group.items.length);
+    }
+
+    function renderCompanyBusinessChoices() {
+      const target = $('companyBusinessChoices');
+      if (!target) return;
+      if (!companyBusinessCatalog.length) {
+        target.innerHTML = '<div class="upload-note">正在加载可选主营业务...</div>';
+        return;
+      }
+      const groups = companyBusinessGroups();
+      target.innerHTML = groups.length ? groups.map((group) => `<div class="company-business-group"><h5>${escapeHtml(group.name)}</h5><div class="company-business-options">${group.items.map((item) => { const id = Number(item.id); const selected = companySelectedBusinessIds.has(id); const primary = Number(companyPrimaryBusinessId) === id; return `<div class="company-business-choice ${selected ? 'is-selected' : ''}"><label><input type="checkbox" data-company-business-id="${id}" ${selected ? 'checked' : ''}><span>${escapeHtml(item.name || '未命名业务')}</span></label>${selected ? `<label class="company-business-primary"><input type="radio" name="companyPrimaryBusiness" data-company-business-primary="${id}" ${primary ? 'checked' : ''}>主营业务</label>` : ''}</div>`; }).join('')}</div></div>`).join('') : '<div class="upload-note">暂无可选主营业务。</div>';
+    }
+
+    async function loadCompanyBusinessCatalog() {
+      if (companyBusinessCatalog.length) {
+        renderCompanyBusinessChoices();
+        return;
+      }
+      try {
+        const data = await api('/business-catalog');
+        companyBusinessCatalog = Array.isArray(data) ? data : [];
+        renderCompanyBusinessChoices();
+      } catch (error) {
+        const target = $('companyBusinessChoices');
+        if (target) target.innerHTML = `<div class="upload-note">主营业务加载失败：${escapeHtml(error.message)}</div>`;
+      }
+    }
+
+    function renderCompanyImagePreview(targetId, url, placeholder) {
+      const target = $(targetId);
+      if (!target) return;
+      target.innerHTML = url ? `<img src="${escapeHtml(displayImageUrl(url))}" alt="">` : escapeHtml(placeholder);
+    }
+
+    async function uploadCompanyProfileImage(kind, file) {
+      if (!file) return;
+      const config = kind === 'logo'
+        ? { field: 'company_logo_url', preview: 'companyLogoPreview', status: 'companyLogoStatus', placeholder: '建议上传方形公司 Logo' }
+        : { field: 'company_license_url', preview: 'companyLicensePreview', status: 'companyLicenseStatus', placeholder: '建议上传清晰营业执照或认证资料' };
+      const status = $(config.status);
+      renderCompanyImagePreview(config.preview, URL.createObjectURL(file), config.placeholder);
+      status.textContent = '正在上传...';
+      try {
+        const url = await uploadImage('/companies/upload-image', file);
+        $(config.field).value = url;
+        renderCompanyImagePreview(config.preview, url, config.placeholder);
+        status.textContent = '上传成功，保存公司资料后生效。';
+      } catch (error) {
+        status.textContent = error.message;
+        throw error;
+      }
+    }
+
+    function renderCompanyProfileEditor(company, canManage, { isNew = false } = {}) {
+      const disabled = canManage ? '' : 'disabled';
+      const businessNames = (Array.isArray(company?.businesses) ? company.businesses : [])
+        .map((item) => item?.name || item)
+        .filter(Boolean);
+      const logoUrl = company?.logo_url || '';
+      const licenseUrl = company?.license_url || '';
+      const uploadControls = canManage ? `<div class="upload-actions"><label class="button button-secondary" for="companyLogoFile">上传 Logo</label><span id="companyLogoStatus" class="upload-note">支持 JPG、PNG、WebP</span></div><input id="companyLogoFile" class="file-input" type="file" accept="image/*">` : '';
+      const licenseUploadControls = canManage ? `<div class="upload-actions"><label class="button button-secondary" for="companyLicenseFile">上传认证资料</label><span id="companyLicenseStatus" class="upload-note">支持 JPG、PNG、WebP</span></div><input id="companyLicenseFile" class="file-input" type="file" accept="image/*">` : '';
+      return `<div class="company-section-panel company-profile-editor"><div class="company-section-head"><div><h3>${isNew ? '创建装修公司' : '公司资料'}</h3><p>完整维护公司公开资料、主营业务和认证材料。</p></div>${isNew ? '' : `<span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span>`}</div>${!isNew ? `<div class="company-profile-readonly">认证状态：${escapeHtml(companyStatusLabel(company))}。公司 Logo 或认证资料更新后，会重新进入资料审核。</div>` : ''}<section class="company-profile-group"><h4>公开资料</h4><p>用于装修公司列表和公司主页的基础展示。</p><div class="company-image-upload-grid"><div class="upload-box"><label>公司 Logo</label><div id="companyLogoPreview" class="company-upload-preview">${logoUrl ? `<img src="${escapeHtml(displayImageUrl(logoUrl))}" alt="">` : '建议上传方形公司 Logo'}</div>${uploadControls}<input id="company_logo_url" type="hidden" value="${escapeHtml(logoUrl)}"></div><div class="upload-box"><label>营业执照/认证资料</label><div id="companyLicensePreview" class="company-upload-preview">${licenseUrl ? `<img src="${escapeHtml(displayImageUrl(licenseUrl))}" alt="">` : '建议上传清晰营业执照或认证资料'}</div>${licenseUploadControls}<input id="company_license_url" type="hidden" value="${escapeHtml(licenseUrl)}"></div></div><div class="form-grid detail-form" style="margin-top:14px"><div class="field"><label>公司名称</label><input id="company_name" value="${escapeHtml(company?.name || '')}" maxlength="120" ${disabled}></div><div class="field"><label>所在城市</label><input id="company_city" value="${escapeHtml(company?.city || '')}" maxlength="50" ${disabled}></div><div class="field"><label>服务区域</label><input id="company_service_area" value="${escapeHtml(company?.service_area || '')}" maxlength="120" placeholder="例如：杭州主城区" ${disabled}></div><div class="field"><label>联系电话</label><input id="company_contact_phone" value="${escapeHtml(company?.contact_phone || '')}" maxlength="30" ${disabled}></div><div class="field full"><label>详细地址</label><input id="company_address" value="${escapeHtml(company?.address || '')}" maxlength="255" ${disabled}></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="2000" ${disabled}>${escapeHtml(company?.intro || '')}</textarea></div></div></section><section class="company-profile-group"><h4>主营业务</h4><p>选择公司提供的装修服务，并标记一项主营业务。</p>${canManage ? '<div id="companyBusinessChoices" class="company-business-catalog"></div>' : `<div class="company-profile-readonly">${escapeHtml(businessNames.join('、') || '暂未设置主营业务')}</div>`}</section>${canManage ? `<div class="save-bar"><button class="button button-primary" type="button" ${isNew ? 'data-company-create' : `data-company-save="${company.id}"`}>${isNew ? '创建装修公司' : '保存公司资料'}</button></div>` : '<div class="message">当前账号没有编辑公司资料的权限。</div>'}</div>`;
     }
 
     function renderCompanySection() {
@@ -3165,21 +3495,25 @@
         </div>`;
       let content = '';
       if (activeCompanySection === 'profile') {
-        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>公司资料</h3><p>维护装修公司的公开基础信息，认证状态由后台审核控制。</p></div><span class="status-pill">${escapeHtml(companyStatusLabel(company))}</span></div><div class="company-info-list"><div class="company-info-row"><span>当前权限</span><b>${canManage ? '可编辑公司资料' : '只读查看公司资料'}</b></div><div class="company-info-row"><span>认证状态</span><b>${escapeHtml(companyStatusLabel(company))}</b></div></div><div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" value="${escapeHtml(company.name || '')}" maxlength="120" ${canManage ? '' : 'disabled'}></div><div class="field"><label>所在城市</label><input id="company_city" value="${escapeHtml(company.city || '')}" maxlength="80" ${canManage ? '' : 'disabled'}></div><div class="field"><label>服务区域</label><input id="company_service_area" value="${escapeHtml(company.service_area || '')}" maxlength="120" ${canManage ? '' : 'disabled'}></div><div class="field"><label>联系电话</label><input id="company_contact_phone" value="${escapeHtml(company.contact_phone || '')}" maxlength="30" ${canManage ? '' : 'disabled'}></div><div class="field full"><label>详细地址</label><input id="company_address" value="${escapeHtml(company.address || '')}" maxlength="255" ${canManage ? '' : 'disabled'}></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000" ${canManage ? '' : 'disabled'}>${escapeHtml(company.intro || '')}</textarea></div></div>${canManage ? `<div class="save-bar"><button class="button button-primary" type="button" data-company-save="${company.id}">保存公司资料</button></div>` : '<div class="message">当前账号没有编辑公司资料的权限。</div>'}</div>`;
+        content = renderCompanyProfileEditor(company, canManage);
       } else if (activeCompanySection === 'members') {
-        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>团队成员</h3><p>仅负责人和管理员可以调整成员角色或移除成员。</p></div><span class="upload-note">共 ${members.length} 人</span></div><div class="entity-list">${members.length ? members.map((member) => { const role = member.memberRole || member.member_role || 'staff'; const memberId = member.memberId || member.member_id || member.id; return `<div class="entity-row"><div class="entity-thumb">${escapeHtml((member.displayName || member.display_name || member.nickname || '成员').slice(0, 1))}</div><div><b>${escapeHtml(member.displayName || member.display_name || member.nickname || '公司成员')}</b><small>${escapeHtml(member.title || companyRoleLabel(role))}</small></div>${canManage && role !== 'owner' ? `<div class="small-actions"><select class="member-role-select" data-company-member-role="${memberId}">${['admin','designer','supervisor','project_manager','staff','customer_service'].map((value) => `<option value="${value}" ${role === value ? 'selected' : ''}>${companyRoleLabel(value)}</option>`).join('')}</select><button class="text-button danger" type="button" data-company-member-remove="${memberId}">移除</button></div>` : `<span class="status-pill">${companyRoleLabel(role)}</span>`}</div>`; }).join('') : emptyState('暂无团队成员', '公司成员加入后会显示在这里。', 'compact')}</div></div>`;
+        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>团队成员</h3><p>点击成员查看身份卡；身份不在成员列表中直接调整。</p></div><span class="upload-note">共 ${members.length} 人</span></div><div class="entity-list">${members.length ? members.map((member) => { const memberId = member.memberId || member.member_id || member.id; const displayName = member.displayName || member.display_name || member.nickname || '公司成员'; const avatarUrl = member.avatarUrl || member.avatar_url || member.avatar || ''; const avatar = avatarUrl ? `<img src="${escapeHtml(displayImageUrl(avatarUrl))}" alt="">` : escapeHtml(displayName.slice(0, 1)); return `<button class="entity-row member-card-trigger" type="button" data-company-member-card="${memberId}" aria-label="查看${escapeHtml(displayName)}的身份卡"><div class="entity-thumb">${avatar}</div><div><b>${escapeHtml(displayName)}</b><small>点击查看身份卡</small></div><span class="member-card-link">查看</span></button>`; }).join('') : emptyState('暂无团队成员', '公司成员加入后会显示在这里。', 'compact')}</div></div>`;
       } else if (activeCompanySection === 'projects') {
-        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>关联项目</h3><p>只展示公司明确关联或可靠推断的项目，不因为单个员工参与就扩大公司权限。</p></div><span class="upload-note">共 ${projects.length} 个项目</span></div><div class="entity-list">${projects.length ? projects.map((project) => `<div class="entity-row"><div class="entity-thumb">项</div><div><b>${escapeHtml(project.projectName || project.project_name || project.name || '装修项目')}</b><small>${escapeHtml([project.projectCode || project.project_code, project.responsibleName || project.responsible_name].filter(Boolean).join(' · ') || '公司关联项目')}</small><span class="company-project-meta">${escapeHtml(project.stageName || project.stage_name || project.status || '')}</span></div><span class="status-pill">${escapeHtml(project.roleType || project.role_type || '参与')}</span></div>`).join('') : emptyState('暂无明确关联项目', '项目绑定公司或公司身份参与后，会显示在这里。', 'compact')}</div></div>`;
+        content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>关联项目</h3><p>只展示公司明确关联或可靠推断的项目。点击项目可查看只读协作详情。</p></div><span class="upload-note">共 ${projects.length} 个项目</span></div><div class="entity-list">${projects.length ? projects.map((project) => { const projectId = project.projectId || project.project_id || project.id; const stageName = project.stageName || project.stage_name || ({ 1: '设计准备', 2: '主体拆改', 3: '水电改造', 4: '泥瓦防水', 5: '木工施工', 6: '油漆施工', 7: '安装收尾', 8: '竣工验收' }[Number(project.currentStage || project.current_stage)] || '装修阶段'); return `<button class="entity-row member-card-trigger" type="button" data-company-project-detail="${projectId}" aria-label="查看${escapeHtml(project.projectName || project.project_name || project.name || '装修项目')}详情"><div class="entity-thumb">项</div><div><b>${escapeHtml(project.projectName || project.project_name || project.name || '装修项目')}</b><small>${escapeHtml([project.projectCode || project.project_code, project.responsibleName || project.responsible_name].filter(Boolean).join(' · ') || '公司关联项目')}</small><span class="company-project-meta">${escapeHtml(stageName)}</span></div><span class="member-card-link">查看</span></button>`; }).join('') : emptyState('暂无明确关联项目', '项目绑定公司或公司身份参与后，会显示在这里。', 'compact')}</div></div>`;
       } else {
         const cards = [['今日待办', todo], ['待回复咨询', consultation], ['即将到期', deadlines], ['待确认交底', handovers]];
         content = `<div class="company-section-panel"><div class="company-section-head"><div><h3>公司工作台</h3><p>汇总公司关联项目的协同信息，第一版只展示数量和摘要。</p></div><span class="upload-note">${workbench?.generatedAt || workbench?.generated_at ? `更新于 ${formatTime(workbench.generatedAt || workbench.generated_at)}` : '实时读取'}</span></div>${workbench ? `<div class="company-summary-grid">${cards.map(([title, value]) => `<div class="workbench-detail-card"><h3>${title}</h3><b>${Number(value.total || 0)}</b><p>${escapeHtml(value.summary || '当前暂无需要关注的信息')}</p></div>`).join('')}</div>` : emptyState('工作台数据暂不可用', '当前账号可能没有查看公司级工作台的权限，或工作台接口暂未返回数据。', 'compact')}</div>`;
       }
-      $('companyDetail').innerHTML = `<div class="company-detail-shell">${header}${companySubnav()}${content}</div>`;
+      const pageContext = activeCompanySection === 'profile' ? header : '';
+      $('companyDetail').innerHTML = `<div class="company-detail-shell">${pageContext}${content}</div>`;
+      updateWorkspaceHeader('companiesPanel');
+      updateCompanyNavState();
+      if (activeCompanySection === 'profile' && canManage) loadCompanyBusinessCatalog();
     }
 
-    async function openCompany(id) {
+    async function openCompany(id, options = {}) {
       activeCompanyId = Number(id);
-      renderCompanies();
+      if (!options.skipListRender) renderCompanies();
       const company = companies.find((item) => Number(item.id) === activeCompanyId) || await api(`/companies/${id}`);
       activeCompany = company;
       const [members, projectData, workbench] = await Promise.all([
@@ -3189,9 +3523,11 @@
       ]);
       const projects = Array.isArray(projectData) ? projectData : (projectData?.items || []);
       activeCompanyData = { company, members: Array.isArray(members) ? members : [], projects, workbench };
-      activeCompanySection = 'profile';
+      prepareCompanyBusinessSelection(company);
+      activeCompanySection = options.section || activeCompanySection || 'profile';
       $('companyDetailTitle').textContent = company.name || '装修公司';
       renderCompanySection();
+      renderCompanies();
     }
 
     async function login(phone, password) {
@@ -3294,7 +3630,16 @@
     $('backToProductListFromDetailBtn').addEventListener('click', showProductListView);
 
     document.querySelectorAll('.tab').forEach((tab) => {
-      tab.addEventListener('click', () => showPanel(tab.dataset.panel));
+      tab.addEventListener('click', () => {
+        if (tab.dataset.companyNavSection) {
+          activeCompanySection = tab.dataset.companyNavSection;
+          const changed = showPanel(tab.dataset.panel);
+          if (changed && activeCompanyData) renderCompanySection();
+          else updateCompanyNavState();
+          return;
+        }
+        showPanel(tab.dataset.panel);
+      });
     });
 
     document.querySelectorAll('[data-open-panel]').forEach((button) => {
@@ -3371,9 +3716,12 @@
       activeCompany = null;
       activeCompanyData = null;
       activeCompanySection = 'profile';
+      prepareCompanyBusinessSelection({});
+      $('companyManagementGrid').classList.remove('single-company');
       renderCompanies();
       $('companyDetailTitle').textContent = '新建装修公司';
-      $('companyDetail').innerHTML = `<div class="company-section-panel"><div class="company-section-head"><div><h3>公司资料</h3><p>先创建基础资料，后续可在后台完成认证和展示开通。</p></div></div><div class="form-grid detail-form"><div class="field"><label>公司名称</label><input id="company_name" maxlength="120"></div><div class="field"><label>所在城市</label><input id="company_city" maxlength="80"></div><div class="field"><label>服务区域</label><input id="company_service_area" maxlength="120"></div><div class="field"><label>联系电话</label><input id="company_contact_phone" maxlength="30"></div><div class="field full"><label>详细地址</label><input id="company_address" maxlength="255"></div><div class="field full"><label>公司简介</label><textarea id="company_intro" maxlength="1000"></textarea></div></div><div class="save-bar"><button class="button button-primary" type="button" data-company-create>创建装修公司</button></div></div>`;
+      $('companyDetail').innerHTML = renderCompanyProfileEditor({}, true, { isNew: true });
+      loadCompanyBusinessCatalog();
     });
 
     [...productFields, 'product_category_id'].forEach((field) => {
@@ -3678,14 +4026,27 @@
       const saveCompanyButton = event.target.closest('[data-company-save]');
       const createCompanyButton = event.target.closest('[data-company-create]');
       const retryConsultationButton = event.target.closest('[data-retry-consultation]');
-      const companySectionButton = event.target.closest('[data-company-section]');
       const removeCompanyMemberButton = event.target.closest('[data-company-member-remove]');
+      const memberIdentityButton = event.target.closest('[data-company-member-card]');
+      const memberIdentityCloseButton = event.target.closest('[data-member-identity-close]');
+      const companyProjectDetailButton = event.target.closest('[data-company-project-detail]');
       try {
         if (retryConsultationButton) { await sendConsultationReply(failedConsultationReply); return; }
-        if (companySectionButton) { activeCompanySection = companySectionButton.dataset.companySection; renderCompanySection(); return; }
+        if (memberIdentityCloseButton) { closeMemberIdentityCard(); return; }
+        if (companyProjectDetailButton) {
+          await openCompanyProjectDetail(Number(companyProjectDetailButton.dataset.companyProjectDetail));
+          return;
+        }
+        if (memberIdentityButton && activeCompanyData) {
+          const memberId = Number(memberIdentityButton.dataset.companyMemberCard);
+          const member = activeCompanyData.members.find((item) => Number(item.memberId || item.member_id || item.id) === memberId);
+          if (member) openMemberIdentityCard(member);
+          return;
+        }
         if (removeCompanyMemberButton) {
           if (!confirm('确定将该成员移出装修公司吗？')) return;
           await api(`/companies/${activeCompanyId}/members/${removeCompanyMemberButton.dataset.companyMemberRemove}`, { method: 'DELETE' });
+          closeMemberIdentityCard();
           await openCompany(activeCompanyId);
           activeCompanySection = 'members';
           renderCompanySection();
@@ -3718,18 +4079,29 @@
         if (consultationButton) { await openConsultation(consultationButton.dataset.consultationId); return; }
         if (companyButton) { await openCompany(companyButton.dataset.companyId); return; }
         if (saveCompanyButton || createCompanyButton) {
+          const businessCatalogIds = orderedCompanyBusinessIds();
           const body = {
             name: $('company_name').value.trim(), city: $('company_city').value.trim(),
             service_area: $('company_service_area').value.trim(), intro: $('company_intro').value.trim(),
-            logo_url: activeCompany?.logo_url || '', address: $('company_address').value.trim(),
-            contact_phone: $('company_contact_phone').value.trim(), license_url: activeCompany?.license_url || '',
+            logo_url: $('company_logo_url').value.trim(), address: $('company_address').value.trim(),
+            contact_phone: $('company_contact_phone').value.trim(), license_url: $('company_license_url').value.trim(),
           };
           if (!body.name) throw new Error('请填写公司名称');
+          if (createCompanyButton && businessCatalogIds.length === 0) throw new Error('请至少选择一项主营业务');
+          if (createCompanyButton) body.business_catalog_ids = businessCatalogIds;
           const saved = saveCompanyButton
             ? await api(`/companies/${saveCompanyButton.dataset.companySave}`, { method: 'PUT', body: JSON.stringify(body) })
             : await api('/companies', { method: 'POST', body: JSON.stringify(body) });
+          const savedCompanyId = Number(saved?.id || saveCompanyButton?.dataset.companySave || 0);
+          if (saveCompanyButton && companyBusinessSelectionDirty) {
+            if (businessCatalogIds.length === 0) throw new Error('请至少选择一项主营业务');
+            await api(`/companies/${savedCompanyId}/businesses`, {
+              method: 'PUT',
+              body: JSON.stringify({ business_catalog_ids: businessCatalogIds }),
+            });
+          }
           await loadCompanies();
-          if (saved?.id) await openCompany(saved.id);
+          if (savedCompanyId) await openCompany(savedCompanyId);
           setMessage('companyMessage', saveCompanyButton ? '公司资料已保存' : '装修公司已创建', 'ok');
         }
       } catch (error) {
@@ -3740,27 +4112,50 @@
     });
 
     $('companyDetail').addEventListener('change', async (event) => {
-      const select = event.target.closest('[data-company-member-role]');
-      if (!select || !activeCompanyData) return;
-      const memberId = Number(select.dataset.companyMemberRole);
-      const member = activeCompanyData.members.find((item) => Number(item.memberId || item.member_id || item.id) === memberId);
+      const target = event.target;
+      const businessCheckbox = target.closest('[data-company-business-id]');
+      const primaryRadio = target.closest('[data-company-business-primary]');
+      if (businessCheckbox) {
+        const id = Number(businessCheckbox.dataset.companyBusinessId);
+        if (businessCheckbox.checked) {
+          companySelectedBusinessIds.add(id);
+          if (!companyPrimaryBusinessId) companyPrimaryBusinessId = id;
+        } else {
+          companySelectedBusinessIds.delete(id);
+          if (Number(companyPrimaryBusinessId) === id) companyPrimaryBusinessId = [...companySelectedBusinessIds][0] || null;
+        }
+        companyBusinessSelectionDirty = true;
+        renderCompanyBusinessChoices();
+        return;
+      }
+      if (primaryRadio) {
+        companyPrimaryBusinessId = Number(primaryRadio.dataset.companyBusinessPrimary);
+        companyBusinessSelectionDirty = true;
+        renderCompanyBusinessChoices();
+        return;
+      }
+      const imageKind = target.id === 'companyLogoFile' ? 'logo' : target.id === 'companyLicenseFile' ? 'license' : '';
+      if (!imageKind) return;
       try {
-        await api(`/companies/${activeCompanyId}/members/${memberId}`, {
-          method: 'PUT',
-          body: JSON.stringify({
-            member_role: select.value,
-            professional_id: member?.professionalId || member?.professional_id || null,
-            title: member?.title || '',
-          }),
-        });
-        await openCompany(activeCompanyId);
-        activeCompanySection = 'members';
-        renderCompanySection();
-        setMessage('companyMessage', '成员角色已更新', 'ok');
+        await uploadCompanyProfileImage(imageKind, target.files?.[0]);
       } catch (error) {
         setMessage('companyMessage', error.message, 'error');
-        select.value = member?.memberRole || member?.member_role || 'staff';
+      } finally {
+        target.value = '';
       }
+    });
+
+    $('closeMemberIdentityBtn').addEventListener('click', closeMemberIdentityCard);
+    $('memberIdentityModal').addEventListener('click', (event) => {
+      if (event.target === $('memberIdentityModal')) closeMemberIdentityCard();
+    });
+    $('closeCompanyProjectBtn').addEventListener('click', closeCompanyProjectDetail);
+    $('companyProjectModal').addEventListener('click', (event) => {
+      if (event.target === $('companyProjectModal')) closeCompanyProjectDetail();
+    });
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && $('memberIdentityModal').classList.contains('active')) closeMemberIdentityCard();
+      if (event.key === 'Escape' && $('companyProjectModal').classList.contains('active')) closeCompanyProjectDetail();
     });
 
     $('reloadBtn').addEventListener('click', async () => {

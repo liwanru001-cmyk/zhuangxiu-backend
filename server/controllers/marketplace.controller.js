@@ -2179,6 +2179,210 @@ async function listCompanyProjects(req, res) {
   });
 }
 
+function companyProjectStageName(stageId) {
+  return {
+    1: '设计准备',
+    2: '主体拆改',
+    3: '水电改造',
+    4: '泥瓦防水',
+    5: '木工施工',
+    6: '油漆施工',
+    7: '安装收尾',
+    8: '竣工验收',
+  }[Number(stageId)] || '装修阶段';
+}
+
+async function findCompanyProjectAssociation(companyId, projectId) {
+  const [explicitRows] = await db.query(
+    `SELECT ppe.role_type,
+            COALESCE(user.nickname, professional.display_name) AS responsible_name
+     FROM project_participants_ext ppe
+     LEFT JOIN professionals professional ON professional.id = ppe.professional_id
+     LEFT JOIN users user ON user.id = COALESCE(ppe.user_id, professional.user_id)
+     WHERE ppe.project_id = ?
+       AND ppe.status <> 'removed'
+       AND (
+         ppe.company_id = ?
+         OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+       )
+     ORDER BY ppe.updated_at DESC, ppe.id DESC
+     LIMIT 1`,
+    [projectId, companyId, companyId]
+  );
+  if (explicitRows[0]) {
+    return {
+      roleType: explicitRows[0].role_type || 'contractor',
+      responsibleName: explicitRows[0].responsible_name || '',
+      source: 'project_participants_ext',
+    };
+  }
+
+  const [inferredRows] = await db.query(
+    `SELECT CASE cm.member_role
+              WHEN 'designer' THEN 'designer'
+              WHEN 'supervisor' THEN 'supervisor'
+              WHEN 'project_manager' THEN 'pm'
+              ELSE 'contractor'
+            END AS role_type,
+            user.nickname AS responsible_name
+     FROM company_members cm
+     JOIN project_members pm
+       ON pm.user_id = cm.user_id
+      AND pm.project_id = ?
+      AND pm.status = 1
+     JOIN users user ON user.id = cm.user_id
+     WHERE cm.company_id = ? AND cm.status = 'active'
+     ORDER BY FIELD(cm.member_role, 'owner', 'admin', 'project_manager', 'designer', 'supervisor', 'staff'),
+              pm.joined_at ASC, pm.id ASC
+     LIMIT 1`,
+    [projectId, companyId]
+  );
+  if (!inferredRows[0]) return null;
+  return {
+    roleType: inferredRows[0].role_type || 'contractor',
+    responsibleName: inferredRows[0].responsible_name || '',
+    source: 'inferred_company_member',
+  };
+}
+
+async function getCompanyProjectDetail(req, res) {
+  const companyId = Number(req.params.id);
+  const projectId = Number(req.params.projectId);
+  if (!companyId || companyId < 0 || !projectId) return error(res, '项目不存在', 404);
+  if (!(await canManageCompany(companyId, req.user.id))) {
+    return error(res, '无权限查看该公司项目', 403);
+  }
+
+  const [[projectRows], association] = await Promise.all([
+    db.query(
+      `SELECT p.id, p.project_code, p.project_name, p.house_area, p.house_layout,
+              p.project_type, p.renovation_method, p.budget_range,
+              p.start_date, p.expected_move_in_date, p.current_stage,
+              p.status, p.lifecycle_status
+       FROM renovation_projects p
+       WHERE p.id = ? AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       LIMIT 1`,
+      [projectId]
+    ),
+    findCompanyProjectAssociation(companyId, projectId),
+  ]);
+  const project = projectRows[0];
+  if (!project || !association) return error(res, '项目不存在或未关联当前装修公司', 404);
+
+  const [companyRows] = await db.query(
+    `SELECT name FROM companies
+     WHERE id = ? AND status <> 'deleted'
+     LIMIT 1`,
+    [companyId]
+  );
+  if (!companyRows[0]) return error(res, '公司不存在', 404);
+
+  const [memberRows, taskRows, progressRows, archiveRows, inspectionRows] = await Promise.all([
+    db.query(
+      `SELECT user.nickname AS display_name, pm.role
+       FROM project_members pm
+       JOIN users user ON user.id = pm.user_id
+       WHERE pm.project_id = ? AND pm.status = 1
+       ORDER BY FIELD(pm.role, 'owner', 'owner_member', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
+                pm.joined_at ASC, pm.id ASC
+       LIMIT 12`,
+      [projectId]
+    ),
+    db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS completed,
+              SUM(CASE WHEN status = 3 OR (status <> 2 AND planned_end < CURDATE())
+                       THEN 1 ELSE 0 END) AS delayed
+       FROM renovation_tasks
+       WHERE project_id = ?`,
+      [projectId]
+    ),
+    db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
+              SUM(CASE WHEN status = 'delayed' OR (status <> 'completed' AND planned_end < CURDATE())
+                       THEN 1 ELSE 0 END) AS delayed
+       FROM project_progress_items
+       WHERE project_id = ?`,
+      [projectId]
+    ),
+    db.query(
+      `SELECT
+         (SELECT COUNT(*) FROM project_design_documents WHERE project_id = ?) AS design_document_count,
+         (SELECT COUNT(*) FROM project_handovers WHERE project_id = ?) AS handover_count,
+         (SELECT COUNT(*) FROM project_handovers
+          WHERE project_id = ? AND status IN ('pending_confirm', 'pending')) AS pending_handover_count,
+         (SELECT COUNT(*) FROM project_material_items WHERE project_id = ?) AS material_count,
+         (SELECT COUNT(*) FROM project_material_items
+          WHERE project_id = ? AND confirm_status = 'pending') AS pending_material_count`,
+      [projectId, projectId, projectId, projectId, projectId]
+    ),
+    db.query(
+      `SELECT COUNT(*) AS total,
+              SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS passed,
+              SUM(CASE WHEN status = 'rework' THEN 1 ELSE 0 END) AS rework
+       FROM project_inspections
+       WHERE project_id = ?`,
+      [projectId]
+    ),
+  ]);
+  const taskSummary = taskRows[0][0] || {};
+  const progressSummary = progressRows[0][0] || {};
+  const archiveSummary = archiveRows[0][0] || {};
+  const inspectionSummary = inspectionRows[0][0] || {};
+  const taskTotal = Number(taskSummary.total || 0);
+  const taskCompleted = Number(taskSummary.completed || 0);
+
+  return success(res, {
+    project: {
+      id: Number(project.id),
+      projectCode: project.project_code || '',
+      projectName: project.project_name || '装修项目',
+      houseArea: project.house_area === null ? null : Number(project.house_area),
+      houseLayout: project.house_layout || '',
+      projectType: project.project_type || '',
+      renovationMethod: project.renovation_method || '',
+      budgetRange: project.budget_range || '',
+      startDate: project.start_date || null,
+      expectedMoveInDate: project.expected_move_in_date || null,
+      currentStage: Number(project.current_stage || 1),
+      currentStageName: companyProjectStageName(project.current_stage),
+      lifecycleStatus: project.lifecycle_status || 'active',
+    },
+    collaboration: {
+      companyName: companyRows[0].name || '装修公司',
+      roleType: association.roleType,
+      responsibleName: association.responsibleName || '',
+      source: association.source,
+    },
+    members: memberRows[0].map((member) => ({
+      displayName: member.display_name || '项目成员',
+      role: member.role || 'member',
+    })),
+    progress: {
+      taskTotal,
+      taskCompleted,
+      taskDelayed: Number(taskSummary.delayed || 0),
+      percent: taskTotal ? Math.round(taskCompleted / taskTotal * 100) : 0,
+      progressItemTotal: Number(progressSummary.total || 0),
+      progressItemCompleted: Number(progressSummary.completed || 0),
+      progressItemDelayed: Number(progressSummary.delayed || 0),
+    },
+    archive: {
+      designDocumentCount: Number(archiveSummary.design_document_count || 0),
+      handoverCount: Number(archiveSummary.handover_count || 0),
+      pendingHandoverCount: Number(archiveSummary.pending_handover_count || 0),
+      materialCount: Number(archiveSummary.material_count || 0),
+      pendingMaterialCount: Number(archiveSummary.pending_material_count || 0),
+    },
+    inspection: {
+      total: Number(inspectionSummary.total || 0),
+      passed: Number(inspectionSummary.passed || 0),
+      rework: Number(inspectionSummary.rework || 0),
+    },
+  });
+}
+
 async function getCompanyWorkbenchSummary(req, res) {
   const companyId = Number(req.params.id);
   if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
@@ -2989,6 +3193,7 @@ module.exports = {
   searchCompanyMemberCandidates,
   getCompanyWorkbenchSummary,
   listCompanyProjects,
+  getCompanyProjectDetail,
   attachCompanyProject,
   updateCompanyProject,
   detachCompanyProject,

@@ -78,6 +78,7 @@ router.post('/projects/:projectId/companies/:companyId/evaluation-feedback', asy
 router.post('/consultations/:id/evaluation-feedback', asyncHandler(auth), asyncHandler(controller.submitConsultationEvaluationFeedback));
 router.get('/companies/:id/workbench-summary', asyncHandler(auth), asyncHandler(controller.getCompanyWorkbenchSummary));
 router.get('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.listCompanyProjects));
+router.get('/companies/:id/projects/:projectId/detail', asyncHandler(auth), asyncHandler(controller.getCompanyProjectDetail));
 router.post('/companies/:id/projects', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.attachCompanyProject));
 router.put('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.updateCompanyProject));
 router.delete('/companies/:id/projects/:projectId', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.detachCompanyProject));
