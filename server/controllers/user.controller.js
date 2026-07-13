@@ -53,6 +53,7 @@ const VALID_PUBLIC_DISPLAY_ROLES = [
   'project_manager',
   'project_supervisor',
 ];
+const PUBLIC_PROFILE_FEATURED_PROJECT_LIMIT = 3;
 
 async function verifyPassword(userId, password) {
   const [rows] = await db.query(
@@ -126,6 +127,7 @@ async function getProfile(req, res) {
   const designerProfile = await getDesignerProfileData(userId);
   const projectManagerProfile = await getProjectManagerProfileData(userId);
   const merchantProfile = await getMerchantProfileData(userId);
+  const affiliations = await getPublicProfileAffiliations(userId);
   const viewerId = await getViewerId(req);
   const isSelf = viewerId && Number(viewerId) === Number(userId);
   let isFollowing = false;
@@ -145,9 +147,188 @@ async function getProfile(req, res) {
     designer_profile: designerProfile,
     project_manager_profile: projectManagerProfile,
     merchant_profile: merchantProfile,
+    affiliations,
     is_self: Boolean(isSelf),
     is_following: isFollowing,
   });
+}
+
+function projectMemberRoleLabel(role) {
+  return {
+    owner: '项目业主',
+    owner_member: '业主成员',
+    designer: '设计负责人',
+    project_manager: '项目经理',
+    project_supervisor: '项目监理',
+    merchant: '项目商家',
+  }[role] || '项目成员';
+}
+
+function companyMemberRoleLabel(role) {
+  return {
+    owner: '负责人',
+    admin: '管理员',
+    designer: '设计师',
+    supervisor: '监理',
+    project_manager: '项目经理',
+    customer_service: '客服',
+    staff: '成员',
+  }[role] || '成员';
+}
+
+async function getPublicProfileAffiliations(userId) {
+  const [companyRows, merchantRows, projectRows] = await Promise.all([
+    db.query(
+      `SELECT c.id, c.name,
+              CASE
+                WHEN c.owner_user_id = ? THEN '负责人'
+                WHEN MAX(COALESCE(NULLIF(cm.title, ''), '')) <> ''
+                  THEN MAX(COALESCE(NULLIF(cm.title, ''), ''))
+                ELSE MAX(cm.member_role)
+              END AS member_role
+       FROM companies c
+       LEFT JOIN company_members cm
+         ON cm.company_id = c.id
+        AND cm.user_id = ?
+        AND cm.status = 'active'
+       WHERE c.status = 'active'
+         AND (c.owner_user_id = ? OR cm.id IS NOT NULL)
+       GROUP BY c.id, c.name, c.owner_user_id
+       ORDER BY c.updated_at DESC, c.id DESC`,
+      [userId, userId, userId]
+    ),
+    db.query(
+      `SELECT user_id, shop_name
+       FROM merchant_profiles
+       WHERE user_id = ? AND COALESCE(shop_name, '') <> ''
+       LIMIT 1`,
+      [userId]
+    ),
+    db.query(
+      `SELECT p.id, p.project_name, pm.role
+       FROM public_profile_featured_projects featured
+       JOIN project_members pm
+         ON pm.project_id = featured.project_id
+        AND pm.user_id = featured.user_id
+        AND pm.status = 1
+       JOIN renovation_projects p ON p.id = featured.project_id
+       WHERE featured.user_id = ?
+         AND COALESCE(p.lifecycle_status, 'active') = 'archived'
+       ORDER BY featured.sort_order ASC, featured.id ASC`,
+      [userId]
+    ),
+  ]);
+
+  const companies = companyRows[0].map((row) => ({
+    type: 'company',
+    id: Number(row.id),
+    name: row.name || '装修公司',
+    relation: companyMemberRoleLabel(row.member_role),
+  }));
+  const merchants = merchantRows[0].map((row) => ({
+    type: 'merchant',
+    id: Number(row.user_id),
+    name: row.shop_name || '商家店铺',
+    relation: '店主',
+  }));
+  const projects = projectRows[0].map((row) => ({
+    type: 'project',
+    id: Number(row.id),
+    name: row.project_name || '装修项目',
+    relation: projectMemberRoleLabel(row.role),
+  }));
+  return [...companies, ...merchants, ...projects];
+}
+
+async function getPublicProfileResume(req, res) {
+  const [projectRows, selectedRows] = await Promise.all([
+    db.query(
+      `SELECT p.id, p.project_name, pm.role
+       FROM project_members pm
+       JOIN renovation_projects p ON p.id = pm.project_id
+       WHERE pm.user_id = ?
+         AND pm.status = 1
+         AND COALESCE(p.lifecycle_status, 'active') = 'archived'
+       ORDER BY p.archived_at DESC, p.updated_at DESC, p.id DESC`,
+      [req.user.id]
+    ),
+    db.query(
+      `SELECT project_id
+       FROM public_profile_featured_projects
+       WHERE user_id = ?
+       ORDER BY sort_order ASC, id ASC`,
+      [req.user.id]
+    ),
+  ]);
+  const selectedIds = selectedRows[0].map((row) => Number(row.project_id));
+  return success(res, {
+    featured_project_ids: selectedIds,
+    project_candidates: projectRows[0].map((row) => ({
+      id: Number(row.id),
+      name: row.project_name || '装修项目',
+      relation: projectMemberRoleLabel(row.role),
+    })),
+  });
+}
+
+async function updatePublicProfileResume(req, res) {
+  const rawIds = Array.isArray(req.body?.featured_project_ids)
+    ? req.body.featured_project_ids
+    : [];
+  const featuredProjectIds = [
+    ...new Set(
+      rawIds
+        .map((item) => Number(item))
+        .filter((item) => Number.isInteger(item) && item > 0)
+    ),
+  ];
+
+  if (featuredProjectIds.length > PUBLIC_PROFILE_FEATURED_PROJECT_LIMIT) {
+    return error(res, `最多选择 ${PUBLIC_PROFILE_FEATURED_PROJECT_LIMIT} 个代表项目`);
+  }
+
+  if (featuredProjectIds.length > 0) {
+    const [candidateRows] = await db.query(
+      `SELECT p.id
+       FROM project_members pm
+       JOIN renovation_projects p ON p.id = pm.project_id
+       WHERE pm.user_id = ?
+         AND pm.status = 1
+         AND COALESCE(p.lifecycle_status, 'active') = 'archived'
+         AND p.id IN (?)`,
+      [req.user.id, featuredProjectIds]
+    );
+    if (candidateRows.length !== featuredProjectIds.length) {
+      return error(res, '只能选择本人参与的已归档项目', 400);
+    }
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query(
+      'DELETE FROM public_profile_featured_projects WHERE user_id = ?',
+      [req.user.id]
+    );
+    if (featuredProjectIds.length > 0) {
+      await connection.query(
+        `INSERT INTO public_profile_featured_projects (user_id, project_id, sort_order)
+         VALUES ${featuredProjectIds.map(() => '(?, ?, ?)').join(', ')}`,
+        featuredProjectIds.flatMap((projectId, index) => [
+          req.user.id,
+          projectId,
+          index,
+        ])
+      );
+    }
+    await connection.commit();
+  } catch (updateError) {
+    await connection.rollback();
+    throw updateError;
+  } finally {
+    connection.release();
+  }
+  return getPublicProfileResume(req, res);
 }
 
 function normalizeRoleList(rawRoles, fallbackRole = 'owner') {
@@ -1787,6 +1968,8 @@ module.exports = {
   getProfile,
   getPublicProfileDisplaySettings,
   updatePublicProfileDisplaySettings,
+  getPublicProfileResume,
+  updatePublicProfileResume,
   updateProfile,
   updateRole,
   uploadAvatar,
