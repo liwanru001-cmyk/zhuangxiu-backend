@@ -3337,17 +3337,125 @@
       $('companyProjectContent').innerHTML = '';
     }
 
-    function renderCompanyProjectDetail(data) {
-      const project = data?.project || {};
-      const collaboration = data?.collaboration || {};
-      const progress = data?.progress || {};
-      const archive = data?.archive || {};
-      const inspection = data?.inspection || {};
-      const members = Array.isArray(data?.members) ? data.members : [];
-      const projectName = project.projectName || '装修项目';
-      const area = Number(project.houseArea || 0);
+    function companyProjectStageLabel(stageId, allStages = []) {
+      const match = Array.isArray(allStages)
+        ? allStages.find((stage) => Number(stage?.id) === Number(stageId))
+        : null;
+      if (match?.name || match?.traditional) return match.name || match.traditional;
+      return ({ 1: '设计准备', 2: '主体拆改', 3: '水电改造', 4: '泥瓦防水', 5: '木工施工', 6: '油漆施工', 7: '安装收尾', 8: '竣工验收' }[Number(stageId)] || '装修阶段');
+    }
+
+    function activeCompanyProjectLink(projectId) {
+      return (activeCompanyData?.projects || []).find((item) => Number(item.projectId || item.project_id || item.id) === Number(projectId)) || {};
+    }
+
+    async function loadCompanyProjectExtras(projectId) {
+      const optional = (path) => api(path).catch(() => []);
+      const [progressItems, designDocuments, handovers, materials, inspections] = await Promise.all([
+        optional(`/renovation/projects/${projectId}/progress-items`),
+        optional(`/renovation/projects/${projectId}/design-documents`),
+        optional(`/renovation/projects/${projectId}/handovers`),
+        optional(`/renovation/projects/${projectId}/materials`),
+        optional(`/renovation/projects/${projectId}/inspections`),
+      ]);
+      return {
+        progressItems: Array.isArray(progressItems) ? progressItems : [],
+        designDocuments: Array.isArray(designDocuments) ? designDocuments : [],
+        handovers: Array.isArray(handovers) ? handovers : [],
+        materials: Array.isArray(materials) ? materials : [],
+        inspections: Array.isArray(inspections) ? inspections : [],
+      };
+    }
+
+    function renderCompanyProjectDetail(calendar, members, projectLink, extras) {
+      const project = calendar?.project || {};
+      const allStages = Array.isArray(calendar?.all_stages) ? calendar.all_stages : [];
+      const stages = calendar?.stages && typeof calendar.stages === 'object' ? calendar.stages : {};
+      const tasks = Object.values(stages).flatMap((items) => Array.isArray(items) ? items : []);
+      const currentStage = Number(project.current_stage || projectLink.currentStage || projectLink.current_stage || 1);
+      const currentStageName = companyProjectStageLabel(currentStage, allStages);
+      const completedTasks = tasks.filter((task) => Number(task?.status) === 2).length;
+      const delayedTasks = tasks.filter((task) => Number(task?.status) === 3).length;
+      const percent = tasks.length ? Math.round(completedTasks / tasks.length * 100) : 0;
+      const area = Number(project.house_area || projectLink.houseArea || projectLink.house_area || 0);
+      const projectName = project.project_name || projectLink.projectName || projectLink.project_name || '装修项目';
+      const visibleMembers = Array.isArray(members) ? members : [];
+      const progressItems = extras?.progressItems || [];
+      const handovers = extras?.handovers || [];
+      const inspections = extras?.inspections || [];
+      const delayedItems = progressItems.filter((item) => item?.status === 'delayed').length;
+      const completedItems = progressItems.filter((item) => item?.status === 'completed').length;
+      const passedInspections = inspections.filter((item) => item?.status === 'passed').length;
+      const reworkInspections = inspections.filter((item) => item?.status === 'rework').length;
+      const pendingHandovers = handovers.filter((item) => ['pending_confirm', 'pending'].includes(item?.status)).length;
+      const companyName = activeCompany?.name || '装修公司';
+      const roleType = projectLink.roleType || projectLink.role_type || 'contractor';
+      const responsibleName = projectLink.responsibleName || projectLink.responsible_name || '';
+
       $('companyProjectTitle').textContent = projectName;
-      $('companyProjectContent').innerHTML = `<div class="company-project-detail"><div class="company-project-hero"><div><h3>${escapeHtml(projectName)}</h3><p>${escapeHtml([project.projectCode, project.currentStageName].filter(Boolean).join(' · ') || '项目协作详情')}</p></div><div class="company-project-percent">${Number(progress.percent || 0)}%</div></div><div class="company-project-grid"><section class="company-project-section"><h4>项目概况</h4><div class="company-project-rows"><div class="company-project-row"><span>项目编号</span><b>${escapeHtml(project.projectCode || '待完善')}</b></div><div class="company-project-row"><span>房屋面积</span><b>${area > 0 ? `${area}㎡` : '待完善'}</b></div><div class="company-project-row"><span>户型</span><b>${escapeHtml(project.houseLayout || '待完善')}</b></div><div class="company-project-row"><span>项目类型</span><b>${escapeHtml(projectTypeLabel(project.projectType))}</b></div><div class="company-project-row"><span>装修方式</span><b>${escapeHtml(renovationMethodLabel(project.renovationMethod))}</b></div><div class="company-project-row"><span>开工时间</span><b>${escapeHtml(formatProjectDate(project.startDate))}</b></div><div class="company-project-row"><span>预计入住</span><b>${escapeHtml(formatProjectDate(project.expectedMoveInDate))}</b></div></div></section><section class="company-project-section"><h4>公司协作</h4><div class="company-project-rows"><div class="company-project-row"><span>装修公司</span><b>${escapeHtml(collaboration.companyName || '装修公司')}</b></div><div class="company-project-row"><span>公司角色</span><b>${escapeHtml(companyProjectRoleLabel(collaboration.roleType))}</b></div><div class="company-project-row"><span>项目负责人</span><b>${escapeHtml(collaboration.responsibleName || '待指定')}</b></div><div class="company-project-row"><span>当前阶段</span><b>${escapeHtml(project.currentStageName || '装修阶段')}</b></div><div class="company-project-row"><span>预算范围</span><b>${escapeHtml(project.budgetRange || '待完善')}</b></div></div></section><section class="company-project-section wide"><h4>项目成员</h4><div class="company-project-members">${members.length ? members.map((member) => `<span class="company-project-member">${escapeHtml(member.displayName || '项目成员')} · ${escapeHtml(projectMemberRoleLabel(member.role))}</span>`).join('') : '<span class="upload-note">暂无可展示的成员信息</span>'}</div></section><section class="company-project-section"><h4>进度管理</h4><div class="company-project-stat-grid"><div class="company-project-stat"><b>${Number(progress.taskCompleted || 0)}/${Number(progress.taskTotal || 0)}</b><span>阶段任务完成</span></div><div class="company-project-stat"><b>${Number(progress.progressItemDelayed || 0)}</b><span>延期事项</span></div><div class="company-project-stat"><b>${Number(progress.progressItemTotal || 0)}</b><span>进度事项</span></div></div></section><section class="company-project-section"><h4>项目档案</h4><div class="company-project-stat-grid"><div class="company-project-stat"><b>${Number(archive.designDocumentCount || 0)}</b><span>设计资料</span></div><div class="company-project-stat"><b>${Number(archive.pendingHandoverCount || 0)}</b><span>待确认交底</span></div><div class="company-project-stat"><b>${Number(archive.materialCount || 0)}</b><span>材料清单</span></div></div></section><section class="company-project-section wide"><h4>验收管理</h4><div class="company-project-stat-grid"><div class="company-project-stat"><b>${Number(inspection.total || 0)}</b><span>验收记录</span></div><div class="company-project-stat"><b>${Number(inspection.passed || 0)}</b><span>已通过</span></div><div class="company-project-stat"><b>${Number(inspection.rework || 0)}</b><span>待整改</span></div></div></section></div><div class="upload-note">此页面仅展示公司有权查看的项目摘要，具体处理仍在 App 的原有项目模块中完成。</div></div>`;
+      $('companyProjectContent').innerHTML = `
+        <div class="company-project-detail">
+          <div class="company-project-hero">
+            <div>
+              <h3>${escapeHtml(projectName)}</h3>
+              <p>${escapeHtml([project.project_code || projectLink.projectCode || projectLink.project_code, currentStageName].filter(Boolean).join(' · ') || '项目协作详情')}</p>
+            </div>
+            <div class="company-project-percent">${percent}%</div>
+          </div>
+          <div class="company-project-grid">
+            <section class="company-project-section">
+              <h4>项目概况</h4>
+              <div class="company-project-rows">
+                <div class="company-project-row"><span>项目编号</span><b>${escapeHtml(project.project_code || projectLink.projectCode || projectLink.project_code || '待完善')}</b></div>
+                <div class="company-project-row"><span>房屋面积</span><b>${area > 0 ? `${area}㎡` : '待完善'}</b></div>
+                <div class="company-project-row"><span>户型</span><b>${escapeHtml(project.house_layout || '待完善')}</b></div>
+                <div class="company-project-row"><span>项目类型</span><b>${escapeHtml(projectTypeLabel(project.project_type))}</b></div>
+                <div class="company-project-row"><span>装修方式</span><b>${escapeHtml(renovationMethodLabel(project.renovation_method))}</b></div>
+                <div class="company-project-row"><span>开工时间</span><b>${escapeHtml(formatProjectDate(project.start_date))}</b></div>
+                <div class="company-project-row"><span>预计入住</span><b>${escapeHtml(formatProjectDate(project.expected_move_in_date))}</b></div>
+              </div>
+            </section>
+            <section class="company-project-section">
+              <h4>公司协作</h4>
+              <div class="company-project-rows">
+                <div class="company-project-row"><span>装修公司</span><b>${escapeHtml(companyName)}</b></div>
+                <div class="company-project-row"><span>公司角色</span><b>${escapeHtml(companyProjectRoleLabel(roleType))}</b></div>
+                <div class="company-project-row"><span>项目负责人</span><b>${escapeHtml(responsibleName || '待指定')}</b></div>
+                <div class="company-project-row"><span>当前阶段</span><b>${escapeHtml(currentStageName)}</b></div>
+                <div class="company-project-row"><span>预算范围</span><b>${escapeHtml(project.budget_range || '待完善')}</b></div>
+              </div>
+            </section>
+            <section class="company-project-section wide">
+              <h4>项目成员</h4>
+              <div class="company-project-members">${visibleMembers.length ? visibleMembers.slice(0, 12).map((member) => `<span class="company-project-member">${escapeHtml(member.nickname || member.displayName || '项目成员')} · ${escapeHtml(projectMemberRoleLabel(member.role))}</span>`).join('') : '<span class="upload-note">暂无可展示的成员信息</span>'}</div>
+            </section>
+            <section class="company-project-section">
+              <h4>进度管理</h4>
+              <div class="company-project-stat-grid">
+                <div class="company-project-stat"><b>${completedTasks}/${tasks.length}</b><span>阶段任务完成</span></div>
+                <div class="company-project-stat"><b>${delayedTasks + delayedItems}</b><span>延期事项</span></div>
+                <div class="company-project-stat"><b>${completedItems}/${progressItems.length}</b><span>进度事项</span></div>
+              </div>
+            </section>
+            <section class="company-project-section">
+              <h4>项目档案</h4>
+              <div class="company-project-stat-grid">
+                <div class="company-project-stat"><b>${Number(extras?.designDocuments?.length || 0)}</b><span>设计资料</span></div>
+                <div class="company-project-stat"><b>${pendingHandovers}</b><span>待确认交底</span></div>
+                <div class="company-project-stat"><b>${Number(extras?.materials?.length || 0)}</b><span>材料清单</span></div>
+              </div>
+            </section>
+            <section class="company-project-section wide">
+              <h4>验收管理</h4>
+              <div class="company-project-stat-grid">
+                <div class="company-project-stat"><b>${inspections.length}</b><span>验收记录</span></div>
+                <div class="company-project-stat"><b>${passedInspections}</b><span>已通过</span></div>
+                <div class="company-project-stat"><b>${reworkInspections}</b><span>待整改</span></div>
+              </div>
+            </section>
+          </div>
+          <div class="upload-note">项目基础信息、任务和权限复用 App 的项目接口；本页仅用于只读查看。</div>
+        </div>`;
     }
 
     async function openCompanyProjectDetail(projectId) {
@@ -3356,8 +3464,12 @@
       $('companyProjectContent').innerHTML = '<div class="empty-state compact">正在加载项目详情...</div>';
       $('companyProjectModal').classList.add('active');
       try {
-        const data = await api(`/companies/${activeCompanyId}/projects/${projectId}/detail`);
-        renderCompanyProjectDetail(data);
+        const [calendar, members, extras] = await Promise.all([
+          api(`/renovation/projects/${projectId}`),
+          api(`/renovation/projects/${projectId}/members`).catch(() => []),
+          loadCompanyProjectExtras(projectId),
+        ]);
+        renderCompanyProjectDetail(calendar, members, activeCompanyProjectLink(projectId), extras);
       } catch (error) {
         $('companyProjectContent').innerHTML = `<div class="empty-state compact"><strong>项目详情暂不可用</strong>${escapeHtml(friendlyApiMessage(error.message))}</div>`;
       }
