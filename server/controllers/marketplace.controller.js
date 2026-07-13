@@ -2192,6 +2192,55 @@ function companyProjectStageName(stageId) {
   }[Number(stageId)] || '装修阶段';
 }
 
+function isCompanyProjectDetailSchemaDrift(error) {
+  return ['ER_BAD_FIELD_ERROR', 'ER_NO_SUCH_TABLE'].includes(error?.code);
+}
+
+async function findCompanyProjectBase(projectId) {
+  try {
+    const [rows] = await db.query(
+      `SELECT p.id, p.project_code, p.project_name, p.house_area, p.house_layout,
+              p.project_type, p.renovation_method, p.budget_range,
+              p.start_date, p.expected_move_in_date, p.current_stage,
+              p.status, p.lifecycle_status
+       FROM renovation_projects p
+       WHERE p.id = ? AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       LIMIT 1`,
+      [projectId]
+    );
+    return rows[0] || null;
+  } catch (error) {
+    if (!isCompanyProjectDetailSchemaDrift(error)) throw error;
+    console.error('company project detail base query fell back', {
+      projectId,
+      code: error.code,
+      message: error.message,
+    });
+    const [rows] = await db.query(
+      `SELECT p.id, p.project_code, p.project_name, p.house_area,
+              p.start_date, p.current_stage, p.status, p.lifecycle_status
+       FROM renovation_projects p
+       WHERE p.id = ? AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       LIMIT 1`,
+      [projectId]
+    );
+    return rows[0] || null;
+  }
+}
+
+async function safeCompanyProjectDetailQuery(label, sql, params, fallbackRows) {
+  try {
+    return await db.query(sql, params);
+  } catch (error) {
+    if (!isCompanyProjectDetailSchemaDrift(error)) throw error;
+    console.error(`company project detail ${label} query unavailable`, {
+      code: error.code,
+      message: error.message,
+    });
+    return [fallbackRows, []];
+  }
+}
+
 async function findCompanyProjectAssociation(companyId, projectId) {
   const [explicitRows] = await db.query(
     `SELECT ppe.role_type,
@@ -2253,20 +2302,10 @@ async function getCompanyProjectDetail(req, res) {
     return error(res, '无权限查看该公司项目', 403);
   }
 
-  const [[projectRows], association] = await Promise.all([
-    db.query(
-      `SELECT p.id, p.project_code, p.project_name, p.house_area, p.house_layout,
-              p.project_type, p.renovation_method, p.budget_range,
-              p.start_date, p.expected_move_in_date, p.current_stage,
-              p.status, p.lifecycle_status
-       FROM renovation_projects p
-       WHERE p.id = ? AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-       LIMIT 1`,
-      [projectId]
-    ),
+  const [project, association] = await Promise.all([
+    findCompanyProjectBase(projectId),
     findCompanyProjectAssociation(companyId, projectId),
   ]);
-  const project = projectRows[0];
   if (!project || !association) return error(res, '项目不存在或未关联当前装修公司', 404);
 
   const [companyRows] = await db.query(
@@ -2278,7 +2317,7 @@ async function getCompanyProjectDetail(req, res) {
   if (!companyRows[0]) return error(res, '公司不存在', 404);
 
   const [memberRows, taskRows, progressRows, archiveRows, inspectionRows] = await Promise.all([
-    db.query(
+    safeCompanyProjectDetailQuery('members',
       `SELECT user.nickname AS display_name, pm.role
        FROM project_members pm
        JOIN users user ON user.id = pm.user_id
@@ -2286,27 +2325,30 @@ async function getCompanyProjectDetail(req, res) {
        ORDER BY FIELD(pm.role, 'owner', 'owner_member', 'project_manager', 'project_supervisor', 'designer', 'merchant'),
                 pm.joined_at ASC, pm.id ASC
        LIMIT 12`,
-      [projectId]
+      [projectId],
+      []
     ),
-    db.query(
+    safeCompanyProjectDetailQuery('tasks',
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS completed,
               SUM(CASE WHEN status = 3 OR (status <> 2 AND planned_end < CURDATE())
                        THEN 1 ELSE 0 END) AS delayed
        FROM renovation_tasks
        WHERE project_id = ?`,
-      [projectId]
+      [projectId],
+      [{}]
     ),
-    db.query(
+    safeCompanyProjectDetailQuery('progress',
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN status = 'completed' THEN 1 ELSE 0 END) AS completed,
               SUM(CASE WHEN status = 'delayed' OR (status <> 'completed' AND planned_end < CURDATE())
                        THEN 1 ELSE 0 END) AS delayed
        FROM project_progress_items
        WHERE project_id = ?`,
-      [projectId]
+      [projectId],
+      [{}]
     ),
-    db.query(
+    safeCompanyProjectDetailQuery('archive',
       `SELECT
          (SELECT COUNT(*) FROM project_design_documents WHERE project_id = ?) AS design_document_count,
          (SELECT COUNT(*) FROM project_handovers WHERE project_id = ?) AS handover_count,
@@ -2315,15 +2357,17 @@ async function getCompanyProjectDetail(req, res) {
          (SELECT COUNT(*) FROM project_material_items WHERE project_id = ?) AS material_count,
          (SELECT COUNT(*) FROM project_material_items
           WHERE project_id = ? AND confirm_status = 'pending') AS pending_material_count`,
-      [projectId, projectId, projectId, projectId, projectId]
+      [projectId, projectId, projectId, projectId, projectId],
+      [{}]
     ),
-    db.query(
+    safeCompanyProjectDetailQuery('inspection',
       `SELECT COUNT(*) AS total,
               SUM(CASE WHEN status = 'passed' THEN 1 ELSE 0 END) AS passed,
               SUM(CASE WHEN status = 'rework' THEN 1 ELSE 0 END) AS rework
        FROM project_inspections
        WHERE project_id = ?`,
-      [projectId]
+      [projectId],
+      [{}]
     ),
   ]);
   const taskSummary = taskRows[0][0] || {};

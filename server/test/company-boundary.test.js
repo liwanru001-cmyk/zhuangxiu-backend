@@ -806,3 +806,73 @@ test('company project detail only returns the linked project summary without mem
   assert.equal(res.payload.data.members.length, 2);
   assert.doesNotMatch(JSON.stringify(res.payload.data), /phone/i);
 });
+
+test('company project detail falls back when historical summary fields or tables are unavailable', async () => {
+  const schemaDrift = (code) => Object.assign(new Error('historical schema differs'), { code });
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT c\.id[\s\S]*FROM companies c/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9 }]];
+      }
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [88]);
+        if (/expected_move_in_date/.test(sql)) throw schemaDrift('ER_BAD_FIELD_ERROR');
+        return [[{
+          id: 88,
+          project_code: 'MC20260712',
+          project_name: '旧项目',
+          house_area: 80,
+          start_date: '2026-07-01',
+          current_stage: 2,
+          status: 1,
+          lifecycle_status: 'active',
+        }]];
+      }
+      if (/FROM project_participants_ext ppe/.test(sql)) {
+        assert.deepEqual(params, [88, 9, 9]);
+        return [[{ role_type: 'contractor', responsible_name: '项目经理' }]];
+      }
+      if (/SELECT name FROM companies/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{ name: '装修不凡软装' }]];
+      }
+      if (/SELECT user\.nickname AS display_name, pm\.role/.test(sql)) {
+        throw schemaDrift('ER_NO_SUCH_TABLE');
+      }
+      if (/FROM renovation_tasks/.test(sql)) {
+        return [[{ total: 2, completed: 1, delayed: 0 }]];
+      }
+      if (/FROM project_progress_items/.test(sql)) {
+        return [[{ total: 0, completed: 0, delayed: 0 }]];
+      }
+      if (/design_document_count/.test(sql)) {
+        return [[{
+          design_document_count: 0,
+          handover_count: 0,
+          pending_handover_count: 0,
+          material_count: 0,
+          pending_material_count: 0,
+        }]];
+      }
+      if (/FROM project_inspections/.test(sql)) {
+        throw schemaDrift('ER_NO_SUCH_TABLE');
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.getCompanyProjectDetail({
+    user: { id: 42 },
+    params: { id: '9', projectId: '88' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.project.projectName, '旧项目');
+  assert.equal(res.payload.data.project.expectedMoveInDate, null);
+  assert.equal(res.payload.data.members.length, 0);
+  assert.equal(res.payload.data.progress.percent, 50);
+  assert.equal(res.payload.data.inspection.total, 0);
+});
