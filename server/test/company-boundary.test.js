@@ -831,6 +831,7 @@ test('company project detail falls back when historical summary fields or tables
       }
       if (/FROM project_participants_ext ppe/.test(sql)) {
         assert.deepEqual(params, [88, 9, 9]);
+        if (/ppe\.updated_at/.test(sql)) throw schemaDrift('ER_BAD_FIELD_ERROR');
         return [[{ role_type: 'contractor', responsible_name: '项目经理' }]];
       }
       if (/SELECT name FROM companies/.test(sql)) {

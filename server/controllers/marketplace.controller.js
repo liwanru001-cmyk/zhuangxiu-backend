@@ -2242,22 +2242,47 @@ async function safeCompanyProjectDetailQuery(label, sql, params, fallbackRows) {
 }
 
 async function findCompanyProjectAssociation(companyId, projectId) {
-  const [explicitRows] = await db.query(
-    `SELECT ppe.role_type,
-            COALESCE(user.nickname, professional.display_name) AS responsible_name
-     FROM project_participants_ext ppe
-     LEFT JOIN professionals professional ON professional.id = ppe.professional_id
-     LEFT JOIN users user ON user.id = COALESCE(ppe.user_id, professional.user_id)
-     WHERE ppe.project_id = ?
-       AND ppe.status <> 'removed'
-       AND (
-         ppe.company_id = ?
-         OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
-       )
-     ORDER BY ppe.updated_at DESC, ppe.id DESC
-     LIMIT 1`,
-    [projectId, companyId, companyId]
-  );
+  let explicitRows;
+  try {
+    [explicitRows] = await db.query(
+      `SELECT ppe.role_type,
+              COALESCE(user.nickname, professional.display_name) AS responsible_name
+       FROM project_participants_ext ppe
+       LEFT JOIN professionals professional ON professional.id = ppe.professional_id
+       LEFT JOIN users user ON user.id = COALESCE(ppe.user_id, professional.user_id)
+       WHERE ppe.project_id = ?
+         AND ppe.status <> 'removed'
+         AND (
+           ppe.company_id = ?
+           OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+         )
+       ORDER BY ppe.updated_at DESC, ppe.id DESC
+       LIMIT 1`,
+      [projectId, companyId, companyId]
+    );
+  } catch (error) {
+    if (!isCompanyProjectDetailSchemaDrift(error)) throw error;
+    console.error('company project detail association query fell back', {
+      companyId,
+      projectId,
+      code: error.code,
+      message: error.message,
+    });
+    [explicitRows] = await db.query(
+      `SELECT ppe.role_type, user.nickname AS responsible_name
+       FROM project_participants_ext ppe
+       LEFT JOIN users user ON user.id = ppe.user_id
+       WHERE ppe.project_id = ?
+         AND ppe.status <> 'removed'
+         AND (
+           ppe.company_id = ?
+           OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+         )
+       ORDER BY ppe.id DESC
+       LIMIT 1`,
+      [projectId, companyId, companyId]
+    );
+  }
   if (explicitRows[0]) {
     return {
       roleType: explicitRows[0].role_type || 'contractor',
