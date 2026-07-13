@@ -442,7 +442,7 @@ jobs:
             node scripts/run-migration.js migrations/20260708_company_display_billing.sql
             node scripts/run-migration.js migrations/20260708_identity_onboarding.sql
             node scripts/run-migration.js migrations/20260713_public_profile_featured_projects.sql
-            node scripts/run-migration.js migrations/20260713_tianditu_location_fields.sql
+            node scripts/run-migration.js migrations/20260713_revert_tianditu_location_fields.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true

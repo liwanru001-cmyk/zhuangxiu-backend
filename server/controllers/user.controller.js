@@ -454,7 +454,6 @@ async function updatePublicProfileDisplaySettings(req, res) {
 async function getMerchantProfileData(userId) {
   const [rows] = await db.query(
     `SELECT user_id, shop_name, logo_url, cover_url, service_area, address,
-            longitude, latitude, map_provider,
             contact_phone, business_hours, category_group, categories, service_types, case_count,
             brand_intro, after_sales_promise, license_url, authorization_url,
             consultation_enabled, updated_at
@@ -468,13 +467,6 @@ async function getMerchantProfileData(userId) {
   profile.service_types = parseJsonArray(profile.service_types);
   profile.consultation_enabled = Boolean(profile.consultation_enabled);
   return profile;
-}
-
-function parseNullableCoordinate(value, min, max) {
-  if (value === undefined || value === null || value === '') return null;
-  const number = Number(value);
-  if (!Number.isFinite(number) || number < min || number > max) return null;
-  return number;
 }
 
 async function getMerchantProfile(req, res) {
@@ -595,8 +587,7 @@ async function listPublicMerchants(req, res) {
   const [rows] = await db.query(
     `SELECT u.id AS user_id, u.nickname, u.avatar, u.city,
             mp.shop_name, mp.logo_url, mp.cover_url, mp.service_area,
-            mp.address, mp.longitude, mp.latitude, mp.map_provider,
-            mp.contact_phone, mp.business_hours, mp.category_group,
+            mp.address, mp.contact_phone, mp.business_hours, mp.category_group,
             mp.categories, mp.service_types, mp.case_count, mp.brand_intro,
             mp.after_sales_promise, mp.consultation_enabled, mp.updated_at,
             (
@@ -649,13 +640,6 @@ async function listPublicMerchants(req, res) {
       cover_url: normalizeUploadUrl(row.cover_url),
       service_area: row.service_area || '',
       address: row.address || '',
-      longitude: row.longitude === null || row.longitude === undefined
-        ? null
-        : Number(row.longitude),
-      latitude: row.latitude === null || row.latitude === undefined
-        ? null
-        : Number(row.latitude),
-      map_provider: row.map_provider || '',
       contact_phone: row.contact_phone || '',
       business_hours: row.business_hours || '',
       category_group: row.category_group || inferMerchantCategoryGroup(row.categories),
@@ -685,9 +669,6 @@ async function upsertMerchantProfile(req, res) {
   const logoUrl = String(req.body.logo_url || '').trim().slice(0, 500);
   const coverUrl = String(req.body.cover_url || '').trim().slice(0, 500);
   const address = String(req.body.address || '').trim().slice(0, 255);
-  const longitude = parseNullableCoordinate(req.body.longitude, -180, 180);
-  const latitude = parseNullableCoordinate(req.body.latitude, -90, 90);
-  const mapProvider = String(req.body.map_provider || '').trim().slice(0, 32);
   const contactPhone = String(req.body.contact_phone || '').trim().slice(0, 40);
   const businessHours = String(req.body.business_hours || '').trim().slice(0, 120);
   const categoryGroup = ['建材', '家居'].includes(String(req.body.category_group || '').trim())
@@ -719,20 +700,16 @@ async function upsertMerchantProfile(req, res) {
   await db.query(
     `INSERT INTO merchant_profiles
      (user_id, shop_name, logo_url, cover_url, service_area, address,
-      longitude, latitude, map_provider,
       contact_phone, business_hours, category_group, categories, service_types, case_count,
       brand_intro, after_sales_promise, license_url, authorization_url,
       consultation_enabled)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
      ON DUPLICATE KEY UPDATE
        shop_name = VALUES(shop_name),
        logo_url = VALUES(logo_url),
        cover_url = VALUES(cover_url),
        service_area = VALUES(service_area),
        address = VALUES(address),
-       longitude = VALUES(longitude),
-       latitude = VALUES(latitude),
-       map_provider = VALUES(map_provider),
        contact_phone = VALUES(contact_phone),
        business_hours = VALUES(business_hours),
        category_group = VALUES(category_group),
@@ -751,9 +728,6 @@ async function upsertMerchantProfile(req, res) {
       coverUrl || null,
       serviceArea || null,
       address || null,
-      longitude,
-      latitude,
-      mapProvider || null,
       contactPhone || null,
       businessHours || null,
       categoryGroup || null,
@@ -809,9 +783,6 @@ function defaultMerchantProfile(userId) {
     cover_url: '',
     service_area: '',
     address: '',
-    longitude: null,
-    latitude: null,
-    map_provider: '',
     contact_phone: '',
     business_hours: '',
     category_group: '',

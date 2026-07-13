@@ -13,7 +13,6 @@ const marketplaceRoutes = require('./routes/marketplace.routes');
 const consultationRoutes = require('./routes/consultation.routes');
 const projectParticipantsRoutes = require('./routes/project-participants.routes');
 const entityRelationsRoutes = require('./routes/entity-relations.routes');
-const locationRoutes = require('./routes/location.routes');
 const billingRoutes = require('./routes/billing.routes');
 const billingService = require('./services/billing.service');
 
@@ -68,7 +67,6 @@ app.use('/api', marketplaceRoutes);
 app.use('/api/consultations', consultationRoutes);
 app.use('/api/projects', projectParticipantsRoutes);
 app.use('/api/entity-relations', entityRelationsRoutes);
-app.use('/api/location', locationRoutes);
 app.use('/api/billing', billingRoutes);
 
 // ===================== Admin =====================
