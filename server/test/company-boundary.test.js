@@ -96,15 +96,15 @@ test('public company search only queries verified companies and never merchant p
   assert.equal(queries.length, 1);
 });
 
-test('public company detail requires an active verified company', async () => {
+test('public company detail requires an active verified company without paid display entitlement', async () => {
   const queries = [];
   const dbMock = {
     async query(sql, params) {
       queries.push({ sql, params });
       assert.match(sql, /c\.status = 'active'/);
       assert.match(sql, /c\.verification_status = 'verified'/);
-      assert.match(sql, /be\.subject_type = 'company'/);
-      assert.match(sql, /be\.subject_id = c\.id/);
+      assert.doesNotMatch(sql, /be\.subject_type = 'company'/);
+      assert.doesNotMatch(sql, /be\.subject_id = c\.id/);
       assert.doesNotMatch(sql, /c\.paid_display_status = 'active'/);
       assert.doesNotMatch(sql, /paid_display_starts_at IS NULL/);
       assert.doesNotMatch(sql, /paid_display_ends_at IS NULL/);

@@ -1382,7 +1382,6 @@ async function getPublicCompany(req, res) {
      WHERE c.id = ?
        AND c.status = 'active'
        AND c.verification_status = 'verified'
-       AND ${activeCompanyVisibleExistsSql('c.id')}
      GROUP BY c.id`,
     [id]
   );
