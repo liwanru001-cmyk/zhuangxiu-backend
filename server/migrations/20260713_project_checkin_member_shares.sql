@@ -1,3 +1,13 @@
+CREATE TABLE IF NOT EXISTS project_checkin_shares (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  checkin_id BIGINT UNSIGNED NOT NULL,
+  shared_with_user_id BIGINT UNSIGNED NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_checkin_user (checkin_id, shared_with_user_id),
+  KEY idx_shared_user (shared_with_user_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 SET @sql = (
   SELECT IF(
     COUNT(*) = 0,
