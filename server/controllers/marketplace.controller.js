@@ -463,6 +463,39 @@ function mapCompanyCaseShareRow(row) {
   };
 }
 
+async function listCompanyServiceProjectIds(companyId) {
+  const [extRows] = await db.query(
+    `SELECT DISTINCT p.id AS project_id
+     FROM project_participants_ext ppe
+     JOIN renovation_projects p
+       ON p.id = ppe.project_id
+      AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+     WHERE ppe.status <> 'removed'
+       AND (
+         ppe.company_id = ?
+         OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
+       )`,
+    [companyId, companyId]
+  );
+
+  const [inferredRows] = await db.query(
+    `SELECT DISTINCT p.id AS project_id
+     FROM company_members cm
+     JOIN project_members pm
+       ON pm.user_id = cm.user_id AND pm.status = 1
+     JOIN renovation_projects p
+       ON p.id = pm.project_id
+      AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+     WHERE cm.company_id = ? AND cm.status = 'active'`,
+    [companyId]
+  );
+
+  return [...extRows, ...inferredRows]
+    .map((row) => Number(row.project_id || 0))
+    .filter(Boolean)
+    .filter((projectId, index, list) => list.indexOf(projectId) === index);
+}
+
 function mapCompanyReviewRow(row) {
   return {
     id: row.id,
@@ -1405,62 +1438,25 @@ async function listPublicCompanyCaseShares(req, res) {
   );
   if (!companyRows[0]) return error(res, '公司不存在', 404);
 
-  const companyProjectsCte = `WITH company_projects AS (
-    SELECT DISTINCT ppe.project_id
-    FROM project_participants_ext ppe
-    JOIN renovation_projects p
-      ON p.id = ppe.project_id
-     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-    WHERE ppe.status <> 'removed'
-      AND (
-        ppe.company_id = ?
-        OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
-      )
-
-    UNION
-
-    SELECT DISTINCT pm.project_id
-    FROM company_members cm
-    JOIN project_members pm
-      ON pm.user_id = cm.user_id AND pm.status = 1
-    JOIN renovation_projects p
-      ON p.id = pm.project_id
-     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-    WHERE cm.company_id = ? AND cm.status = 'active'
-
-    UNION
-
-    SELECT DISTINCT pm.project_id
-    FROM companies c
-    JOIN project_members pm
-      ON pm.status = 1
-     AND pm.role <> 'merchant'
-     AND pm.user_id IN (c.owner_user_id, c.legacy_merchant_user_id)
-    JOIN renovation_projects p
-      ON p.id = pm.project_id
-     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
-    WHERE c.id = ?
-      AND c.status <> 'deleted'
-  )`;
-
-  const [[participatedRow]] = await db.query(
-    `${companyProjectsCte}
-     SELECT COUNT(*) AS total FROM company_projects`,
-    [companyId, companyId, companyId, companyId]
-  );
+  const serviceProjectIds = await listCompanyServiceProjectIds(companyId);
+  if (!serviceProjectIds.length) {
+    return success(res, {
+      participated_project_count: 0,
+      authorized_project_count: 0,
+      items: [],
+    });
+  }
 
   const [[authorizedRow]] = await db.query(
-    `${companyProjectsCte}
-     SELECT COUNT(DISTINCT share.project_id) AS total
+    `SELECT COUNT(DISTINCT share.project_id) AS total
      FROM project_case_shares share
-     JOIN company_projects cp ON cp.project_id = share.project_id
-     WHERE share.status = 1`,
-    [companyId, companyId, companyId, companyId]
+     WHERE share.status = 1
+       AND share.project_id IN (?)`,
+    [serviceProjectIds]
   );
 
   const [rows] = await db.query(
-    `${companyProjectsCte}
-     SELECT share.id, share.project_id, p.project_name,
+    `SELECT share.id, share.project_id, p.project_name,
             share.designer_id, share.owner_id, share.title, share.style,
             share.summary, share.highlights, share.image_urls,
             share.visible_fields, share.reviewed_at, share.created_at,
@@ -1468,19 +1464,19 @@ async function listPublicCompanyCaseShares(req, res) {
             designer.nickname AS designer_name,
             owner.nickname AS owner_name
      FROM project_case_shares share
-     JOIN company_projects cp ON cp.project_id = share.project_id
      JOIN renovation_projects p ON p.id = share.project_id
      JOIN users designer ON designer.id = share.designer_id
      JOIN users owner ON owner.id = share.owner_id
      WHERE share.status = 1
+       AND share.project_id IN (?)
      ORDER BY COALESCE(share.reviewed_at, share.updated_at) DESC,
               share.id DESC
      LIMIT 50`,
-    [companyId, companyId, companyId, companyId]
+    [serviceProjectIds]
   );
 
   return success(res, {
-    participated_project_count: Number(participatedRow?.total || 0),
+    participated_project_count: serviceProjectIds.length,
     authorized_project_count: Number(authorizedRow?.total || 0),
     items: rows.map(mapCompanyCaseShareRow),
   });
