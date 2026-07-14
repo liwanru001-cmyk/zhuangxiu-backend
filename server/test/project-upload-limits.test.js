@@ -365,7 +365,7 @@ test('check-in share creates member notification deep link', async () => {
     release() {},
     async query(sql, params) {
       if (/INSERT IGNORE INTO project_checkin_shares/.test(sql)) {
-        assert.deepEqual(params, [55, 8]);
+        assert.deepEqual(params, [55, 8, 7, '请帮忙看看水电走线']);
         return [{ affectedRows: 1 }];
       }
       if (/UPDATE project_checkins/.test(sql)) {
@@ -423,9 +423,67 @@ test('check-in share creates member notification deep link', async () => {
 
   assert.equal(res.statusCode, 200);
   assert.equal(notificationPayload.projectEventType, 'SITE_CHECK_IN_SHARED');
-  assert.equal(notificationPayload.route, 'site_check_in');
+  assert.equal(notificationPayload.route, 'received_site_check_in');
   assert.equal(notificationPayload.content, '请帮忙看看水电走线');
   assert.equal(notificationPayload.entityType, 'site_check_in');
   assert.equal(notificationPayload.entityId, 55);
   assert.deepEqual(notificationPayload.deepLink, { projectId: 9, checkInId: 55 });
+});
+
+test('received check-in share returns only the recipient view data', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [8, 9, 8]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'designer' }]];
+      }
+      if (/FROM project_checkin_shares share/.test(sql)) {
+        assert.deepEqual(params, [55, 8, 9]);
+        return [[{
+          share_id: 18,
+          share_note: '请确认水电定位。',
+          checkin_date: '2026-07-13',
+          project_name: '云栖苑改造',
+          current_stage: 3,
+          shared_by_name: '项目经理小周',
+          shared_by_avatar: '',
+        }]];
+      }
+      if (/FROM project_checkin_media/.test(sql)) {
+        assert.deepEqual(params, [55]);
+        return [[{
+          id: 3,
+          media_type: 'image',
+          media_url: '/uploads/check-ins/water.jpg',
+        }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.getReceivedProjectCheckInShare({
+    user: { id: 8 },
+    params: { id: '9', checkInId: '55' },
+    originalUrl: '/api/renovation/projects/9/check-ins/55/received-share',
+    protocol: 'https',
+    get: () => 'api.example.com',
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.deepEqual(res.payload.data, {
+    share_id: 18,
+    project_name: '云栖苑改造',
+    current_stage: 3,
+    checkin_date: '2026-07-13',
+    shared_by_name: '项目经理小周',
+    shared_by_avatar: '',
+    share_note: '请确认水电定位。',
+    images: [{
+      id: 3,
+      media_type: 'image',
+      media_url: 'https://api.example.com/api/uploads/check-ins/water.jpg',
+    }],
+  });
 });

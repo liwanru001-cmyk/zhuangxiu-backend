@@ -69,9 +69,13 @@
   .badge-merchant { background: #fff3e0; color: #e65100; }
   .badge-project_manager { background: #f3e8ff; color: #6b21a8; }
   .badge-project_supervisor { background: #dbeafe; color: #1d4ed8; }
+  .badge-wechat { background: #ecfdf3; color: #067647; }
+  .badge-password { background: #eef4ff; color: #3448d5; }
   .status-pending { background: #fff7e6; color: #b54708; }
   .status-approved { background: #ecfdf3; color: #067647; }
   .status-rejected { background: #fff1f3; color: #b42318; }
+  .status-processing { background: #eef4ff; color: #3538cd; }
+  .status-resolved { background: #ecfdf3; color: #067647; }
   .status-hidden { background: #f2f4f7; color: #344054; }
   .status-draft { background: #f2f4f7; color: #344054; }
   .status-active { background: #ecfdf3; color: #067647; }

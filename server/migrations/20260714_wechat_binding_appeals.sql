@@ -1,0 +1,22 @@
+CREATE TABLE IF NOT EXISTS wechat_binding_appeals (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  user_id BIGINT UNSIGNED NOT NULL,
+  current_phone CHAR(11) DEFAULT NULL,
+  wechat_phone CHAR(11) DEFAULT NULL,
+  appid VARCHAR(64) NOT NULL,
+  openid VARCHAR(128) NOT NULL,
+  unionid VARCHAR(128) DEFAULT NULL,
+  conflict_type VARCHAR(64) NOT NULL,
+  conflict_message VARCHAR(255) NOT NULL,
+  conflict_user_id BIGINT UNSIGNED DEFAULT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'pending',
+  admin_note VARCHAR(500) DEFAULT NULL,
+  handled_by VARCHAR(80) DEFAULT NULL,
+  handled_at DATETIME DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_wechat_binding_appeal_status (status, created_at),
+  KEY idx_wechat_binding_appeal_user (user_id, created_at),
+  KEY idx_wechat_binding_appeal_openid (appid, openid)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

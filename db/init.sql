@@ -36,6 +36,49 @@ CREATE TABLE IF NOT EXISTS user_roles (
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 微信小程序身份绑定；小程序 openid/unionid 绑定到统一后台用户。
+CREATE TABLE IF NOT EXISTS wechat_identities (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    platform VARCHAR(32) NOT NULL DEFAULT 'miniprogram',
+    appid VARCHAR(64) NOT NULL,
+    openid VARCHAR(128) NOT NULL,
+    unionid VARCHAR(128) DEFAULT NULL,
+    phone CHAR(11) DEFAULT NULL,
+    last_login_at DATETIME DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_app_openid (appid, openid),
+    INDEX idx_wechat_user (user_id),
+    INDEX idx_wechat_unionid (unionid),
+    INDEX idx_wechat_phone (phone),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 微信绑定异常处理记录；用户同步微信账号发生冲突时进入后台处理。
+CREATE TABLE IF NOT EXISTS wechat_binding_appeals (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    user_id BIGINT UNSIGNED NOT NULL,
+    current_phone CHAR(11) DEFAULT NULL,
+    wechat_phone CHAR(11) DEFAULT NULL,
+    appid VARCHAR(64) NOT NULL,
+    openid VARCHAR(128) NOT NULL,
+    unionid VARCHAR(128) DEFAULT NULL,
+    conflict_type VARCHAR(64) NOT NULL,
+    conflict_message VARCHAR(255) NOT NULL,
+    conflict_user_id BIGINT UNSIGNED DEFAULT NULL,
+    status VARCHAR(32) NOT NULL DEFAULT 'pending',
+    admin_note VARCHAR(500) DEFAULT NULL,
+    handled_by VARCHAR(80) DEFAULT NULL,
+    handled_at DATETIME DEFAULT NULL,
+    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_wechat_binding_appeal_status (status, created_at),
+    INDEX idx_wechat_binding_appeal_user (user_id, created_at),
+    INDEX idx_wechat_binding_appeal_openid (appid, openid),
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 笔记表
 CREATE TABLE IF NOT EXISTS notes (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

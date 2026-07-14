@@ -488,8 +488,18 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
 
   const [rows] = await db.query(
     `SELECT id, phone, nickname, avatar, bio, city, role, admin_status,
+            password_hash IS NOT NULL AS has_password,
             (SELECT JSON_ARRAYAGG(ur.role) FROM user_roles ur
              WHERE ur.user_id = users.id) AS roles,
+            (SELECT COUNT(*) FROM wechat_identities wi
+             WHERE wi.user_id = users.id AND wi.platform = 'miniprogram') AS wechat_miniprogram_count,
+            (SELECT MAX(wi.last_login_at) FROM wechat_identities wi
+             WHERE wi.user_id = users.id AND wi.platform = 'miniprogram') AS wechat_miniprogram_last_login_at,
+            (SELECT COUNT(*) FROM wechat_identities wi
+             WHERE wi.user_id = users.id
+               AND wi.platform = 'miniprogram'
+               AND wi.unionid IS NOT NULL
+               AND wi.unionid <> '') AS wechat_unionid_count,
             (SELECT ur.verified_status FROM user_roles ur
              WHERE ur.user_id = users.id AND ur.role = 'merchant'
              LIMIT 1) AS verified_merchant_status,
@@ -503,6 +513,79 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
   );
   const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM users WHERE ${where}`, params);
   return success(res, { users: rows, total: countRows[0].total, page, pageSize });
+});
+
+// admin 微信异常绑定列表
+app.get('/api/admin/wechat-binding-appeals', adminAuth, async (req, res) => {
+  const allowedStatuses = ['pending', 'processing', 'resolved', 'rejected'];
+  const params = [];
+  let where = '1=1';
+  const status = String(req.query.status || '').trim();
+  if (status) {
+    if (!allowedStatuses.includes(status)) return error(res, '处理状态不正确');
+    where += ' AND a.status = ?';
+    params.push(status);
+  }
+
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+  const [rows] = await db.query(
+    `SELECT a.*,
+            u.phone AS user_phone, u.nickname AS user_nickname,
+            cu.phone AS conflict_user_phone, cu.nickname AS conflict_user_nickname
+     FROM wechat_binding_appeals a
+     LEFT JOIN users u ON u.id = a.user_id
+     LEFT JOIN users cu ON cu.id = a.conflict_user_id
+     WHERE ${where}
+     ORDER BY
+       CASE a.status
+         WHEN 'pending' THEN 1
+         WHEN 'processing' THEN 2
+         WHEN 'resolved' THEN 3
+         WHEN 'rejected' THEN 4
+         ELSE 5
+       END,
+       a.created_at DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total FROM wechat_binding_appeals a WHERE ${where}`,
+    params
+  );
+  return success(res, { appeals: rows, total: countRows[0].total, page, pageSize });
+});
+
+// admin 处理微信异常绑定
+app.put('/api/admin/wechat-binding-appeals/:id', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || '').trim();
+  const adminNote = req.body?.admin_note === undefined
+    ? null
+    : String(req.body.admin_note || '').trim().slice(0, 500);
+  if (!['pending', 'processing', 'resolved', 'rejected'].includes(status)) {
+    return error(res, '处理状态不正确');
+  }
+
+  const handled = ['resolved', 'rejected'].includes(status);
+  const [result] = await db.query(
+    `UPDATE wechat_binding_appeals
+     SET status = ?,
+         admin_note = COALESCE(?, admin_note),
+         handled_by = ?,
+         handled_at = ?
+     WHERE id = ?`,
+    [
+      status,
+      adminNote,
+      handled ? 'admin' : null,
+      handled ? new Date() : null,
+      id,
+    ]
+  );
+  if (result.affectedRows === 0) return error(res, '异常绑定记录不存在', 404);
+  return success(res, { id, status }, '处理状态已更新');
 });
 
 // admin 概览
@@ -520,10 +603,16 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
   const [[projectStats]] = await db.query(
     `SELECT COUNT(*) AS total_projects FROM renovation_projects`
   );
+  const [[wechatStats]] = await db.query(
+    `SELECT COUNT(DISTINCT user_id) AS wechat_miniprogram_users
+     FROM wechat_identities
+     WHERE platform = 'miniprogram'`
+  );
   return success(res, {
     total_users: Number(userStats.total_users) || 0,
     pending_users: Number(userStats.pending_users) || 0,
     today_users: Number(userStats.today_users) || 0,
+    wechat_miniprogram_users: Number(wechatStats.wechat_miniprogram_users) || 0,
     total_notes: Number(noteStats.total_notes) || 0,
     total_projects: Number(projectStats.total_projects) || 0,
   });

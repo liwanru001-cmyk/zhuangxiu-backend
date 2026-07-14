@@ -1,30 +1,39 @@
 # 部署准备检查清单
 
-Status: Draft
+Status: Ready for backend/admin/miniprogram pre-deploy
 
-更新时间：2026-07-06
+更新时间：2026-07-14
 
-## 本次已完成
+## 本次部署范围
 
-后端验证：
+本次不部署原生 App，不构建 Flutter App，也不更新 App 商店包。
 
-- `node -c server/app.js` 通过
-- `node --check server/public/admin/admin.js` 通过
-- `node --check server/public/admin/modules/billing.js` 通过
-- `node --test server/test/*.test.js` 通过，40 个测试全部通过
+需要准备和发布的范围：
 
-App 验证：
+- 后端接口：`server/`
+- Web 管理后台静态页：`server/public/admin/`
+- 小程序代码：通过微信开发者工具上传，服务器不打包小程序源码
 
-- `dart analyze lib/screens/marketplace_screen.dart` 通过
-- `flutter test` 通过，90 个测试全部通过
-- `flutter build web --release` 通过
-- Web 产物目录：`zhuangxiu_app/build/web`
-- Web 产物大小：约 48M
-- Web 部署包：`deploy_artifacts/zhuangxiu_app_web_20260706_204357.tar.gz`
+## 本次已完成检查
+
+后端：
+
+- 后端 JS/CJS 语法检查通过
+- `npm test` 通过，65 个测试全部通过
+- 后端部署包 dry-run 已生成：`deploy_artifacts/yinnkhome-backend-predeploy.tar.gz`
+- dry-run 包未包含 `server/public`、`uploads`、`logs`、`storage`、原生 App 目录
+
+小程序：
+
+- 小程序 JS 语法检查通过
+- 小程序 JSON 配置解析通过，45 个 JSON 文件正常
+- 当前接口域名：`https://yinnkhome.com/api`
+- 当前上传/资源域名：`https://yinnkhome.com`
+- 当前小程序目录约 1.5MB，暂未到必须分包的体量
 
 ## 后端部署前确认
 
-环境变量：
+生产环境变量：
 
 - `PORT`
 - `NODE_ENV=production`
@@ -38,97 +47,86 @@ App 验证：
 - `MAX_FILE_SIZE`
 - `RATE_LIMIT_WINDOW_MS`
 - `RATE_LIMIT_MAX`
-- `SMS_RATE_LIMIT_MAX`
-- `FEATURE_INSPECTION_KB`
+- `REDIS_URL`
+- `SMS_RATE_LIMIT_ALLOW_MEMORY_FALLBACK=false`
+- `ALI_ACCESS_KEY_ID`
+- `ALI_ACCESS_KEY_SECRET`
+- `ALI_SMS_SIGN_NAME`
+- `ALI_SMS_TEMPLATE_CODE`
+- `WECHAT_MINIPROGRAM_APPID`
+- `WECHAT_MINIPROGRAM_SECRET`
 
-文件与目录：
+部署前必须确认：
 
-- `server/.env` 已按生产环境配置
-- `server/uploads` 目录存在且可写
-- `server/logs` 目录存在且可写
-- PM2 配置使用 `server/ecosystem.config.cjs`
+- 生产 `server/.env` 已补齐微信小程序 `appid/secret`
+- 微信小程序后台 request 合法域名包含 `https://yinnkhome.com`
+- Nginx 已正确反代 `/api` 到后端
+- 上传目录 `uploads` 可写
+- 日志目录 `logs` 可写
+- Redis 可用，生产环境不要启用短信内存降级
 
-启动命令：
+## 数据库迁移
 
-```bash
-cd server
-npm install --omit=dev
-pm2 start ecosystem.config.cjs --env production
-```
+部署 workflow 已补入本次新增迁移：
 
-健康检查：
+- `migrations/20260713_project_checkin_member_shares.sql`
+- `migrations/20260714_wechat_miniprogram_identities.sql`
+- `migrations/20260714_wechat_binding_appeals.sql`
 
-- `GET /health`
-- `GET /api/health`
+上线前建议先备份数据库。迁移失败时优先回滚应用代码，不要直接回滚数据库。
 
-## App Web 部署前确认
-
-构建命令：
-
-```bash
-cd zhuangxiu_app
-flutter build web --release
-```
-
-部署目录：
-
-- 将 `zhuangxiu_app/build/web` 发布到 Web 静态站点目录
-
-需要确认：
-
-- Web 域名是否正确反代 `/api` 到后端
-- 静态资源是否开启 gzip/br 压缩
-- `index.html` 是否支持前端路由回退
-- 上传文件域名与 `mediaUrl` 解析是否一致
-
-## Billing / 商户管理上线前确认
-
-数据库：
-
-- 已执行 `db/migrate_billing_merchant_mvp.sql`
-- `billing_*` 表存在
-- 商户展示套餐初始数据存在
-
-后台：
-
-- `/admin/billing` 可访问
-- 商户列表可查
-- 订单记录可查
-- 异常处理可查
-- 手动开通、暂停、恢复、关闭入口可用
-
-支付：
-
-- 当前真实微信 / 支付宝 SDK 未接入
-- 线上只能使用已有的手动支付 / 手动开通能力
-- 未接真实支付前，不要开放真实在线支付入口
-
-## 上线后烟测
-
-1. 打开 App 首页。
-2. 进入「找装修」。
-3. 点击「区域」筛选，确认下拉显示全城、附近、热门区域。
-4. 点击「类型」筛选，确认显示装修业务分类。
-5. 进入「找商家」。
-6. 点击「区域」筛选，确认交互一致。
-7. 点击「类型」筛选，确认显示建材、家居及子品类。
-8. 打开后台 `/admin/billing`。
-9. 查看商户管理、订单记录、异常处理。
-10. 点击右上角「操作说明」，确认弹窗可打开和关闭。
-
-## 回滚准备
-
-Web：
-
-- 保留上一版 Web 包
-- 回滚时恢复上一版静态目录
+## GitHub Actions 部署路径
 
 后端：
 
-- 保留当前运行版本
-- 如部署后接口异常，先回滚应用代码，不直接回滚数据库
+- workflow：`.github/workflows/deploy-backend.yml`
+- 触发范围：`server/**`，但不上传 `server/public/**`
+- 生产目录默认：`/opt/yinnkhome-backend`
+
+管理后台：
+
+- workflow：`.github/workflows/deploy-admin-static.yml`
+- 触发范围：`server/public/admin/**`
+- 后端和管理后台同时变更时，后台静态页会等待同 commit 后端部署成功后再发布
+
+小程序：
+
+- 使用微信开发者工具打开 `miniprogram/`
+- 上传前先运行开发者工具的编译和代码质量检查
+- 体验版先验证登录、同步微信、异常绑定提交、后台异常绑定处理、站内咨询、公司名片分享
+
+## 上线后烟测
+
+后端：
+
+1. `GET https://yinnkhome.com/health`
+2. `GET https://yinnkhome.com/api/health`
+3. 管理后台登录 `/admin/`
+4. 用户管理 tab 可打开
+5. 用户管理里的「异常绑定」tab 可打开并筛选
+
+小程序：
+
+1. 手机号登录正常
+2. 微信手机号登录正常
+3. 老账号点击「同步微信」正常
+4. 微信绑定冲突时，小程序提示已提交管理员处理
+5. 后台「异常绑定」能看到记录并可标记处理中/已解决/已驳回
+6. 商家中心、我的装修公司、公司名片、站内咨询入口可打开
+7. 工地打卡分享页面可打开
+
+## 回滚准备
+
+后端：
+
+- workflow 会保留上一个部署目录备份
+- 健康检查失败时优先回滚应用代码
+
+管理后台：
+
+- 静态页可用上一版 `server/public/admin` 覆盖恢复
 
 数据库：
 
-- 本次准备工作不执行 migration
-- 真正执行 migration 前必须先备份数据库
+- 新增表为兼容性扩展，不影响旧 App 读取
+- 如果需要关闭微信绑定能力，先隐藏小程序入口或回滚后端代码，不删除表

@@ -21,6 +21,9 @@ let token = sessionStorage.getItem('admin_token') || '';
 let activeMenu = window.location.pathname.includes('/admin/billing') ? 'billing' : 'overview';
 let page = 1;
 let total = 0;
+let userTab = 'accounts';
+let wechatAppealPage = 1;
+let wechatAppealTotal = 0;
 let editingId = null;
 let inspectionTemplates = [];
 let inspectionItems = [];
@@ -145,7 +148,10 @@ function switchMenu(key) {
 
 function refreshCurrent() {
   if (activeMenu === 'overview') renderOverview();
-  else if (activeMenu === 'users') loadUsers(page);
+  else if (activeMenu === 'users') {
+    if (userTab === 'wechatAppeals') loadWechatBindingAppeals(wechatAppealPage);
+    else loadUsers(page);
+  }
   else if (activeMenu === 'companies') {
     if (companyTab === 'merchants') loadMerchants(page);
     else loadCompanies(page);
@@ -198,7 +204,7 @@ async function adminFetch(path, options = {}) {
 async function renderOverview() {
   document.getElementById('page-content').innerHTML = `
     <div class="stats" id="stats">
-      ${statSkeleton('用户总数')}${statSkeleton('待审核账号')}${statSkeleton('今日新增')}${statSkeleton('发布内容')}${statSkeleton('装修项目')}
+      ${statSkeleton('用户总数')}${statSkeleton('待审核账号')}${statSkeleton('今日新增')}${statSkeleton('小程序微信用户')}${statSkeleton('发布内容')}
     </div>
     <div class="placeholder">
       <h3>管理后台第一版</h3>
@@ -213,8 +219,8 @@ async function renderOverview() {
       statCard('用户总数', s.total_users),
       statCard('待审核账号', s.pending_users),
       statCard('今日新增', s.today_users),
+      statCard('小程序微信用户', s.wechat_miniprogram_users),
       statCard('发布内容', s.total_notes),
-      statCard('装修项目', s.total_projects),
     ].join('');
   } catch (e) {
     toast(e.message || '概览加载失败');
@@ -223,6 +229,35 @@ async function renderOverview() {
 
 function renderUsers() {
   document.getElementById('page-content').innerHTML = `
+    ${userTabsHtml()}
+    <div id="user-tab-content"></div>
+  `;
+  renderUserTabContent();
+}
+
+function userTabsHtml() {
+  return `
+    <div class="tabs">
+      <button class="${userTab === 'accounts' ? 'active' : ''}" onclick="switchUserTab('accounts')">账号列表</button>
+      <button class="${userTab === 'wechatAppeals' ? 'active' : ''}" onclick="switchUserTab('wechatAppeals')">异常绑定</button>
+    </div>
+  `;
+}
+
+function switchUserTab(tab) {
+  userTab = tab;
+  page = 1;
+  wechatAppealPage = 1;
+  renderUsers();
+}
+
+function renderUserTabContent() {
+  if (userTab === 'wechatAppeals') renderWechatBindingAppealsTab();
+  else renderUserAccountsTab();
+}
+
+function renderUserAccountsTab() {
+  document.getElementById('user-tab-content').innerHTML = `
     <div class="toolbar">
       <input id="search" placeholder="搜索昵称/手机号" onkeydown="if(event.key==='Enter')loadUsers(1)">
       <select id="filterRole" onchange="loadUsers(1)">
@@ -253,7 +288,7 @@ function renderUsers() {
         <table>
           <thead>
             <tr>
-              <th>ID</th><th>手机号</th><th>昵称</th><th>身份</th><th>审核状态</th>
+              <th>ID</th><th>手机号</th><th>昵称</th><th>身份</th><th>登录方式</th><th>审核状态</th>
               <th>城市</th><th>关注</th><th>获赞</th><th>注册时间</th><th>操作</th>
             </tr>
           </thead>
@@ -270,6 +305,46 @@ function renderUsers() {
   loadUsers(1);
 }
 
+function renderWechatBindingAppealsTab() {
+  document.getElementById('user-tab-content').innerHTML = `
+    <div class="toolbar">
+      <select id="wechatAppealStatus" onchange="loadWechatBindingAppeals(1)">
+        <option value="">全部状态</option>
+        <option value="pending">待处理</option>
+        <option value="processing">处理中</option>
+        <option value="resolved">已解决</option>
+        <option value="rejected">已驳回</option>
+      </select>
+      <button class="primary-btn" onclick="loadWechatBindingAppeals(1)">查询</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>微信异常绑定</h3>
+          <p>处理老账号同步微信时产生的账号占用、手机号冲突和换绑申请。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th><th>提交用户</th><th>当前手机号</th><th>微信手机号</th><th>冲突类型</th>
+              <th>冲突对象</th><th>状态</th><th>备注</th><th>提交时间</th><th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="wechat-appeal-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="wechat-appeal-page-info"></span>
+        <button id="wechat-appeal-prev" onclick="loadWechatBindingAppeals(wechatAppealPage-1)">‹ 上一页</button>
+        <button id="wechat-appeal-next" onclick="loadWechatBindingAppeals(wechatAppealPage+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+  loadWechatBindingAppeals(1);
+}
+
 async function loadUsers(p) {
   page = Math.max(1, p || 1);
   const kw = document.getElementById('search')?.value.trim() || '';
@@ -281,20 +356,97 @@ async function loadUsers(p) {
   if (adminStatus) params.set('adminStatus', adminStatus);
 
   const body = document.getElementById('user-body');
-  body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  body.innerHTML = '<tr><td colspan="11" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
   try {
     const j = await adminFetch(`/users?${params}`);
     if (j.code !== 200) throw new Error(j.message || '加载失败');
     const users = j.data.users || [];
     total = j.data.total || 0;
     body.innerHTML = users.map(userRow).join('') ||
-      '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">暂无数据</td></tr>';
+      '<tr><td colspan="11" style="text-align:center;color:#999;padding:32px;">暂无数据</td></tr>';
     const totalPages = Math.ceil(total / 20) || 1;
     document.getElementById('page-info').textContent = `共 ${total} 条 · ${page}/${totalPages}`;
     document.getElementById('btn-prev').disabled = page <= 1;
     document.getElementById('btn-next').disabled = page >= totalPages;
   } catch (e) {
+    body.innerHTML = `<tr><td colspan="11" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+async function loadWechatBindingAppeals(p) {
+  wechatAppealPage = Math.max(1, p || 1);
+  const status = document.getElementById('wechatAppealStatus')?.value || '';
+  const params = new URLSearchParams({ page: wechatAppealPage, pageSize: 20 });
+  if (status) params.set('status', status);
+
+  const body = document.getElementById('wechat-appeal-body');
+  body.innerHTML = '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/wechat-binding-appeals?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const appeals = j.data.appeals || [];
+    wechatAppealTotal = j.data.total || 0;
+    body.innerHTML = appeals.map(wechatBindingAppealRow).join('') ||
+      '<tr><td colspan="10" style="text-align:center;color:#999;padding:32px;">暂无异常绑定</td></tr>';
+    const totalPages = Math.ceil(wechatAppealTotal / 20) || 1;
+    document.getElementById('wechat-appeal-page-info').textContent = `共 ${wechatAppealTotal} 条 · ${wechatAppealPage}/${totalPages}`;
+    document.getElementById('wechat-appeal-prev').disabled = wechatAppealPage <= 1;
+    document.getElementById('wechat-appeal-next').disabled = wechatAppealPage >= totalPages;
+  } catch (e) {
     body.innerHTML = `<tr><td colspan="10" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function wechatBindingAppealRow(item) {
+  const status = item.status || 'pending';
+  const conflictUser = item.conflict_user_id
+    ? `${esc(item.conflict_user_nickname || '用户')} / ${esc(item.conflict_user_phone || '-')}`
+    : '-';
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td>
+        <div class="share-title">${esc(item.user_nickname || '未知用户')}</div>
+        <div class="muted">ID ${item.user_id} · ${esc(item.user_phone || '-')}</div>
+      </td>
+      <td>${esc(item.current_phone || '-')}</td>
+      <td>${esc(item.wechat_phone || '-')}</td>
+      <td>
+        <span class="badge status-hidden">${wechatConflictLabel(item.conflict_type)}</span>
+        <div class="muted">${esc(item.conflict_message || '-')}</div>
+      </td>
+      <td>${conflictUser}</td>
+      <td><span class="badge status-${wechatAppealStatusClass(status)}">${wechatAppealStatusLabel(status)}</span></td>
+      <td><div class="share-content">${esc(item.admin_note || '-')}</div></td>
+      <td>${fmtTime(item.created_at)}</td>
+      <td>
+        <div class="row-actions">
+          ${status !== 'processing' ? `<button class="action-btn" onclick="updateWechatBindingAppeal(${item.id}, 'processing')">处理中</button>` : ''}
+          ${status !== 'resolved' ? `<button class="success-btn" onclick="updateWechatBindingAppeal(${item.id}, 'resolved')">已解决</button>` : ''}
+          ${status !== 'rejected' ? `<button class="danger-btn" onclick="updateWechatBindingAppeal(${item.id}, 'rejected')">驳回</button>` : ''}
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+async function updateWechatBindingAppeal(id, status) {
+  const note = prompt('请输入处理备注（可留空）', '');
+  if (note === null) return;
+  try {
+    const j = await adminFetch(`/wechat-binding-appeals/${id}`, {
+      method: 'PUT',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ status, admin_note: note }),
+    });
+    if (j.code === 200) {
+      toast('异常绑定状态已更新');
+      loadWechatBindingAppeals(wechatAppealPage);
+    } else {
+      toast(j.message || '操作失败');
+    }
+  } catch (e) {
+    toast(e.message || '操作失败');
   }
 }
 
@@ -307,6 +459,7 @@ function userRow(u) {
       <td>${esc(u.phone)}</td>
       <td>${esc(u.nickname)}</td>
       <td>${roles.map(r => `<span class="badge badge-${r}">${roleLabel(r)}</span>`).join('')}</td>
+      <td>${loginMethodCell(u)}</td>
       <td><span class="badge status-${status}">${statusLabel(status)}</span></td>
       <td>${esc(u.city) || '-'}</td>
       <td>${u.followers_count || 0}</td>
@@ -321,6 +474,22 @@ function userRow(u) {
       </td>
     </tr>
   `;
+}
+
+function loginMethodCell(u) {
+  const hasWechat = Number(u.wechat_miniprogram_count || 0) > 0;
+  const hasPassword = Boolean(Number(u.has_password || 0));
+  const hasUnionid = Number(u.wechat_unionid_count || 0) > 0;
+  const methods = [];
+  if (hasWechat) methods.push('<span class="badge badge-wechat">微信小程序</span>');
+  if (hasPassword) methods.push('<span class="badge badge-password">密码</span>');
+  if (!methods.length) methods.push('<span class="muted">未设置</span>');
+  const tips = [];
+  if (hasWechat && u.wechat_miniprogram_last_login_at) {
+    tips.push(`最近微信登录：${fmtTime(u.wechat_miniprogram_last_login_at)}`);
+  }
+  if (hasWechat) tips.push(hasUnionid ? 'UnionID 已同步' : 'UnionID 未获取');
+  return `<div>${methods.join('')}</div>${tips.length ? `<div class="muted">${tips.map(esc).join(' · ')}</div>` : ''}`;
 }
 
 function quickPending() {
@@ -2228,6 +2397,34 @@ function roleLabel(role) {
 
 function statusLabel(status) {
   return { pending: '待审核', approved: '已通过', rejected: '已驳回' }[status] || status;
+}
+
+function wechatAppealStatusLabel(status) {
+  return {
+    pending: '待处理',
+    processing: '处理中',
+    resolved: '已解决',
+    rejected: '已驳回',
+  }[status] || status || '-';
+}
+
+function wechatAppealStatusClass(status) {
+  return {
+    pending: 'pending',
+    processing: 'processing',
+    resolved: 'resolved',
+    rejected: 'rejected',
+  }[status] || 'hidden';
+}
+
+function wechatConflictLabel(type) {
+  return {
+    wechat_bound_other_user: '微信已绑定其他账号',
+    wechat_bound_current_user: '微信已绑定当前账号',
+    current_user_bound_other_wechat: '当前账号已绑定微信',
+    phone_bound_other_wechat: '手机号已绑定其他微信',
+    wechat_phone_mismatch: '微信手机号不一致',
+  }[type] || type || '-';
 }
 
 function companyStatusLabel(status) {

@@ -530,6 +530,11 @@ router.put(
   ...protectedRoute,
   asyncHandler(controller.updateProjectCheckInShares)
 );
+router.get(
+  '/projects/:id/check-ins/:checkInId/received-share',
+  ...protectedRoute,
+  asyncHandler(controller.getReceivedProjectCheckInShare)
+);
 router.post(
   '/projects/:id/check-ins/:checkInId/wechat-share',
   ...protectedRoute,

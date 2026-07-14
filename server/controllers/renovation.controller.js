@@ -3591,9 +3591,9 @@ async function createProjectCheckIn(req, res) {
     if (sharedMemberIds.length) {
       await connection.query(
         `INSERT INTO project_checkin_shares
-         (checkin_id, shared_with_user_id)
-         VALUES ${sharedMemberIds.map(() => '(?, ?)').join(', ')}`,
-        sharedMemberIds.flatMap((userId) => [result.insertId, userId])
+         (checkin_id, shared_with_user_id, shared_by)
+         VALUES ${sharedMemberIds.map(() => '(?, ?, ?)').join(', ')}`,
+        sharedMemberIds.flatMap((userId) => [result.insertId, userId, req.user.id])
       );
     }
     if (files.length) {
@@ -3618,7 +3618,7 @@ async function createProjectCheckIn(req, res) {
         entityId: result.insertId,
         title: '工地打卡分享',
         content: description || '项目成员分享了一条工地打卡记录',
-        route: 'site_check_in',
+        route: 'received_site_check_in',
         deepLink: { projectId, checkInId: result.insertId },
       }, connection);
     }
@@ -3688,9 +3688,14 @@ async function updateProjectCheckInShares(req, res) {
     if (sharedMemberIds.length) {
       await connection.query(
         `INSERT IGNORE INTO project_checkin_shares
-         (checkin_id, shared_with_user_id)
-         VALUES ${sharedMemberIds.map(() => '(?, ?)').join(', ')}`,
-        sharedMemberIds.flatMap((userId) => [checkInId, userId])
+         (checkin_id, shared_with_user_id, shared_by, share_note)
+         VALUES ${sharedMemberIds.map(() => '(?, ?, ?, ?)').join(', ')}`,
+        sharedMemberIds.flatMap((userId) => [
+          checkInId,
+          userId,
+          req.user.id,
+          shareNote || null,
+        ])
       );
     }
     await connection.query(
@@ -3710,7 +3715,7 @@ async function updateProjectCheckInShares(req, res) {
         entityId: checkInId,
         title: '工地打卡分享',
         content: shareNote || checkIn.description || '项目成员分享了一条工地打卡记录',
-        route: 'site_check_in',
+        route: 'received_site_check_in',
         deepLink: { projectId, checkInId },
       }, connection);
     }
@@ -3722,6 +3727,60 @@ async function updateProjectCheckInShares(req, res) {
   } finally {
     connection.release();
   }
+}
+
+async function getReceivedProjectCheckInShare(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const checkInId = Number(req.params.checkInId);
+  if (!checkInId) return error(res, '打卡分享不存在', 404);
+
+  const [rows] = await db.query(
+    `SELECT share.id AS share_id, share.share_note,
+            checkin.checkin_date,
+            project.project_name, project.current_stage,
+            COALESCE(sharer.nickname, checkin_user.nickname, '项目成员') AS shared_by_name,
+            COALESCE(sharer.avatar, checkin_user.avatar, '') AS shared_by_avatar
+     FROM project_checkin_shares share
+     JOIN project_checkins checkin ON checkin.id = share.checkin_id
+     JOIN renovation_projects project ON project.id = checkin.project_id
+     LEFT JOIN users sharer ON sharer.id = share.shared_by
+     LEFT JOIN users checkin_user ON checkin_user.id = checkin.user_id
+     WHERE share.checkin_id = ?
+       AND share.shared_with_user_id = ?
+       AND checkin.project_id = ?
+     LIMIT 1`,
+    [checkInId, req.user.id, projectId]
+  );
+  const share = rows[0];
+  if (!share) return error(res, '这条打卡分享不存在或你无权查看', 404);
+
+  const [media] = await db.query(
+    `SELECT id, media_type, media_url
+     FROM project_checkin_media
+     WHERE checkin_id = ? AND media_type = 'image'
+     ORDER BY id`,
+    [checkInId]
+  );
+  const host = `${req.protocol}://${req.get('host')}`;
+  const images = media.map((item) => ({
+    ...item,
+    media_url: item.media_url && String(item.media_url).startsWith('/uploads/')
+      ? `${host}/api${item.media_url}`
+      : item.media_url,
+  }));
+  return success(res, {
+    share_id: share.share_id,
+    project_name: normalizeProjectName(share.project_name),
+    current_stage: share.current_stage,
+    checkin_date: share.checkin_date,
+    shared_by_name: share.shared_by_name,
+    shared_by_avatar: share.shared_by_avatar || '',
+    share_note: share.share_note || '',
+    images,
+  });
 }
 
 async function createProjectCheckInWechatShare(req, res) {
@@ -8585,6 +8644,7 @@ module.exports = {
   getProjectCheckIns,
   createProjectCheckIn,
   updateProjectCheckInShares,
+  getReceivedProjectCheckInShare,
   createProjectCheckInWechatShare,
   getProjectCheckInWechatShare,
   shareProjectCheckInToCircle,

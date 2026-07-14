@@ -5,6 +5,7 @@ const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const aliyunSms = require('../services/aliyun-sms.service');
 const smsRateLimiter = require('../services/sms-rate-limiter.service');
+const wechatMiniProgram = require('../services/wechat-miniprogram.service');
 
 function generateCode() {
   return crypto.randomInt(100000, 999999).toString();
@@ -285,6 +286,256 @@ async function testLogin(req, res) {
   return success(res, await buildLoginResponse(user));
 }
 
+async function bindWechatIdentitySafely({ userId, appid, openid, unionid, phone, allowExistingForUser = true }) {
+  const [openidRows] = await db.query(
+    `SELECT user_id, phone
+     FROM wechat_identities
+     WHERE appid = ? AND openid = ?
+     LIMIT 1`,
+    [appid, openid]
+  );
+  const existingOpenid = openidRows[0] || null;
+  if (existingOpenid && Number(existingOpenid.user_id) !== Number(userId)) {
+    return {
+      ok: false,
+      statusCode: 409,
+      message: '该微信账号已绑定其他账号，请切换账号登录或联系客服处理',
+      conflictType: 'wechat_bound_other_user',
+      conflictUserId: Number(existingOpenid.user_id),
+    };
+  }
+  if (existingOpenid && !allowExistingForUser) {
+    return {
+      ok: false,
+      statusCode: 409,
+      message: '该微信账号已绑定当前账号',
+      conflictType: 'wechat_bound_current_user',
+    };
+  }
+
+  const [userWechatRows] = await db.query(
+    `SELECT openid
+     FROM wechat_identities
+     WHERE user_id = ? AND platform = 'miniprogram' AND openid <> ?
+     LIMIT 1`,
+    [userId, openid]
+  );
+  if (userWechatRows[0]) {
+    return {
+      ok: false,
+      statusCode: 409,
+      message: '当前账号已绑定其他微信账号，如需更换请联系客服处理',
+      conflictType: 'current_user_bound_other_wechat',
+    };
+  }
+
+  const [phoneWechatRows] = await db.query(
+    `SELECT user_id, openid
+     FROM wechat_identities
+     WHERE phone = ? AND platform = 'miniprogram' AND openid <> ?
+     LIMIT 1`,
+    [phone, openid]
+  );
+  if (phoneWechatRows[0]) {
+    return {
+      ok: false,
+      statusCode: 409,
+      message: '该手机号已绑定其他微信账号，如需更换请联系客服处理',
+      conflictType: 'phone_bound_other_wechat',
+      conflictUserId: Number(phoneWechatRows[0].user_id) || null,
+    };
+  }
+
+  if (existingOpenid) {
+    await db.query(
+      `UPDATE wechat_identities
+       SET unionid = ?, phone = ?, last_login_at = NOW(), updated_at = CURRENT_TIMESTAMP
+       WHERE appid = ? AND openid = ?`,
+      [unionid || null, phone, appid, openid]
+    );
+    return { ok: true, created: false };
+  }
+
+  await db.query(
+    `INSERT INTO wechat_identities
+       (user_id, platform, appid, openid, unionid, phone, last_login_at)
+     VALUES (?, 'miniprogram', ?, ?, ?, ?, NOW())`,
+    [userId, appid, openid, unionid || null, phone]
+  );
+  return { ok: true, created: true };
+}
+
+async function createWechatBindingAppeal({
+  userId,
+  currentPhone,
+  wechatPhone,
+  appid,
+  openid,
+  unionid,
+  conflictType,
+  conflictMessage,
+  conflictUserId,
+}) {
+  const [existingRows] = await db.query(
+    `SELECT id
+     FROM wechat_binding_appeals
+     WHERE user_id = ? AND appid = ? AND openid = ? AND conflict_type = ?
+       AND status IN ('pending', 'processing')
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId, appid, openid, conflictType || 'unknown']
+  );
+
+  if (existingRows[0]) {
+    await db.query(
+      `UPDATE wechat_binding_appeals
+       SET current_phone = ?, wechat_phone = ?, unionid = ?, conflict_message = ?,
+           conflict_user_id = ?, updated_at = CURRENT_TIMESTAMP
+       WHERE id = ?`,
+      [
+        currentPhone || null,
+        wechatPhone || null,
+        unionid || null,
+        conflictMessage || '',
+        conflictUserId || null,
+        existingRows[0].id,
+      ]
+    );
+    return existingRows[0].id;
+  }
+
+  const [result] = await db.query(
+    `INSERT INTO wechat_binding_appeals
+       (user_id, current_phone, wechat_phone, appid, openid, unionid,
+        conflict_type, conflict_message, conflict_user_id, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    [
+      userId,
+      currentPhone || null,
+      wechatPhone || null,
+      appid,
+      openid,
+      unionid || null,
+      conflictType || 'unknown',
+      conflictMessage || '',
+      conflictUserId || null,
+    ]
+  );
+  return result.insertId;
+}
+
+async function wechatPhoneLogin(req, res) {
+  const loginCode = String(req.body.login_code || req.body.loginCode || '').trim();
+  const phoneCode = String(req.body.phone_code || req.body.phoneCode || '').trim();
+  if (!loginCode) return error(res, '缺少微信登录凭证');
+  if (!phoneCode) return error(res, '缺少微信手机号授权凭证');
+
+  let session;
+  let phoneInfo;
+  try {
+    [session, phoneInfo] = await Promise.all([
+      wechatMiniProgram.codeToSession(loginCode),
+      wechatMiniProgram.getPhoneNumber(phoneCode),
+    ]);
+  } catch (err) {
+    console.error('[WechatLogin] failed:', err.message);
+    return error(res, err.publicMessage || '微信登录失败，请稍后再试', err.statusCode || 502);
+  }
+
+  const phone = String(phoneInfo.phone || '').replace(/\D/g, '').slice(-11);
+  if (!validatePhone(phone)) {
+    return error(res, '微信手机号格式不正确');
+  }
+
+  let user = await findUserByPhone(phone);
+  const isNewUser = !user;
+  if (!user) {
+    user = await createFormalUser(phone);
+  }
+  const blocked = guardAdminStatus(res, user);
+  if (blocked) return blocked;
+
+  const bindResult = await bindWechatIdentitySafely({
+    userId: user.id,
+    appid: session.appid,
+    openid: session.openid,
+    unionid: session.unionid,
+    phone,
+  });
+  if (!bindResult.ok) return error(res, bindResult.message, bindResult.statusCode);
+
+  const loginResponse = await buildLoginResponse(user);
+  loginResponse.is_new_user = isNewUser;
+  return success(res, loginResponse);
+}
+
+async function bindWechatMiniProgram(req, res) {
+  const loginCode = String(req.body.login_code || req.body.loginCode || '').trim();
+  const phoneCode = String(req.body.phone_code || req.body.phoneCode || '').trim();
+  if (!loginCode) return error(res, '缺少微信登录凭证');
+  if (!phoneCode) return error(res, '缺少微信手机号授权凭证');
+
+  let session;
+  let phoneInfo;
+  try {
+    [session, phoneInfo] = await Promise.all([
+      wechatMiniProgram.codeToSession(loginCode),
+      wechatMiniProgram.getPhoneNumber(phoneCode),
+    ]);
+  } catch (err) {
+    console.error('[WechatBind] failed:', err.message);
+    return error(res, err.publicMessage || '微信账号同步失败，请稍后再试', err.statusCode || 502);
+  }
+
+  const phone = String(phoneInfo.phone || '').replace(/\D/g, '').slice(-11);
+  if (!validatePhone(phone)) {
+    return error(res, '微信手机号格式不正确');
+  }
+  if (String(req.user.phone || '') !== phone) {
+    const message = '微信手机号与当前账号手机号不一致，不能自动绑定';
+    await createWechatBindingAppeal({
+      userId: req.user.id,
+      currentPhone: req.user.phone,
+      wechatPhone: phone,
+      appid: session.appid,
+      openid: session.openid,
+      unionid: session.unionid,
+      conflictType: 'wechat_phone_mismatch',
+      conflictMessage: message,
+      conflictUserId: null,
+    });
+    return error(res, `${message}，已提交给管理员处理`, 409);
+  }
+
+  const bindResult = await bindWechatIdentitySafely({
+    userId: req.user.id,
+    appid: session.appid,
+    openid: session.openid,
+    unionid: session.unionid,
+    phone,
+  });
+  if (!bindResult.ok) {
+    await createWechatBindingAppeal({
+      userId: req.user.id,
+      currentPhone: req.user.phone,
+      wechatPhone: phone,
+      appid: session.appid,
+      openid: session.openid,
+      unionid: session.unionid,
+      conflictType: bindResult.conflictType,
+      conflictMessage: bindResult.message,
+      conflictUserId: bindResult.conflictUserId,
+    });
+    return error(res, `${bindResult.message}，已提交给管理员处理`, bindResult.statusCode);
+  }
+
+  return success(res, {
+    bound: true,
+    phone,
+    unionid_bound: Boolean(session.unionid),
+  }, '微信账号已同步');
+}
+
 async function setPassword(req, res) {
   const { password } = req.body;
 
@@ -351,6 +602,8 @@ module.exports = {
   login,
   passwordLogin,
   testLogin,
+  wechatPhoneLogin,
+  bindWechatMiniProgram,
   setPassword,
   resetPassword,
   registerPasswordAccount,

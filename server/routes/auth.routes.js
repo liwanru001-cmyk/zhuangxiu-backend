@@ -18,5 +18,7 @@ router.post('/password-register', asyncHandler(authController.registerPasswordAc
 router.post('/password-login', asyncHandler(authController.passwordLogin));
 router.post('/login-password', asyncHandler(authController.passwordLogin));
 router.post('/test-login', asyncHandler(authController.testLogin));
+router.post('/wechat-phone-login', asyncHandler(authController.wechatPhoneLogin));
+router.post('/wechat-bind', asyncHandler(auth), asyncHandler(authController.bindWechatMiniProgram));
 
 module.exports = router;

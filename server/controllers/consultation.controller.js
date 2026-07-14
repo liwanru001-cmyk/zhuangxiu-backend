@@ -1,9 +1,6 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
-const {
-  requireProjectContext,
-  linkConsultationToProject,
-} = require('../utils/project-context');
+const { requireProjectContext } = require('../utils/project-context');
 
 const validTargetTypes = new Set(['company', 'professional', 'user']);
 const validSourcePages = new Set(['marketplace', 'profile', 'project']);
@@ -27,20 +24,44 @@ async function resolveBusinessCatalog(businessCatalogId) {
   };
 }
 
-async function targetExists(targetType, targetId) {
+async function resolveConsultationTarget(targetType, targetId) {
   if (targetType === 'company') {
     if (targetId < 0) {
+      const userId = Math.abs(targetId);
       const [rows] = await db.query(
-        `SELECT 1 FROM merchant_profiles WHERE user_id = ? LIMIT 1`,
-        [Math.abs(targetId)]
+        `SELECT mp.user_id, mp.consultation_enabled, u.nickname
+         FROM merchant_profiles mp
+         JOIN users u ON u.id = mp.user_id
+         WHERE mp.user_id = ?
+         LIMIT 1`,
+        [userId]
       );
-      return Boolean(rows[0]);
+      if (!rows[0]) return null;
+      if (rows[0].consultation_enabled === 0 || rows[0].consultation_enabled === false) {
+        return { closed: true, message: '该商家暂未开放咨询' };
+      }
+      return {
+        recipientUserId: Number(rows[0].user_id),
+        targetRole: 'merchant',
+        displayName: rows[0].nickname || '商家',
+      };
     }
     const [rows] = await db.query(
-      `SELECT 1 FROM companies WHERE id = ? AND status <> 'deleted' LIMIT 1`,
+      `SELECT c.id, c.owner_user_id, c.name
+       FROM companies c
+       WHERE c.id = ? AND c.status <> 'deleted'
+       LIMIT 1`,
       [targetId]
     );
-    return Boolean(rows[0]);
+    if (!rows[0]) return null;
+    if (!rows[0].owner_user_id) {
+      return { closed: true, message: '该装修公司暂未配置接收咨询的账号' };
+    }
+    return {
+      recipientUserId: Number(rows[0].owner_user_id),
+      targetRole: 'merchant',
+      displayName: rows[0].name || '装修公司',
+    };
   }
 
   if (targetType === 'professional') {
@@ -48,25 +69,57 @@ async function targetExists(targetType, targetId) {
       const encoded = Math.abs(targetId);
       const roleCode = encoded % 10;
       const userId = Math.floor(encoded / 10);
-      const table = roleCode === 1 ? 'designer_profiles' : 'project_manager_profiles';
+      const targetRole = roleCode === 1 ? 'designer' : 'project_manager';
+      const table = targetRole === 'designer' ? 'designer_profiles' : 'project_manager_profiles';
       const [rows] = await db.query(
-        `SELECT 1 FROM ${table} WHERE user_id = ? LIMIT 1`,
+        `SELECT p.user_id, p.consultation_enabled, u.nickname
+         FROM ${table} p
+         JOIN users u ON u.id = p.user_id
+         WHERE p.user_id = ?
+         LIMIT 1`,
         [userId]
       );
-      return Boolean(rows[0]);
+      if (!rows[0]) return null;
+      if (rows[0].consultation_enabled === 0 || rows[0].consultation_enabled === false) {
+        return { closed: true, message: '该专业人士暂未开放咨询' };
+      }
+      return {
+        recipientUserId: Number(rows[0].user_id),
+        targetRole,
+        displayName: rows[0].nickname || '专业人士',
+      };
     }
     const [rows] = await db.query(
-      `SELECT 1 FROM professionals WHERE id = ? AND status <> 'deleted' LIMIT 1`,
+      `SELECT p.id, p.user_id, p.role, u.nickname
+       FROM professionals p
+       JOIN users u ON u.id = p.user_id
+       WHERE p.id = ? AND p.status <> 'deleted'
+       LIMIT 1`,
       [targetId]
     );
-    return Boolean(rows[0]);
+    if (!rows[0]) return null;
+    const targetRole = rows[0].role === 'project_supervisor'
+      ? 'project_supervisor'
+      : rows[0].role === 'project_manager'
+        ? 'project_manager'
+        : 'designer';
+    return {
+      recipientUserId: Number(rows[0].user_id),
+      targetRole,
+      displayName: rows[0].nickname || '专业人士',
+    };
   }
 
   const [rows] = await db.query(
-    `SELECT 1 FROM users WHERE id = ? LIMIT 1`,
+    `SELECT id, nickname FROM users WHERE id = ? LIMIT 1`,
     [targetId]
   );
-  return Boolean(rows[0]);
+  if (!rows[0]) return null;
+  return {
+    recipientUserId: Number(rows[0].id),
+    targetRole: 'designer',
+    displayName: rows[0].nickname || '用户',
+  };
 }
 
 async function createUnifiedConsultation(req, res) {
@@ -97,31 +150,101 @@ async function createUnifiedConsultation(req, res) {
   }
   if (!message) return error(res, '请填写咨询内容');
 
-  const exists = await targetExists(targetType, targetId);
-  if (!exists) return error(res, '咨询对象不存在', 404);
+  const target = await resolveConsultationTarget(targetType, targetId);
+  if (!target) return error(res, '咨询对象不存在', 404);
+  if (target.closed) return error(res, target.message || '该对象暂未开放咨询');
+  if (Number(target.recipientUserId) === Number(req.user.id)) {
+    return error(res, '不能咨询自己');
+  }
 
   const catalog = await resolveBusinessCatalog(businessCatalogId);
   if (!catalog.exists) return error(res, '业务分类不存在', 404);
-  const [result] = await db.query(
-    `INSERT INTO consultation_targets
-     (consultation_id, requester_user_id, target_type, target_id,
-      business_catalog_id, business_group, source_page, message)
-     VALUES (NULL, ?, ?, ?, ?, ?, ?, ?)`,
-    [
-      req.user.id,
-      targetType,
-      targetId,
-      businessCatalogId,
-      catalog.businessGroup,
-      sourcePage,
-      message,
-    ]
-  );
-  await linkConsultationToProject(result.insertId, projectContext.projectId);
+  const connection = await db.getConnection();
+  let consultationId;
+  let targetRecordId;
+  try {
+    await connection.beginTransaction();
+    const [consultationResult] = await connection.query(
+      `INSERT INTO designer_consultations
+       (designer_id, target_role, user_id, content, has_project, status)
+       VALUES (?, ?, ?, ?, 1, 'pending')`,
+      [
+        target.recipientUserId,
+        target.targetRole,
+        req.user.id,
+        message,
+      ]
+    );
+    consultationId = consultationResult.insertId;
+    const [messageResult] = await connection.query(
+      `INSERT INTO consultation_messages
+       (consultation_id, sender_id, content)
+       VALUES (?, ?, ?)`,
+      [consultationId, req.user.id, message]
+    );
+    await connection.query(
+      `INSERT IGNORE INTO consultation_message_reads (message_id, user_id)
+       VALUES (?, ?)`,
+      [messageResult.insertId, req.user.id]
+    );
+    const [targetResult] = await connection.query(
+      `INSERT INTO consultation_targets
+       (consultation_id, requester_user_id, target_type, target_id,
+        business_catalog_id, business_group, source_page, message)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        consultationId,
+        req.user.id,
+        targetType,
+        targetId,
+        businessCatalogId,
+        catalog.businessGroup,
+        sourcePage,
+        message,
+      ]
+    );
+    targetRecordId = targetResult.insertId;
+    await connection.query(
+      `INSERT IGNORE INTO entity_relations
+         (source_type, source_id, target_type, target_id, relation_type, role_label)
+       VALUES ('consultation', ?, 'project', ?, 'participant', 'project_context')`,
+      [consultationId, projectContext.projectId]
+    );
+    await connection.query(
+      `INSERT INTO project_action_notifications
+         (item_id, recipient_id, event_type, delivery_status, payload)
+       VALUES (NULL, ?, 'consultation', 'pending', ?)`,
+      [
+        target.recipientUserId,
+        JSON.stringify({
+          source: 'consultation',
+          targetRole: target.targetRole,
+          consultationId,
+          projectId: projectContext.projectId,
+          requesterUserId: req.user.id,
+          title: targetType === 'company' ? '新的公司咨询' : '新的咨询',
+          content: targetType === 'company'
+            ? '你收到一条新的装修公司咨询'
+            : '你收到一条新的站内咨询',
+          route: 'consultation_chat',
+          deepLink: { consultationId, projectId: projectContext.projectId },
+          entityType: 'consultation',
+          entityId: consultationId,
+        }),
+      ]
+    );
+    await connection.commit();
+  } catch (consultationError) {
+    await connection.rollback();
+    throw consultationError;
+  } finally {
+    connection.release();
+  }
 
   return success(res, {
-    id: result.insertId,
-    consultation_id: null,
+    id: consultationId,
+    consultation_id: consultationId,
+    target_record_id: targetRecordId,
     project_id: projectContext.projectId,
     target_type: targetType,
     target_id: targetId,
