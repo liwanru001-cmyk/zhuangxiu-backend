@@ -664,6 +664,63 @@ async function listPublicMerchants(req, res) {
   });
 }
 
+async function getPublicMerchantProfile(req, res) {
+  const merchantUserId = Number(req.params.id);
+  if (!merchantUserId) return error(res, '商家不存在', 404);
+  const [rows] = await db.query(
+    `SELECT u.id AS user_id, u.nickname, u.avatar, u.city,
+            mp.shop_name, mp.logo_url, mp.cover_url, mp.service_area,
+            mp.address, mp.longitude, mp.latitude, mp.map_provider,
+            mp.contact_phone, mp.business_hours, mp.category_group,
+            mp.categories, mp.service_types, mp.case_count, mp.brand_intro,
+            mp.after_sales_promise, mp.consultation_enabled, mp.updated_at,
+            (
+              SELECT COUNT(*)
+              FROM merchant_products p
+              WHERE p.merchant_user_id = mp.user_id AND p.status = 'active'
+            ) AS product_count
+     FROM merchant_profiles mp
+     JOIN users u ON u.id = mp.user_id
+     WHERE mp.user_id = ?
+       AND COALESCE(mp.shop_name, '') <> ''
+       AND EXISTS (
+         SELECT 1 FROM user_roles ur
+         WHERE ur.user_id = mp.user_id
+           AND ${activeVerifiedMerchantExistsSql('ur')}
+       )
+       AND ${activeMerchantShopVisibleExistsSql('mp.user_id')}
+     LIMIT 1`,
+    [merchantUserId]
+  );
+  const row = rows[0];
+  if (!row) return error(res, '商家不存在或暂未开放展示', 404);
+  return success(res, {
+    user_id: Number(row.user_id),
+    nickname: row.nickname || '',
+    avatar: normalizeUploadUrl(row.avatar),
+    city: row.city || '',
+    shop_name: row.shop_name || '',
+    logo_url: normalizeUploadUrl(row.logo_url),
+    cover_url: normalizeUploadUrl(row.cover_url),
+    service_area: row.service_area || '',
+    address: row.address || '',
+    longitude: row.longitude === null || row.longitude === undefined ? null : Number(row.longitude),
+    latitude: row.latitude === null || row.latitude === undefined ? null : Number(row.latitude),
+    map_provider: row.map_provider || '',
+    contact_phone: row.contact_phone || '',
+    business_hours: row.business_hours || '',
+    category_group: row.category_group || inferMerchantCategoryGroup(row.categories),
+    categories: parseJsonArray(row.categories),
+    service_types: parseJsonArray(row.service_types),
+    case_count: Number(row.case_count || 0),
+    brand_intro: row.brand_intro || '',
+    after_sales_promise: row.after_sales_promise || '',
+    consultation_enabled: Boolean(row.consultation_enabled),
+    product_count: Number(row.product_count || 0),
+    updated_at: row.updated_at,
+  });
+}
+
 async function upsertMerchantProfile(req, res) {
   if (!(await hasMerchantIdentity(req.user.id, req.user.role))) {
     return error(res, '只有商家身份可以编辑商家资料', 403);
@@ -2017,6 +2074,7 @@ module.exports = {
   upsertProjectManagerProfile,
   getMerchantProfile,
   listPublicMerchants,
+  getPublicMerchantProfile,
   upsertMerchantProfile,
   applyVerifiedMerchant,
   createDesignerConsultation,
