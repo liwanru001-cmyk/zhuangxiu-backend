@@ -463,28 +463,6 @@ function mapCompanyCaseShareRow(row) {
   };
 }
 
-function mapCompanyProjectCaseFallbackRow(row) {
-  const projectName = row.project_name || '装修项目';
-  return {
-    id: -Math.abs(Number(row.project_id || 0)),
-    project_id: row.project_id,
-    project_name: projectName,
-    designer_id: null,
-    owner_id: null,
-    title: projectName,
-    style: row.stage_name || '',
-    summary: '该项目已关联当前装修公司，详细案例内容待授权后展示。',
-    highlights: '',
-    image_urls: [],
-    visible_fields: {},
-    designer_name: '',
-    owner_name: '',
-    reviewed_at: null,
-    created_at: row.created_at || null,
-    updated_at: row.updated_at || null,
-  };
-}
-
 function mapCompanyReviewRow(row) {
   return {
     id: row.id,
@@ -1421,8 +1399,7 @@ async function listPublicCompanyCaseShares(req, res) {
   const [companyRows] = await db.query(
     `SELECT id FROM companies
      WHERE id = ?
-       AND status = 'active'
-       AND verification_status = 'verified'
+       AND status <> 'deleted'
      LIMIT 1`,
     [companyId]
   );
@@ -1502,36 +1479,10 @@ async function listPublicCompanyCaseShares(req, res) {
     [companyId, companyId, companyId, companyId]
   );
 
-  let items = rows.map(mapCompanyCaseShareRow);
-  if (!items.length && Number(participatedRow?.total || 0) > 0) {
-    const [fallbackRows] = await db.query(
-      `${companyProjectsCte}
-       SELECT p.id AS project_id, p.project_name, p.current_stage,
-              p.created_at, p.updated_at,
-              CASE p.current_stage
-                WHEN 1 THEN '设计准备'
-                WHEN 2 THEN '主体拆改'
-                WHEN 3 THEN '水电改造'
-                WHEN 4 THEN '泥瓦防水'
-                WHEN 5 THEN '木工施工'
-                WHEN 6 THEN '油漆施工'
-                WHEN 7 THEN '安装收尾'
-                WHEN 8 THEN '竣工验收'
-                ELSE ''
-              END AS stage_name
-       FROM company_projects cp
-       JOIN renovation_projects p ON p.id = cp.project_id
-       ORDER BY p.updated_at DESC, p.id DESC
-       LIMIT 50`,
-      [companyId, companyId, companyId, companyId]
-    );
-    items = fallbackRows.map(mapCompanyProjectCaseFallbackRow);
-  }
-
   return success(res, {
     participated_project_count: Number(participatedRow?.total || 0),
     authorized_project_count: Number(authorizedRow?.total || 0),
-    items,
+    items: rows.map(mapCompanyCaseShareRow),
   });
 }
 

@@ -122,14 +122,14 @@ test('public company detail requires an active verified company without paid dis
   assert.equal(queries.length, 1);
 });
 
-test('public company case shares require verified company and approved project cases', async () => {
+test('public company case shares return approved works for a visible company card', async () => {
   const queries = [];
   const dbMock = {
     async query(sql, params) {
       queries.push({ sql, params });
       if (queries.length === 1) {
-        assert.match(sql, /status = 'active'/);
-        assert.match(sql, /verification_status = 'verified'/);
+        assert.match(sql, /status <> 'deleted'/);
+        assert.doesNotMatch(sql, /verification_status = 'verified'/);
         assert.doesNotMatch(sql, /be\.subject_type = 'company'/);
         assert.doesNotMatch(sql, /be\.subject_id = companies\.id/);
         assert.deepEqual(params, [9]);
@@ -188,59 +188,6 @@ test('public company case shares require verified company and approved project c
   assert.deepEqual(res.payload.data.items[0].image_urls, ['/api/uploads/case-1.jpg']);
   assert.deepEqual(res.payload.data.items[0].visible_fields, { area: true });
   assert.equal(queries.length, 4);
-});
-
-test('public company case shares fallback to linked service projects when no approved case exists', async () => {
-  const queries = [];
-  const dbMock = {
-    async query(sql, params) {
-      queries.push({ sql, params });
-      if (queries.length === 1) {
-        assert.match(sql, /verification_status = 'verified'/);
-        assert.deepEqual(params, [9]);
-        return [[{ id: 9 }]];
-      }
-      if (queries.length === 2) {
-        assert.match(sql, /COUNT\(\*\) AS total/);
-        assert.match(sql, /company_projects/);
-        assert.deepEqual(params, [9, 9, 9, 9]);
-        return [[{ total: 2 }]];
-      }
-      if (queries.length === 3) {
-        assert.match(sql, /COUNT\(DISTINCT share\.project_id\) AS total/);
-        assert.deepEqual(params, [9, 9, 9, 9]);
-        return [[{ total: 0 }]];
-      }
-      if (queries.length === 4) {
-        assert.match(sql, /FROM project_case_shares share/);
-        assert.deepEqual(params, [9, 9, 9, 9]);
-        return [[]];
-      }
-      assert.match(sql, /FROM company_projects cp/);
-      assert.match(sql, /JOIN renovation_projects p ON p\.id = cp\.project_id/);
-      assert.deepEqual(params, [9, 9, 9, 9]);
-      return [[{
-        project_id: 21,
-        project_name: '滨江服务工地',
-        current_stage: 3,
-        created_at: null,
-        updated_at: null,
-        stage_name: '水电改造',
-      }]];
-    },
-  };
-  const controller = loadController('../controllers/marketplace.controller', dbMock);
-  const res = mockResponse();
-
-  await controller.listPublicCompanyCaseShares({ params: { id: '9' } }, res);
-
-  assert.equal(res.statusCode, 200);
-  assert.equal(res.payload.data.participated_project_count, 2);
-  assert.equal(res.payload.data.authorized_project_count, 0);
-  assert.equal(res.payload.data.items.length, 1);
-  assert.equal(res.payload.data.items[0].project_name, '滨江服务工地');
-  assert.equal(res.payload.data.items[0].summary, '该项目已关联当前装修公司，详细案例内容待授权后展示。');
-  assert.equal(queries.length, 5);
 });
 
 test('public company reviews require verified company and return review list', async () => {
