@@ -2423,7 +2423,6 @@ function wechatConflictLabel(type) {
     wechat_bound_current_user: '微信已绑定当前账号',
     current_user_bound_other_wechat: '当前账号已绑定微信',
     phone_bound_other_wechat: '手机号已绑定其他微信',
-    wechat_phone_mismatch: '微信手机号不一致',
   }[type] || type || '-';
 }
 

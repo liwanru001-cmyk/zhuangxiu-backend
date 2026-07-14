@@ -492,19 +492,7 @@ async function bindWechatMiniProgram(req, res) {
     return error(res, '微信手机号格式不正确');
   }
   if (String(req.user.phone || '') !== phone) {
-    const message = '微信手机号与当前账号手机号不一致，不能自动绑定';
-    await createWechatBindingAppeal({
-      userId: req.user.id,
-      currentPhone: req.user.phone,
-      wechatPhone: phone,
-      appid: session.appid,
-      openid: session.openid,
-      unionid: session.unionid,
-      conflictType: 'wechat_phone_mismatch',
-      conflictMessage: message,
-      conflictUserId: null,
-    });
-    return error(res, `${message}，已提交给管理员处理`, 409);
+    return error(res, '授权手机号不一致，请更换授权微信号重新绑定', 409);
   }
 
   const bindResult = await bindWechatIdentitySafely({
