@@ -146,14 +146,21 @@ test('public company case shares return approved works for a visible company car
         return [[{ project_id: 12 }, { project_id: 13 }]];
       }
       if (queries.length === 4) {
+        assert.match(sql, /FROM companies c/);
+        assert.match(sql, /c\.owner_user_id/);
+        assert.match(sql, /c\.legacy_merchant_user_id/);
+        assert.deepEqual(params, [9]);
+        return [[{ project_id: 14 }]];
+      }
+      if (queries.length === 5) {
         assert.match(sql, /COUNT\(DISTINCT share\.project_id\) AS total/);
         assert.match(sql, /project_case_shares share/);
-        assert.deepEqual(params, [[11, 12, 13]]);
+        assert.deepEqual(params, [[11, 12, 13, 14]]);
         return [[{ total: 1 }]];
       }
       assert.match(sql, /FROM project_case_shares share/);
       assert.match(sql, /share\.status = 1/);
-      assert.deepEqual(params, [[11, 12, 13]]);
+      assert.deepEqual(params, [[11, 12, 13, 14]]);
       return [[{
         id: 3,
         project_id: 11,
@@ -180,13 +187,13 @@ test('public company case shares return approved works for a visible company car
   await controller.listPublicCompanyCaseShares({ params: { id: '9' } }, res);
 
   assert.equal(res.statusCode, 200);
-  assert.equal(res.payload.data.participated_project_count, 3);
+  assert.equal(res.payload.data.participated_project_count, 4);
   assert.equal(res.payload.data.authorized_project_count, 1);
   assert.equal(res.payload.data.items.length, 1);
   assert.equal(res.payload.data.items[0].project_name, '旧房翻新');
   assert.deepEqual(res.payload.data.items[0].image_urls, ['/api/uploads/case-1.jpg']);
   assert.deepEqual(res.payload.data.items[0].visible_fields, { area: true });
-  assert.equal(queries.length, 5);
+  assert.equal(queries.length, 6);
 });
 
 test('public company reviews require verified company and return review list', async () => {

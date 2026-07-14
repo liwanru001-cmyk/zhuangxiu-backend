@@ -490,7 +490,22 @@ async function listCompanyServiceProjectIds(companyId) {
     [companyId]
   );
 
-  return [...extRows, ...inferredRows]
+  const [ownerRows] = await db.query(
+    `SELECT DISTINCT p.id AS project_id
+     FROM companies c
+     JOIN project_members pm
+       ON pm.status = 1
+      AND pm.role <> 'merchant'
+      AND pm.user_id IN (c.owner_user_id, c.legacy_merchant_user_id)
+     JOIN renovation_projects p
+       ON p.id = pm.project_id
+      AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+     WHERE c.id = ?
+       AND c.status <> 'deleted'`,
+    [companyId]
+  );
+
+  return [...extRows, ...inferredRows, ...ownerRows]
     .map((row) => Number(row.project_id || 0))
     .filter(Boolean)
     .filter((projectId, index, list) => list.indexOf(projectId) === index);
