@@ -4,9 +4,6 @@ const {
   hasActiveVerifiedMerchant,
   activeVerifiedMerchantExistsSql,
 } = require('../utils/verified-merchant');
-const {
-  activeMerchantShopVisibleExistsSql,
-} = require('../utils/billing-entitlement');
 const { requireProjectContext } = require('../utils/project-context');
 
 function parseJsonArray(value) {
@@ -361,7 +358,6 @@ async function listPublicProducts(req, res) {
          WHERE ur.user_id = mp.user_id
            AND ${activeVerifiedMerchantExistsSql('ur')}
        )
-       AND ${activeMerchantShopVisibleExistsSql('mp.user_id')}
      LIMIT 1`,
     [merchantUserId]
   );
@@ -392,7 +388,6 @@ async function getActivePublicProduct(productId) {
          WHERE ur.user_id = p.merchant_user_id
            AND ${activeVerifiedMerchantExistsSql('ur')}
        )
-       AND ${activeMerchantShopVisibleExistsSql('p.merchant_user_id')}
      LIMIT 1`,
     [productId]
   );

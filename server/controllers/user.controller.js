@@ -688,12 +688,11 @@ async function getPublicMerchantProfile(req, res) {
          WHERE ur.user_id = mp.user_id
            AND ${activeVerifiedMerchantExistsSql('ur')}
        )
-       AND ${activeMerchantShopVisibleExistsSql('mp.user_id')}
      LIMIT 1`,
     [merchantUserId]
   );
   const row = rows[0];
-  if (!row) return error(res, '商家不存在或暂未开放展示', 404);
+  if (!row) return error(res, '商家不存在或暂未通过认证', 404);
   return success(res, {
     user_id: Number(row.user_id),
     nickname: row.nickname || '',

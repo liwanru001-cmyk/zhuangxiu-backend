@@ -4,9 +4,6 @@ const {
   hasActiveVerifiedMerchant,
   activeVerifiedMerchantExistsSql,
 } = require('../utils/verified-merchant');
-const {
-  activeMerchantShopVisibleExistsSql,
-} = require('../utils/billing-entitlement');
 
 const TAG_TYPES = new Set(['space', 'style']);
 const CITY_OPTIONS_BY_PROVINCE = {
@@ -500,7 +497,6 @@ async function listPublicMerchantCases(req, res) {
          WHERE ur.user_id = mc.merchant_id
            AND ${activeVerifiedMerchantExistsSql('ur')}
        )
-       AND ${activeMerchantShopVisibleExistsSql('mc.merchant_id')}
      ORDER BY mc.sort_order ASC, mc.updated_at DESC, mc.id DESC
      LIMIT ? OFFSET ?`,
     [...tagParams, merchantId, pageSize, offset]
@@ -516,8 +512,7 @@ async function listPublicMerchantCases(req, res) {
          SELECT 1 FROM user_roles ur
          WHERE ur.user_id = mc.merchant_id
            AND ${activeVerifiedMerchantExistsSql('ur')}
-       )
-       AND ${activeMerchantShopVisibleExistsSql('mc.merchant_id')}`,
+       )`,
     [...tagParams, merchantId]
   );
   const caseIds = rows.map((row) => Number(row.id));
@@ -551,7 +546,6 @@ async function getPublicMerchantCase(req, res) {
          WHERE ur.user_id = mc.merchant_id
            AND ${activeVerifiedMerchantExistsSql('ur')}
        )
-       AND ${activeMerchantShopVisibleExistsSql('mc.merchant_id')}
      LIMIT 1`,
     [caseId]
   );
