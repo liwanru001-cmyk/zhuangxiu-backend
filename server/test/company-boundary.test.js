@@ -138,19 +138,23 @@ test('public company case shares require verified company and approved project c
       if (queries.length === 2) {
         assert.match(sql, /COUNT\(\*\) AS total/);
         assert.match(sql, /company_projects/);
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.match(sql, /c\.owner_user_id/);
+        assert.match(sql, /c\.legacy_merchant_user_id/);
+        assert.deepEqual(params, [9, 9, 9, 9]);
         return [[{ total: 4 }]];
       }
       if (queries.length === 3) {
         assert.match(sql, /COUNT\(DISTINCT share\.project_id\) AS total/);
         assert.match(sql, /project_case_shares share/);
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.deepEqual(params, [9, 9, 9, 9]);
         return [[{ total: 1 }]];
       }
       assert.match(sql, /project_participants_ext ppe/);
       assert.match(sql, /company_members cm/);
+      assert.match(sql, /c\.owner_user_id/);
+      assert.match(sql, /c\.legacy_merchant_user_id/);
       assert.match(sql, /share\.status = 1/);
-      assert.deepEqual(params, [9, 9, 9]);
+      assert.deepEqual(params, [9, 9, 9, 9]);
       return [[{
         id: 3,
         project_id: 11,
