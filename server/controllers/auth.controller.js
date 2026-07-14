@@ -495,6 +495,21 @@ async function bindWechatMiniProgram(req, res) {
     return error(res, '授权手机号不一致，请更换授权微信号重新绑定', 409);
   }
 
+  const [currentWechatRows] = await db.query(
+    `SELECT id
+     FROM wechat_identities
+     WHERE user_id = ? AND platform = 'miniprogram'
+     LIMIT 1`,
+    [req.user.id]
+  );
+  if (currentWechatRows[0]) {
+    return success(res, {
+      bound: true,
+      already_bound: true,
+      phone,
+    }, '当前账号已同步微信账户，无需重复绑定');
+  }
+
   const bindResult = await bindWechatIdentitySafely({
     userId: req.user.id,
     appid: session.appid,
