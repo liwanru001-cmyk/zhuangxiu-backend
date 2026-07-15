@@ -45,7 +45,7 @@ function parseNullableCoordinate(value) {
 
 function normalizeMapProvider(value) {
   const provider = String(value || '').trim();
-  return provider === 'tianditu' ? provider : '';
+  return ['tianditu', 'tencent'].includes(provider) ? provider : '';
 }
 
 async function listBusinessCatalog(req, res) {
