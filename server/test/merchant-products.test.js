@@ -220,10 +220,7 @@ test('merchant product favorite creates one user product favorite', async () => 
   const writes = [];
   const dbMock = {
     async query(sql, params) {
-      if (/FROM renovation_projects p/.test(sql)) {
-        assert.deepEqual(params, [7, 3, 7]);
-        return [[{ id: 3, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
-      }
+      assert.doesNotMatch(sql, /FROM renovation_projects p/);
       if (/FROM merchant_products p/.test(sql) && /WHERE p\.id = \?/.test(sql)) {
         assert.deepEqual(params, [9]);
         return [[{
@@ -261,7 +258,7 @@ test('merchant product favorite creates one user product favorite', async () => 
   await controller.favoriteProduct({
     user: { id: 7 },
     params: { id: '9' },
-    body: { project_id: 3 },
+    body: {},
   }, res);
 
   assert.equal(res.statusCode, 200);
@@ -272,9 +269,7 @@ test('merchant product favorite creates one user product favorite', async () => 
 test('merchant product favorite rejects own product', async () => {
   const dbMock = {
     async query(sql) {
-      if (/FROM renovation_projects p/.test(sql)) {
-        return [[{ id: 3, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
-      }
+      assert.doesNotMatch(sql, /FROM renovation_projects p/);
       if (/FROM merchant_products p/.test(sql) && /WHERE p\.id = \?/.test(sql)) {
         return [[{
           id: 9,
@@ -293,7 +288,7 @@ test('merchant product favorite rejects own product', async () => {
   await controller.favoriteProduct({
     user: { id: 7 },
     params: { id: '9' },
-    body: { project_id: 3 },
+    body: {},
   }, res);
 
   assert.equal(res.statusCode, 400);

@@ -1,6 +1,6 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
-const { requireProjectContext } = require('../utils/project-context');
+const { resolveProjectContext } = require('../utils/project-context');
 
 const validTargetTypes = new Set(['company', 'professional', 'user']);
 const validSourcePages = new Set(['marketplace', 'profile', 'project']);
@@ -123,9 +123,7 @@ async function resolveConsultationTarget(targetType, targetId) {
 }
 
 async function createUnifiedConsultation(req, res) {
-  const projectContext = await requireProjectContext(req, res, {
-    missingMessage: '咨询必须绑定装修项目，请选择项目后再发送',
-  });
+  const projectContext = await resolveProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
 
   const targetType = String(req.body.target_type || '').trim();
@@ -167,12 +165,13 @@ async function createUnifiedConsultation(req, res) {
     const [consultationResult] = await connection.query(
       `INSERT INTO designer_consultations
        (designer_id, target_role, user_id, content, has_project, status)
-       VALUES (?, ?, ?, ?, 1, 'pending')`,
+       VALUES (?, ?, ?, ?, ?, 'pending')`,
       [
         target.recipientUserId,
         target.targetRole,
         req.user.id,
         message,
+        projectContext.projectId ? 1 : 0,
       ]
     );
     consultationId = consultationResult.insertId;
@@ -204,7 +203,7 @@ async function createUnifiedConsultation(req, res) {
       ]
     );
     targetRecordId = targetResult.insertId;
-    await connection.query(
+    if (projectContext.projectId) await connection.query(
       `INSERT IGNORE INTO entity_relations
          (source_type, source_id, target_type, target_id, relation_type, role_label)
        VALUES ('consultation', ?, 'project', ?, 'participant', 'project_context')`,
@@ -220,14 +219,14 @@ async function createUnifiedConsultation(req, res) {
           source: 'consultation',
           targetRole: target.targetRole,
           consultationId,
-          projectId: projectContext.projectId,
+          projectId: projectContext.projectId || null,
           requesterUserId: req.user.id,
           title: targetType === 'company' ? '新的公司咨询' : '新的咨询',
           content: targetType === 'company'
             ? '你收到一条新的装修公司咨询'
             : '你收到一条新的站内咨询',
           route: 'consultation_chat',
-          deepLink: { consultationId, projectId: projectContext.projectId },
+          deepLink: { consultationId, projectId: projectContext.projectId || null },
           entityType: 'consultation',
           entityId: consultationId,
         }),
@@ -245,7 +244,7 @@ async function createUnifiedConsultation(req, res) {
     id: consultationId,
     consultation_id: consultationId,
     target_record_id: targetRecordId,
-    project_id: projectContext.projectId,
+    project_id: projectContext.projectId || null,
     target_type: targetType,
     target_id: targetId,
     business_catalog_id: businessCatalogId,

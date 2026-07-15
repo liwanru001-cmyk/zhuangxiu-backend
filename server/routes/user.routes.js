@@ -147,7 +147,7 @@ router.get('/designer-profile', asyncHandler(auth), asyncHandler(userController.
 router.put('/designer-profile', asyncHandler(auth), asyncHandler(userController.upsertDesignerProfile));
 router.get('/project-manager-profile', asyncHandler(auth), asyncHandler(userController.getProjectManagerProfile));
 router.put('/project-manager-profile', asyncHandler(auth), asyncHandler(userController.upsertProjectManagerProfile));
-router.get('/merchants', asyncHandler(userController.listPublicMerchants));
+router.get('/merchants', asyncHandler(auth), asyncHandler(userController.listPublicMerchants));
 router.get('/merchants/:id/profile', asyncHandler(auth), asyncHandler(userController.getPublicMerchantProfile));
 router.get('/merchant-profile', asyncHandler(auth), asyncHandler(userController.getMerchantProfile));
 router.put('/merchant-profile', asyncHandler(auth), asyncHandler(userController.upsertMerchantProfile));
@@ -192,9 +192,10 @@ router.post(
   setUploadedFilePermissions,
   asyncHandler(merchantProductsController.uploadProductImage)
 );
-router.get('/merchants/:id/cases', asyncHandler(merchantCasesController.listPublicMerchantCases));
-router.get('/merchant-cases/:id', asyncHandler(merchantCasesController.getPublicMerchantCase));
-router.get('/:userId/merchant-products', asyncHandler(merchantProductsController.listPublicProducts));
+router.get('/merchants/:id/cases', asyncHandler(auth), asyncHandler(merchantCasesController.listPublicMerchantCases));
+router.get('/merchant-cases/:id', asyncHandler(auth), asyncHandler(merchantCasesController.getPublicMerchantCase));
+router.get('/merchant-products/:id/public', asyncHandler(auth), asyncHandler(merchantProductsController.getPublicProduct));
+router.get('/:userId/merchant-products', asyncHandler(auth), asyncHandler(merchantProductsController.listPublicProducts));
 router.get('/designer-consultations', asyncHandler(auth), asyncHandler(userController.getDesignerConsultations));
 router.get('/my-consultations', asyncHandler(auth), asyncHandler(userController.getMyConsultations));
 router.get('/consultation-conversations', asyncHandler(auth), asyncHandler(userController.getConsultationConversations));
