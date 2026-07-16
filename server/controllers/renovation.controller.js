@@ -2069,6 +2069,16 @@ async function deleteProjectSpace(req, res) {
   if (!(await canAccessProject(projectId, req.user.id))) {
     return error(res, '项目不存在或无权限', 404);
   }
+  const [spaces] = await db.query(
+    'SELECT id FROM project_spaces WHERE id = ? AND project_id = ?',
+    [spaceId, projectId]
+  );
+  if (!spaces[0]) return error(res, '空间不存在', 404);
+  try {
+    await assertProjectSpaceIsEmpty(projectId, spaceId);
+  } catch (spaceError) {
+    return error(res, spaceError.message || '空间内还有资料');
+  }
   if (!(await requireProjectOwner(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'delete_space', {
       space_id: spaceId,
@@ -4219,6 +4229,7 @@ async function createProjectExpense(req, res) {
   const paymentMethod = String(req.body.payment_method || 'other');
   const payee = String(req.body.payee || '').trim().slice(0, 120);
   const note = String(req.body.note || '').trim().slice(0, 1000);
+  const linkUrl = String(req.body.link_url || '').trim().slice(0, 500);
   const status = String(req.body.status || 'paid');
   const files = req.files || [];
 
@@ -4487,9 +4498,9 @@ async function getProjectDesignDocuments(req, res) {
       is_current: Boolean(row.is_current),
       status: row.status,
       title: row.title,
-      file_url: row.file_url,
-      preview_url: row.preview_url,
-      thumbnail_url: row.thumbnail_url,
+      file_url: normalizeDesignStorageUrl(row.file_url, req),
+      preview_url: normalizeDesignStorageUrl(row.preview_url, req),
+      thumbnail_url: normalizeDesignStorageUrl(row.thumbnail_url, req),
       preview_status: row.preview_status,
       preview_type: row.preview_type,
       created_at: row.created_at,
@@ -4505,6 +4516,10 @@ async function getProjectDesignDocuments(req, res) {
       const groupId = row.version_group_id || row.id;
       return {
         ...row,
+        original_name: normalizeUploadedOriginalName(row.original_name),
+        file_url: normalizeDesignStorageUrl(row.file_url, req),
+        preview_url: normalizeDesignStorageUrl(row.preview_url, req),
+        thumbnail_url: normalizeDesignStorageUrl(row.thumbnail_url, req),
         version_group_id: groupId,
         is_current: row.is_current === null || row.is_current === undefined
           ? true
@@ -4541,6 +4556,19 @@ function normalizeUploadedOriginalName(originalName) {
   } catch (_) {
     return value;
   }
+}
+
+function normalizeDesignStorageUrl(value, req) {
+  const raw = String(value || '').trim();
+  if (!raw) return value;
+  let pathname = raw;
+  try {
+    pathname = new URL(raw).pathname;
+  } catch (_) {}
+  if (pathname.startsWith('/storage/')) {
+    return `${req.protocol}://${req.get('host')}/api${pathname}`;
+  }
+  return value;
 }
 
 async function getProjectDesignDocumentQuotaError(projectId, userId) {
@@ -4989,6 +5017,41 @@ async function getProjectHandovers(req, res) {
     if (!documentMap.has(item.disclosure_id)) documentMap.set(item.disclosure_id, []);
     documentMap.get(item.disclosure_id).push(item);
   }
+  const [notes] = await db.query(
+    `SELECT note.id, note.project_id, note.handover_id, note.content,
+            note.created_by, note.created_at, author.nickname AS creator_name,
+            author.avatar AS creator_avatar
+     FROM project_handover_notes note
+     JOIN users author ON author.id = note.created_by
+     WHERE note.handover_id IN (${ids.map(() => '?').join(', ')})
+     ORDER BY note.created_at ASC, note.id ASC`,
+    ids
+  );
+  const noteMap = new Map();
+  const noteIds = notes.map((item) => item.id);
+  let noteMedia = [];
+  if (noteIds.length) {
+    const [rows] = await db.query(
+      `SELECT id, note_id, media_type, media_url, uploaded_by, created_at
+       FROM project_handover_note_media
+       WHERE note_id IN (${noteIds.map(() => '?').join(', ')})
+       ORDER BY id`,
+      noteIds
+    );
+    noteMedia = rows;
+  }
+  const noteMediaMap = new Map();
+  for (const item of noteMedia) {
+    if (!noteMediaMap.has(item.note_id)) noteMediaMap.set(item.note_id, []);
+    noteMediaMap.get(item.note_id).push(item);
+  }
+  for (const item of notes) {
+    if (!noteMap.has(item.handover_id)) noteMap.set(item.handover_id, []);
+    noteMap.get(item.handover_id).push({
+      ...item,
+      media: noteMediaMap.get(item.id) || [],
+    });
+  }
   return success(
     res,
     rows.map((item) => ({
@@ -4996,8 +5059,68 @@ async function getProjectHandovers(req, res) {
       stage_name: stages.find((stage) => stage.id === Number(item.stage_id))?.name || null,
       media: mediaMap.get(item.id) || [],
       design_documents: documentMap.get(item.id) || [],
+      notes: noteMap.get(item.id) || [],
     }))
   );
+}
+
+async function createProjectHandoverNote(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const handoverId = Number(req.params.handoverId);
+  const files = req.files || [];
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) {
+    await removeUploadedFiles(files);
+    return error(res, '只有当前项目成员可以添加备注', 403);
+  }
+  const content = String(req.body.content || '').trim().slice(0, 1000);
+  if (!content && files.length === 0) {
+    return error(res, '请填写备注文字或添加照片');
+  }
+  const [handovers] = await db.query(
+    'SELECT id FROM project_handovers WHERE id = ? AND project_id = ?',
+    [handoverId, projectId]
+  );
+  if (!handovers.length) {
+    await removeUploadedFiles(files);
+    return error(res, '设计交底不存在', 404);
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `INSERT INTO project_handover_notes
+       (project_id, handover_id, content, created_by)
+       VALUES (?, ?, ?, ?)`,
+      [projectId, handoverId, content || null, req.user.id]
+    );
+    if (files.length) {
+      const host = `${req.protocol}://${req.get('host')}`;
+      await connection.query(
+        `INSERT INTO project_handover_note_media
+         (note_id, media_type, media_url, uploaded_by)
+         VALUES ${files.map(() => '(?, ?, ?, ?)').join(', ')}`,
+        files.flatMap((file) => [
+          result.insertId,
+          'image',
+          `${host}/uploads/handover-notes/${file.filename}`,
+          req.user.id,
+        ])
+      );
+    }
+    await connection.commit();
+    return success(res, { id: result.insertId }, '备注已添加');
+  } catch (noteError) {
+    await connection.rollback();
+    await removeUploadedFiles(files);
+    throw noteError;
+  } finally {
+    connection.release();
+  }
 }
 
 async function getProjectDesignHandoverItems(req, res) {
@@ -5100,6 +5223,7 @@ async function createProjectHandover(req, res) {
   }
   const title = String(req.body.title || '').trim().slice(0, 120);
   const content = String(req.body.content || '').trim().slice(0, 3000);
+  const linkUrl = String(req.body.link_url || '').trim().slice(0, 500);
   const stageId = req.body.stage_id ? Number(req.body.stage_id) : null;
   const targetUserId = req.body.target_user_id
     ? Number(req.body.target_user_id)
@@ -5131,6 +5255,10 @@ async function createProjectHandover(req, res) {
     await removeUploadedFiles(files);
     return error(res, '请填写设计交底内容');
   }
+  if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+    await removeUploadedFiles(files);
+    return error(res, '补充资料链接必须以 http:// 或 https:// 开头');
+  }
   if (stageId !== null && !stages.some((stage) => stage.id === stageId)) {
     await removeUploadedFiles(files);
     return error(res, '装修阶段不正确');
@@ -5139,14 +5267,14 @@ async function createProjectHandover(req, res) {
     const member = await requireActiveProjectMember(projectId, targetUserId);
     if (!member) {
       await removeUploadedFiles(files);
-      return error(res, '项目经理不是项目成员');
-    }
-    if (member.role !== 'project_manager') {
-      await removeUploadedFiles(files);
-      return error(res, '设计交底确认人必须是项目经理');
+      return error(res, '指定人员不是当前项目成员');
     }
   }
   let referencedDocuments = [];
+  if (!designDocumentIds.length) {
+    await removeUploadedFiles(files);
+    return error(res, '请选择引用设计资料');
+  }
   if (designDocumentIds.length) {
     const [documents] = await db.query(
       `SELECT id, project_id, version_group_id, version_no, title, file_url,
@@ -5159,12 +5287,10 @@ async function createProjectHandover(req, res) {
       await removeUploadedFiles(files);
       return error(res, '引用的设计资料不存在');
     }
-    const invalidReference = documents.find(
-      (document) => document.status !== 'confirmed' || !Boolean(document.is_current)
-    );
+    const invalidReference = documents.find((document) => !Boolean(document.is_current));
     if (invalidReference) {
       await removeUploadedFiles(files);
-      return error(res, '设计交底只能引用当前已确认版本的设计资料');
+      return error(res, '设计交底只能引用当前版本的设计资料');
     }
     referencedDocuments = documents;
   }
@@ -5178,16 +5304,21 @@ async function createProjectHandover(req, res) {
        VALUES (?, ?, ?, ?, ?, 'pending_confirm', ?)`,
       [projectId, stageId, title, content, targetUserId, req.user.id]
     );
-    if (files.length) {
+    if (files.length || linkUrl) {
       const host = `${req.protocol}://${req.get('host')}`;
+      const mediaRows = files.map((file) => ({
+        type: file.mimetype.startsWith('image/') ? 'image' : 'file',
+        url: `${host}/uploads/handovers/${file.filename}`,
+      }));
+      if (linkUrl) mediaRows.push({ type: 'link', url: linkUrl });
       await connection.query(
         `INSERT INTO project_handover_media
          (handover_id, media_type, media_url, uploaded_by)
-         VALUES ${files.map(() => '(?, ?, ?, ?)').join(', ')}`,
-        files.flatMap((file) => [
+         VALUES ${mediaRows.map(() => '(?, ?, ?, ?)').join(', ')}`,
+        mediaRows.flatMap((media) => [
           result.insertId,
-          'image',
-          `${host}/uploads/handovers/${file.filename}`,
+          media.type,
+          media.url,
           req.user.id,
         ])
       );
@@ -5256,10 +5387,10 @@ async function updateProjectHandoverStatus(req, res) {
   }
   const canReview =
     isOwnerSideRole(role) ||
-    (role === 'project_manager' &&
+    (['project_manager', 'project_supervisor', 'supervisor', 'manager'].includes(role) &&
       (!handover.target_user_id ||
         Number(handover.target_user_id) === Number(req.user.id)));
-  if (!canReview) return error(res, '只有业主方或指定项目经理可以确认或要求补充设计交底', 403);
+  if (!canReview) return error(res, '只有业主方或指定项目成员可以确认或要求补充设计交底', 403);
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -5347,6 +5478,41 @@ async function getProjectMaterials(req, res) {
     if (!mediaMap.has(item.material_id)) mediaMap.set(item.material_id, []);
     mediaMap.get(item.material_id).push(item);
   }
+  const [notes] = await db.query(
+    `SELECT note.id, note.project_id, note.material_id, note.content,
+            note.created_by, note.created_at, author.nickname AS creator_name,
+            author.avatar AS creator_avatar
+     FROM project_material_notes note
+     JOIN users author ON author.id = note.created_by
+     WHERE note.material_id IN (${ids.map(() => '?').join(', ')})
+     ORDER BY note.created_at ASC, note.id ASC`,
+    ids
+  );
+  const noteIds = notes.map((item) => item.id);
+  let noteMedia = [];
+  if (noteIds.length) {
+    const [rows] = await db.query(
+      `SELECT id, note_id, media_type, media_url, uploaded_by, created_at
+       FROM project_material_note_media
+       WHERE note_id IN (${noteIds.map(() => '?').join(', ')})
+       ORDER BY id`,
+      noteIds
+    );
+    noteMedia = rows;
+  }
+  const noteMediaMap = new Map();
+  for (const item of noteMedia) {
+    if (!noteMediaMap.has(item.note_id)) noteMediaMap.set(item.note_id, []);
+    noteMediaMap.get(item.note_id).push(item);
+  }
+  const noteMap = new Map();
+  for (const item of notes) {
+    if (!noteMap.has(item.material_id)) noteMap.set(item.material_id, []);
+    noteMap.get(item.material_id).push({
+      ...item,
+      media: noteMediaMap.get(item.id) || [],
+    });
+  }
   return success(
     res,
     rows.map((item) => ({
@@ -5354,8 +5520,104 @@ async function getProjectMaterials(req, res) {
       budget_total: multiplyMoney(item.quantity, item.budget_unit_price),
       actual_total: multiplyMoney(item.quantity, item.actual_unit_price),
       media: mediaMap.get(item.id) || [],
+      notes: noteMap.get(item.id) || [],
     }))
   );
+}
+
+async function createProjectMaterialNote(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const materialId = Number(req.params.materialId);
+  const files = req.files || [];
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) {
+    await removeUploadedFiles(files);
+    return error(res, '只有当前项目成员可以添加备注', 403);
+  }
+  const content = String(req.body.content || '').trim().slice(0, 1000);
+  if (!content && files.length === 0) return error(res, '请填写备注文字或添加照片');
+  const [materials] = await db.query(
+    'SELECT id FROM project_material_items WHERE id = ? AND project_id = ?',
+    [materialId, projectId]
+  );
+  if (!materials.length) {
+    await removeUploadedFiles(files);
+    return error(res, '材料信息不存在', 404);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `INSERT INTO project_material_notes
+       (project_id, material_id, content, created_by)
+       VALUES (?, ?, ?, ?)`,
+      [projectId, materialId, content || null, req.user.id]
+    );
+    if (files.length) {
+      const host = `${req.protocol}://${req.get('host')}`;
+      await connection.query(
+        `INSERT INTO project_material_note_media
+         (note_id, media_type, media_url, uploaded_by)
+         VALUES ${files.map(() => '(?, ?, ?, ?)').join(', ')}`,
+        files.flatMap((file) => [
+          result.insertId,
+          'image',
+          `${host}/uploads/material-notes/${file.filename}`,
+          req.user.id,
+        ])
+      );
+    }
+    await connection.commit();
+    return success(res, { id: result.insertId }, '备注已添加');
+  } catch (noteError) {
+    await connection.rollback();
+    await removeUploadedFiles(files);
+    throw noteError;
+  } finally {
+    connection.release();
+  }
+}
+
+async function createProjectMaterialSupplement(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const materialId = Number(req.params.materialId);
+  const files = req.files || [];
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) {
+    await removeUploadedFiles(files);
+    return error(res, '只有当前项目成员可以补充材料资料', 403);
+  }
+  const linkUrl = String(req.body.link_url || '').trim().slice(0, 500);
+  if (!files.length && !linkUrl) return error(res, '请选择文件或填写链接');
+  if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+    await removeUploadedFiles(files);
+    return error(res, '资料链接必须以 http:// 或 https:// 开头');
+  }
+  const [materials] = await db.query(
+    'SELECT id FROM project_material_items WHERE id = ? AND project_id = ?',
+    [materialId, projectId]
+  );
+  if (!materials.length) {
+    await removeUploadedFiles(files);
+    return error(res, '材料信息不存在', 404);
+  }
+  const host = `${req.protocol}://${req.get('host')}`;
+  const rows = files.map((file) => ({
+    type: file.mimetype.startsWith('image/') ? 'image' : 'file',
+    url: `${host}/uploads/materials/${file.filename}`,
+  }));
+  if (linkUrl) rows.push({ type: 'link', url: linkUrl });
+  await db.query(
+    `INSERT INTO project_material_media
+     (material_id, media_type, media_url, uploaded_by)
+     VALUES ${rows.map(() => '(?, ?, ?, ?)').join(', ')}`,
+    rows.flatMap((item) => [materialId, item.type, item.url, req.user.id])
+  );
+  return success(res, null, '补充资料已添加');
 }
 
 async function createProjectMaterial(req, res) {
@@ -5365,13 +5627,13 @@ async function createProjectMaterial(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   const files = req.files || [];
-  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
+  if (!role) {
     await removeUploadedFiles(files);
     return error(res, '项目不存在或无新建权限', 404);
   }
   if (files.length > PROJECT_UPLOAD_QUOTAS.materialImageLimit) {
     await removeUploadedFiles(files);
-    return error(res, `材料图片最多上传 ${PROJECT_UPLOAD_QUOTAS.materialImageLimit} 张`);
+    return error(res, `辅助材料最多上传 ${PROJECT_UPLOAD_QUOTAS.materialImageLimit} 个文件`);
   }
   const todayMaterialImages = await countRows(
     `SELECT COUNT(*) AS total
@@ -5383,7 +5645,7 @@ async function createProjectMaterial(req, res) {
   );
   if (todayMaterialImages + files.length > PROJECT_UPLOAD_QUOTAS.materialImagesDailyLimit) {
     await removeUploadedFiles(files);
-    return error(res, `同一项目每天最多上传 ${PROJECT_UPLOAD_QUOTAS.materialImagesDailyLimit} 张材料图片，请明天再试`, 429);
+    return error(res, `同一项目每天最多上传 ${PROJECT_UPLOAD_QUOTAS.materialImagesDailyLimit} 个材料文件，请明天再试`, 429);
   }
   const name = String(req.body.name || '').trim().slice(0, 120);
   const category = String(req.body.category || 'other');
@@ -5401,6 +5663,10 @@ async function createProjectMaterial(req, res) {
   if (!name) {
     await removeUploadedFiles(files);
     return error(res, '请填写材料名称');
+  }
+  if (linkUrl && !/^https?:\/\//i.test(linkUrl)) {
+    await removeUploadedFiles(files);
+    return error(res, '辅助材料链接必须以 http:// 或 https:// 开头');
   }
   if (!materialCategories.has(category)) {
     await removeUploadedFiles(files);
@@ -5458,16 +5724,21 @@ async function createProjectMaterial(req, res) {
         req.user.id,
       ]
     );
-    if (files.length) {
+    if (files.length || linkUrl) {
       const host = `${req.protocol}://${req.get('host')}`;
+      const mediaRows = files.map((file) => ({
+        type: file.mimetype.startsWith('image/') ? 'image' : 'file',
+        url: `${host}/uploads/materials/${file.filename}`,
+      }));
+      if (linkUrl) mediaRows.push({ type: 'link', url: linkUrl });
       await connection.query(
         `INSERT INTO project_material_media
          (material_id, media_type, media_url, uploaded_by)
-         VALUES ${files.map(() => '(?, ?, ?, ?)').join(', ')}`,
-        files.flatMap((file) => [
+         VALUES ${mediaRows.map(() => '(?, ?, ?, ?)').join(', ')}`,
+        mediaRows.flatMap((media) => [
           result.insertId,
-          'image',
-          `${host}/uploads/materials/${file.filename}`,
+          media.type,
+          media.url,
           req.user.id,
         ])
       );
@@ -7158,6 +7429,7 @@ async function updateProjectProgressItem(req, res) {
         content: item.title,
         route: 'project_progress',
         deepLink: { projectId, progressItemId: itemId },
+        detailData: { changes },
       });
     }
   }
@@ -8662,9 +8934,12 @@ module.exports = {
   getProjectHandovers,
   getProjectDesignHandoverItems,
   createProjectHandover,
+  createProjectHandoverNote,
   updateProjectHandoverStatus,
   getProjectMaterials,
   createProjectMaterial,
+  createProjectMaterialNote,
+  createProjectMaterialSupplement,
   confirmProjectMaterial,
   getProjectTodos,
   createProjectActionItem,

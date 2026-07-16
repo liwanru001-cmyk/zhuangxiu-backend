@@ -237,10 +237,32 @@ const handoverMediaUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024, files: 6 },
+  limits: { fileSize: 20 * 1024 * 1024, files: 6 },
   fileFilter: (req, file, callback) => {
-    callback(null, file.mimetype.startsWith('image/'));
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowed = new Set([
+      '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.doc', '.docx',
+      '.xls', '.xlsx', '.dwg', '.dxf', '.zip', '.rar', '.7z', '.txt'
+    ]);
+    callback(null, file.mimetype.startsWith('image/') || allowed.has(extension));
   },
+});
+const handoverNoteMediaDir = ensureUploadDir(
+  path.join(__dirname, '..', 'uploads', 'handover-notes')
+);
+const handoverNoteMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: handoverNoteMediaDir,
+    filename: (req, file, callback) => {
+      const extension = path.extname(file.originalname).toLowerCase() || '.jpg';
+      callback(
+        null,
+        `handover-note-project-${req.params.id}-user-${req.user.id}-${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`
+      );
+    },
+  }),
+  limits: { fileSize: 15 * 1024 * 1024, files: 6 },
+  fileFilter: (req, file, callback) => callback(null, file.mimetype.startsWith('image/')),
 });
 const materialMediaDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'materials')
@@ -258,8 +280,30 @@ const materialMediaUpload = multer({
   }),
   limits: { fileSize: 15 * 1024 * 1024, files: 6 },
   fileFilter: (req, file, callback) => {
-    callback(null, file.mimetype.startsWith('image/'));
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowed = new Set([
+      '.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf', '.doc', '.docx',
+      '.xls', '.xlsx', '.dwg', '.dxf', '.zip', '.rar', '.7z', '.txt'
+    ]);
+    callback(null, file.mimetype.startsWith('image/') || allowed.has(extension));
   },
+});
+const materialNoteMediaDir = ensureUploadDir(
+  path.join(__dirname, '..', 'uploads', 'material-notes')
+);
+const materialNoteMediaUpload = multer({
+  storage: multer.diskStorage({
+    destination: materialNoteMediaDir,
+    filename: (req, file, callback) => {
+      const extension = path.extname(file.originalname).toLowerCase() || '.jpg';
+      callback(
+        null,
+        `material-note-project-${req.params.id}-user-${req.user.id}-${Date.now()}-${Math.round(Math.random() * 1e9)}${extension}`
+      );
+    },
+  }),
+  limits: { fileSize: 15 * 1024 * 1024, files: 6 },
+  fileFilter: (req, file, callback) => callback(null, file.mimetype.startsWith('image/')),
 });
 
 // 公开/基础
@@ -625,6 +669,13 @@ router.put(
   ...protectedRoute,
   asyncHandler(controller.updateProjectHandoverStatus)
 );
+router.post(
+  '/projects/:id/handovers/:handoverId/notes',
+  ...protectedRoute,
+  handoverNoteMediaUpload.array('images', 6),
+  setUploadedFilePermissions,
+  asyncHandler(controller.createProjectHandoverNote)
+);
 router.get(
   '/projects/:id/materials',
   ...protectedRoute,
@@ -636,6 +687,20 @@ router.post(
   materialMediaUpload.array('images', 6),
   setUploadedFilePermissions,
   asyncHandler(controller.createProjectMaterial)
+);
+router.post(
+  '/projects/:id/materials/:materialId/notes',
+  ...protectedRoute,
+  materialNoteMediaUpload.array('images', 6),
+  setUploadedFilePermissions,
+  asyncHandler(controller.createProjectMaterialNote)
+);
+router.post(
+  '/projects/:id/materials/:materialId/media',
+  ...protectedRoute,
+  materialMediaUpload.array('files', 6),
+  setUploadedFilePermissions,
+  asyncHandler(controller.createProjectMaterialSupplement)
 );
 router.put(
   '/projects/:id/materials/:materialId/confirm',

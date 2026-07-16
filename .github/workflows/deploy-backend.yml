@@ -447,6 +447,8 @@ jobs:
             node scripts/run-migration.js migrations/20260713_project_checkin_member_shares.sql
             node scripts/run-migration.js migrations/20260714_wechat_miniprogram_identities.sql
             node scripts/run-migration.js migrations/20260714_wechat_binding_appeals.sql
+            node scripts/run-migration.js migrations/20260716_project_handover_notes.sql
+            node scripts/run-migration.js migrations/20260716_project_material_notes.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true

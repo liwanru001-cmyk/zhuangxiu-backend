@@ -1709,6 +1709,7 @@ async function getNotifications(req, res) {
       item_status: row.item_status,
       route: ['project_event', 'consultation'].includes(row.event_type) ? payload.route || null : null,
       deep_link: ['project_event', 'consultation'].includes(row.event_type) ? payload.deepLink || null : null,
+      detail_data: row.event_type === 'project_event' ? payload.detailData || null : null,
       entity_type: ['project_event', 'consultation'].includes(row.event_type) ? payload.entityType || null : null,
       entity_id: ['project_event', 'consultation'].includes(row.event_type) ? payload.entityId || null : null,
       is_read: Boolean(row.read_at),

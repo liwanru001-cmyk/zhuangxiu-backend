@@ -43,6 +43,7 @@ async function emitProjectEvent(eventType, payload, executor = db) {
     content: payload.content,
     route: payload.route || null,
     deepLink: payload.deepLink || null,
+    detailData: payload.detailData || null,
   };
 
   await executor.query(

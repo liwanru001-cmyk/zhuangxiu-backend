@@ -3,7 +3,7 @@ const path = require('path');
 const sharp = require('sharp');
 
 const storageRoot = path.join(__dirname, '..', 'storage');
-const publicPrefix = '/storage';
+const publicPrefix = '/api/storage';
 
 function publicBaseUrl(req) {
   return `${req.protocol}://${req.get('host')}`;

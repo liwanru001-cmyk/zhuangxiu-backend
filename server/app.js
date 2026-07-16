@@ -48,6 +48,7 @@ const allowCrossOriginStaticResource = (req, res, next) => {
 };
 app.use('/api/uploads', allowCrossOriginStaticResource, express.static(path.join(__dirname, 'uploads')));
 app.use('/uploads', allowCrossOriginStaticResource, express.static(path.join(__dirname, 'uploads')));
+app.use('/api/storage', allowCrossOriginStaticResource, express.static(path.join(__dirname, 'storage')));
 app.use('/storage', allowCrossOriginStaticResource, express.static(path.join(__dirname, 'storage')));
 
 // 全局限流
