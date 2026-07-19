@@ -475,7 +475,13 @@ async function createDashboardCase(req, res) {
     return success(res, await getCaseForMerchant(result.insertId, req.user.id), '案例已创建');
   } catch (err) {
     await connection.rollback();
-    throw err;
+    const diagnosticCode = normalizeString(err.code || 'CASE_CREATE', 40);
+    console.error('merchant case create failed', {
+      merchantId: req.user.id,
+      code: diagnosticCode,
+      message: err.message || String(err),
+    });
+    return error(res, `案例数据写入失败（诊断码：${diagnosticCode}）`, 500);
   } finally {
     connection.release();
   }
@@ -519,7 +525,14 @@ async function updateDashboardCase(req, res) {
     return success(res, await getCaseForMerchant(caseId, req.user.id), '案例已保存');
   } catch (err) {
     await connection.rollback();
-    throw err;
+    const diagnosticCode = normalizeString(err.code || 'CASE_UPDATE', 40);
+    console.error('merchant case update failed', {
+      caseId,
+      merchantId: req.user.id,
+      code: diagnosticCode,
+      message: err.message || String(err),
+    });
+    return error(res, `案例数据写入失败（诊断码：${diagnosticCode}）`, 500);
   } finally {
     connection.release();
   }
