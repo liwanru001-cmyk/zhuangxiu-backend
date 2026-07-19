@@ -258,6 +258,7 @@ async function ensureAppTables() {
       image_urls JSON DEFAULT NULL,
       summary VARCHAR(300) DEFAULT NULL,
       description TEXT DEFAULT NULL,
+      content_delta JSON DEFAULT NULL,
       brand VARCHAR(120) DEFAULT NULL,
       spec VARCHAR(200) DEFAULT NULL,
       price_text VARCHAR(80) DEFAULT NULL,

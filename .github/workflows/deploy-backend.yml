@@ -422,6 +422,24 @@ jobs:
             . ./.env
             set +a
 
+            if ! command -v mysqldump >/dev/null 2>&1; then
+              echo "mysqldump is required before database migrations"
+              exit 1
+            fi
+            db_backup_dir="$APP_DIR/storage/db-backups"
+            mkdir -p "$db_backup_dir"
+            db_backup_file="$db_backup_dir/pre-case-product-$(date +%Y%m%d_%H%M%S).sql.gz"
+            echo "Creating database backup: $db_backup_file"
+            MYSQL_PWD="$DB_PASSWORD" mysqldump \
+              --host="$DB_HOST" \
+              --port="${DB_PORT:-3306}" \
+              --user="$DB_USER" \
+              --single-transaction \
+              --quick \
+              --skip-lock-tables \
+              "$DB_NAME" | gzip -c > "$db_backup_file"
+            test -s "$db_backup_file"
+
             # Keep backend business migrations explicit and ordered.
             node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
             node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
@@ -449,6 +467,9 @@ jobs:
             node scripts/run-migration.js migrations/20260714_wechat_binding_appeals.sql
             node scripts/run-migration.js migrations/20260716_project_handover_notes.sql
             node scripts/run-migration.js migrations/20260716_project_material_notes.sql
+            node scripts/run-migration.js migrations/20260718_merchant_case_content_delta.sql
+            node scripts/run-migration.js migrations/20260718_merchant_case_link.sql
+            node scripts/run-migration.js migrations/20260719_merchant_product_content_delta.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true

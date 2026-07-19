@@ -1,4 +1,7 @@
 const db = require('../config/db');
+const fs = require('fs/promises');
+const path = require('path');
+const sharp = require('sharp');
 const { success, error } = require('../utils/response');
 const {
   hasActiveVerifiedMerchant,
@@ -37,6 +40,51 @@ function normalizeImageUrls(value) {
     .slice(0, 12);
 }
 
+function normalizeContentDelta(value) {
+  const source = parseJsonArray(value);
+  const operations = [];
+  let imageCount = 0;
+  let consecutiveNewlines = 0;
+  const inline = new Set(['bold', 'italic', 'underline', 'strike', 'color', 'background']);
+  const block = new Set(['header', 'list', 'blockquote', 'align', 'indent', 'direction']);
+  for (const operation of source) {
+    if (!operation || typeof operation !== 'object' || !('insert' in operation)) continue;
+    const attributes = {};
+    for (const [key, attributeValue] of Object.entries(operation.attributes || {})) {
+      if (inline.has(key) || block.has(key)) attributes[key] = attributeValue;
+    }
+    if (typeof operation.insert === 'string') {
+      let text = '';
+      for (const character of operation.insert.replace(/\r\n?/g, '\n').replace(/[ \t]+\n/g, '\n')) {
+        if (character === '\n') {
+          consecutiveNewlines += 1;
+          if (consecutiveNewlines <= 3) text += character;
+        } else {
+          consecutiveNewlines = 0;
+          text += character;
+        }
+      }
+      if (text) operations.push(Object.keys(attributes).length ? { insert: text, attributes } : { insert: text });
+    } else if (operation.insert && typeof operation.insert.image === 'string') {
+      imageCount += 1;
+      if (imageCount > 15) return { error: '产品图文详情配图最多 15 张' };
+      const url = normalizeString(operation.insert.image, 500);
+      if (url) operations.push({ insert: { image: url } });
+      consecutiveNewlines = 0;
+    }
+  }
+  const textLength = [...operations
+    .filter((operation) => typeof operation.insert === 'string')
+    .map((operation) => operation.insert)
+    .join('').trim()].length;
+  if (textLength > 1500) return { error: '产品图文详情文字最多 1500 字' };
+  if (operations.length &&
+      (typeof operations.at(-1).insert !== 'string' || !operations.at(-1).insert.endsWith('\n'))) {
+    operations.push({ insert: '\n' });
+  }
+  return { value: operations };
+}
+
 async function assertMerchant(req, res) {
   if (!(await hasActiveVerifiedMerchant(req.user.id))) {
     error(res, '未成为入驻商家，暂不能管理产品展示', 403);
@@ -69,6 +117,7 @@ function mapProduct(row) {
     image_urls: normalizeImageUrls(row.image_urls),
     summary: row.summary || '',
     description: row.description || '',
+    content_delta: normalizeContentDelta(row.content_delta).value || [],
     brand: row.brand || '',
     spec: row.spec || '',
     price_text: row.price_text || '',
@@ -242,6 +291,8 @@ async function normalizeProductPayload(body, merchantUserId) {
   if (!name) return { error: '产品名称不能为空' };
   const imageUrls = normalizeImageUrls(body.image_urls);
   const coverUrl = normalizeString(body.cover_url || imageUrls[0] || '', 500);
+  const contentDelta = normalizeContentDelta(body.content_delta);
+  if (contentDelta.error) return { error: contentDelta.error };
   return {
     value: {
       categoryId,
@@ -250,6 +301,7 @@ async function normalizeProductPayload(body, merchantUserId) {
       imageUrls,
       summary: normalizeString(body.summary, 300),
       description: normalizeString(body.description, 3000),
+      contentDelta: contentDelta.value,
       brand: normalizeString(body.brand, 120),
       spec: normalizeString(body.spec, 200),
       priceText: normalizeString(body.price_text, 80),
@@ -281,8 +333,8 @@ async function createProduct(req, res) {
   const [result] = await db.query(
     `INSERT INTO merchant_products
      (merchant_user_id, category_id, name, cover_url, image_urls, summary,
-      description, brand, spec, price_text, sort_order, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      description, content_delta, brand, spec, price_text, sort_order, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       req.user.id,
       item.categoryId,
@@ -291,6 +343,7 @@ async function createProduct(req, res) {
       JSON.stringify(item.imageUrls),
       item.summary || null,
       item.description || null,
+      JSON.stringify(item.contentDelta),
       item.brand || null,
       item.spec || null,
       item.priceText || null,
@@ -312,7 +365,7 @@ async function updateProduct(req, res) {
   await db.query(
     `UPDATE merchant_products
      SET category_id = ?, name = ?, cover_url = ?, image_urls = ?, summary = ?,
-         description = ?, brand = ?, spec = ?, price_text = ?, sort_order = ?, status = ?
+         description = ?, content_delta = ?, brand = ?, spec = ?, price_text = ?, sort_order = ?, status = ?
      WHERE id = ? AND merchant_user_id = ?`,
     [
       item.categoryId,
@@ -321,6 +374,7 @@ async function updateProduct(req, res) {
       JSON.stringify(item.imageUrls),
       item.summary || null,
       item.description || null,
+      JSON.stringify(item.contentDelta),
       item.brand || null,
       item.spec || null,
       item.priceText || null,
@@ -486,8 +540,71 @@ async function listFavoriteProducts(req, res) {
 async function uploadProductImage(req, res) {
   if (!(await assertMerchant(req, res))) return;
   if (!req.file) return error(res, '请选择产品图片');
-  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-products/${req.file.filename}`;
-  return success(res, { url: imageUrl }, '图片上传成功');
+  const sourcePath = req.file.path;
+  const extension = path.extname(req.file.filename).toLowerCase();
+  const isGif = extension === '.gif' || req.file.mimetype === 'image/gif';
+  const outputName = req.file.filename.replace(/\.[^.]+$/, isGif ? '.gif' : '.webp');
+  const outputPath = path.join(path.dirname(sourcePath), `processed-${outputName}`);
+  try {
+    let metadata;
+    if (isGif) {
+      const sourceMetadata = await sharp(sourcePath, {
+        animated: true,
+        limitInputPixels: 80_000_000,
+      }).metadata();
+      const pageCount = Math.max(1, Number(sourceMetadata.pages || 1));
+      const delays = Array.isArray(sourceMetadata.delay) ? sourceMetadata.delay : [];
+      const normalizedDelays = Array.from(
+        { length: pageCount },
+        (_, index) => Math.max(67, Number(delays[index] || delays[0] || 100))
+      );
+      let compressed = false;
+      for (const option of [
+        { width: 1080, colours: 128, effort: 7 },
+        { width: 900, colours: 96, effort: 8 },
+        { width: 720, colours: 64, effort: 9 },
+        { width: 540, colours: 48, effort: 10 },
+      ]) {
+        await sharp(sourcePath, { animated: true, limitInputPixels: 80_000_000 })
+          .resize({ width: option.width, withoutEnlargement: true })
+          .gif({
+            effort: option.effort,
+            colours: option.colours,
+            dither: 0.5,
+            delay: normalizedDelays,
+            loop: Number(sourceMetadata.loop || 0),
+          })
+          .toFile(outputPath);
+        if ((await fs.stat(outputPath)).size <= 300 * 1024) {
+          compressed = true;
+          break;
+        }
+      }
+      if (!compressed) {
+        await Promise.all([fs.rm(sourcePath, { force: true }), fs.rm(outputPath, { force: true })]);
+        return error(res, 'GIF 压缩后仍超过 300KB，请裁剪时长或更换图片');
+      }
+      metadata = await sharp(outputPath, { animated: true }).metadata();
+    } else {
+      await sharp(sourcePath, { limitInputPixels: 80_000_000 })
+        .rotate()
+        .resize({ width: 1080, withoutEnlargement: true })
+        .webp({ quality: 86, effort: 5 })
+        .toFile(outputPath);
+      metadata = await sharp(outputPath).metadata();
+    }
+    await fs.rm(sourcePath, { force: true });
+    const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-products/${path.basename(outputPath)}`;
+    return success(res, {
+      url: imageUrl,
+      width: Number(metadata.width || 0),
+      height: Number(metadata.pageHeight || metadata.height || 0),
+      is_gif: isGif,
+    }, '图片上传成功');
+  } catch (uploadError) {
+    await Promise.all([fs.rm(sourcePath, { force: true }), fs.rm(outputPath, { force: true })]);
+    throw uploadError;
+  }
 }
 
 module.exports = {

@@ -1,4 +1,7 @@
 const db = require('../config/db');
+const fs = require('fs/promises');
+const path = require('path');
+const sharp = require('sharp');
 const { success, error } = require('../utils/response');
 const {
   hasActiveVerifiedMerchant,
@@ -50,6 +53,11 @@ const CASE_LIMITS = {
   maxCases: 80,
   maxImages: 12,
   maxItems: 30,
+  maxSummaryLength: 300,
+  maxContentTextLength: 1500,
+  maxContentImages: 15,
+  maxContentImageWidth: 1080,
+  maxGifBytes: 300 * 1024,
 };
 
 function parseJsonArray(value) {
@@ -67,11 +75,87 @@ function normalizeString(value, maxLength) {
   return String(value || '').trim().slice(0, maxLength);
 }
 
+function normalizeCaseLink(value) {
+  const link = normalizeString(value, 1000);
+  if (!link) return '';
+  try {
+    const parsed = new URL(link);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    return parsed.toString();
+  } catch (_) {
+    return null;
+  }
+}
+
 function normalizeImages(value) {
   return parseJsonArray(value)
     .map((item) => normalizeString(item, 500))
     .filter(Boolean)
     .slice(0, CASE_LIMITS.maxImages);
+}
+
+function normalizeContentDelta(value) {
+  const source = parseJsonArray(value);
+  const operations = [];
+  let imageCount = 0;
+  let consecutiveNewlines = 0;
+  const allowedInlineAttributes = new Set(['bold', 'italic', 'underline', 'strike', 'color', 'background']);
+  const allowedBlockAttributes = new Set(['header', 'list', 'blockquote', 'align', 'indent', 'direction']);
+  for (const operation of source) {
+    if (!operation || typeof operation !== 'object' || !('insert' in operation)) continue;
+    const insert = operation.insert;
+    const rawAttributes = operation.attributes && typeof operation.attributes === 'object'
+      ? operation.attributes
+      : {};
+    if (typeof insert === 'string') {
+      const sourceText = insert
+        .replace(/\r\n?/g, '\n')
+        .replace(/[ \t]+\n/g, '\n');
+      let text = '';
+      for (const character of sourceText) {
+        if (character === '\n') {
+          consecutiveNewlines += 1;
+          if (consecutiveNewlines <= 3) text += character;
+        } else {
+          consecutiveNewlines = 0;
+          text += character;
+        }
+      }
+      if (!text) continue;
+      const attributes = {};
+      for (const [key, attributeValue] of Object.entries(rawAttributes)) {
+        if (allowedInlineAttributes.has(key) || allowedBlockAttributes.has(key)) {
+          attributes[key] = attributeValue;
+        }
+      }
+      operations.push(Object.keys(attributes).length ? { insert: text, attributes } : { insert: text });
+      continue;
+    }
+    if (insert && typeof insert === 'object' && typeof insert.image === 'string') {
+      const url = normalizeString(insert.image, 500);
+      if (!url) continue;
+      imageCount += 1;
+      if (imageCount > CASE_LIMITS.maxContentImages) {
+        return { error: `图文详情配图最多 ${CASE_LIMITS.maxContentImages} 张` };
+      }
+      operations.push({ insert: { image: url } });
+      consecutiveNewlines = 0;
+    }
+  }
+  const textLength = [...operations
+    .filter((operation) => typeof operation.insert === 'string')
+    .map((operation) => operation.insert)
+    .join('')
+    .trim()].length;
+  if (textLength > CASE_LIMITS.maxContentTextLength) {
+    return { error: `图文详情文字最多 ${CASE_LIMITS.maxContentTextLength} 字` };
+  }
+  if (!operations.length) return { value: [] };
+  const last = operations[operations.length - 1];
+  if (typeof last.insert !== 'string' || !last.insert.endsWith('\n')) {
+    operations.push({ insert: '\n' });
+  }
+  return { value: operations };
 }
 
 function normalizeTags(tags) {
@@ -143,8 +227,11 @@ function mapCase(row, tags = [], items = []) {
     cover_image: row.cover_image || '',
     images: normalizeImages(row.images),
     description: row.description || '',
+    content_delta: normalizeContentDelta(row.content_delta).value || [],
     area_range: row.area_range || '',
     budget_range: row.budget_range || '',
+    link_title: row.link_title || '',
+    link_url: row.link_url || '',
     city: row.city || '',
     status: row.status || 'draft',
     sort_order: Number(row.sort_order || 0),
@@ -284,6 +371,10 @@ async function normalizeCasePayload(body, existing = {}, merchantId) {
   const coverImage = normalizeString(body.cover_image || body.coverImage || existing.cover_image || images[0] || '', 500);
   const title = normalizeString(body.title ?? existing.title, 160);
   if (!title) return { error: '案例标题不能为空' };
+  const descriptionSource = String(body.description ?? existing.description ?? '').trim();
+  if ([...descriptionSource].length > CASE_LIMITS.maxSummaryLength) {
+    return { error: `案例简介最多 ${CASE_LIMITS.maxSummaryLength} 字` };
+  }
   const city = normalizeString(body.city ?? existing.city, 80);
   if (!CITY_OPTIONS.has(city)) return { error: '城市不正确' };
   const areaRange = normalizeString(body.area_range || body.areaRange || existing.area_range, 80);
@@ -296,14 +387,25 @@ async function normalizeCasePayload(body, existing = {}, merchantId) {
   } catch (err) {
     return { error: err.message || '使用产品不正确' };
   }
+  const contentDelta = normalizeContentDelta(
+    body.content_delta ?? body.contentDelta ?? existing.content_delta
+  );
+  if (contentDelta.error) return { error: contentDelta.error };
+  const linkTitle = normalizeString(body.link_title ?? body.linkTitle ?? existing.link_title, 80);
+  const linkUrl = normalizeCaseLink(body.link_url ?? body.linkUrl ?? existing.link_url);
+  if (linkUrl === null) return { error: '案例链接必须是有效的 http/https 地址' };
+  if (Boolean(linkTitle) !== Boolean(linkUrl)) return { error: '链接标题和链接地址需要同时填写' };
   return {
     value: {
       title,
       coverImage,
       images,
-      description: normalizeString(body.description ?? existing.description, 5000),
+      description: descriptionSource,
+      contentDelta: contentDelta.value,
       areaRange,
       budgetRange: normalizeString(body.budget_range || body.budgetRange || existing.budget_range, 80),
+      linkTitle,
+      linkUrl,
       city,
       status: existing.status || 'draft',
       sortOrder: Number(existing.sort_order || existing.sortOrder || 0) || 0,
@@ -349,17 +451,20 @@ async function createDashboardCase(req, res) {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `INSERT INTO merchant_cases
-       (merchant_id, title, cover_image, images, description, area_range,
-        budget_range, city, status, sort_order)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       (merchant_id, title, cover_image, images, description, content_delta,
+        area_range, budget_range, link_title, link_url, city, status, sort_order)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         req.user.id,
         item.title,
         item.coverImage || null,
         JSON.stringify(item.images),
         item.description || null,
+        JSON.stringify(item.contentDelta),
         item.areaRange || null,
         item.budgetRange || null,
+        item.linkTitle || null,
+        item.linkUrl || null,
         item.city || null,
         item.status,
         item.sortOrder,
@@ -389,16 +494,19 @@ async function updateDashboardCase(req, res) {
     await connection.beginTransaction();
     await connection.query(
       `UPDATE merchant_cases
-       SET title = ?, cover_image = ?, images = ?, description = ?,
-           area_range = ?, budget_range = ?, city = ?, status = ?, sort_order = ?
+       SET title = ?, cover_image = ?, images = ?, description = ?, content_delta = ?,
+           area_range = ?, budget_range = ?, link_title = ?, link_url = ?, city = ?, status = ?, sort_order = ?
        WHERE id = ? AND merchant_id = ?`,
       [
         item.title,
         item.coverImage || null,
         JSON.stringify(item.images),
         item.description || null,
+        JSON.stringify(item.contentDelta),
         item.areaRange || null,
         item.budgetRange || null,
+        item.linkTitle || null,
+        item.linkUrl || null,
         item.city || null,
         item.status,
         item.sortOrder,
@@ -563,8 +671,79 @@ async function getPublicMerchantCase(req, res) {
 async function uploadCaseImage(req, res) {
   if (!(await assertMerchant(req, res))) return;
   if (!req.file) return error(res, '请选择案例图片');
-  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-cases/${req.file.filename}`;
-  return success(res, { url: imageUrl }, '图片上传成功');
+  const sourcePath = req.file.path;
+  const extension = path.extname(req.file.filename).toLowerCase();
+  const isGif = extension === '.gif' || req.file.mimetype === 'image/gif';
+  const outputName = isGif
+    ? req.file.filename.replace(/\.[^.]+$/, '.gif')
+    : req.file.filename.replace(/\.[^.]+$/, '.webp');
+  const outputPath = path.join(path.dirname(sourcePath), `processed-${outputName}`);
+  try {
+    let metadata;
+    if (isGif) {
+      const input = sharp(sourcePath, { animated: true, limitInputPixels: 80_000_000 });
+      const sourceMetadata = await input.metadata();
+      const pageCount = Math.max(1, Number(sourceMetadata.pages || 1));
+      const delays = Array.isArray(sourceMetadata.delay) ? sourceMetadata.delay : [];
+      const normalizedDelays = Array.from(
+        { length: pageCount },
+        (_, index) => Math.max(67, Number(delays[index] || delays[0] || 100))
+      );
+      let compressed = false;
+      for (const option of [
+        { width: 1080, colours: 128, effort: 7 },
+        { width: 900, colours: 96, effort: 8 },
+        { width: 720, colours: 64, effort: 9 },
+        { width: 540, colours: 48, effort: 10 },
+      ]) {
+        await sharp(sourcePath, { animated: true, limitInputPixels: 80_000_000 })
+          .resize({ width: option.width, withoutEnlargement: true })
+          .gif({
+            effort: option.effort,
+            colours: option.colours,
+            dither: 0.5,
+            delay: normalizedDelays,
+            loop: Number(sourceMetadata.loop || 0),
+          })
+          .toFile(outputPath);
+        const stat = await fs.stat(outputPath);
+        if (stat.size <= CASE_LIMITS.maxGifBytes) {
+          compressed = true;
+          break;
+        }
+      }
+      if (!compressed) {
+        await Promise.all([
+          fs.rm(sourcePath, { force: true }),
+          fs.rm(outputPath, { force: true }),
+        ]);
+        return error(res, 'GIF 压缩后仍超过 300KB，请裁剪时长或更换图片');
+      }
+      metadata = await sharp(outputPath, { animated: true }).metadata();
+    } else {
+      await sharp(sourcePath, { limitInputPixels: 80_000_000 })
+        .rotate()
+        .resize({ width: CASE_LIMITS.maxContentImageWidth, withoutEnlargement: true })
+        .webp({ quality: 86, effort: 5 })
+        .toFile(outputPath);
+      metadata = await sharp(outputPath).metadata();
+    }
+    await fs.rm(sourcePath, { force: true });
+    const finalName = path.basename(outputPath);
+    const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-cases/${finalName}`;
+    return success(res, {
+      url: imageUrl,
+      width: Number(metadata.width || 0),
+      height: Number(metadata.pageHeight || metadata.height || 0),
+      is_gif: isGif,
+    }, '图片上传成功');
+  } catch (uploadError) {
+    await Promise.all([
+      fs.rm(sourcePath, { force: true }),
+      fs.rm(outputPath, { force: true }),
+    ]);
+    throw uploadError;
+  }
 }
 
 module.exports = {

@@ -118,7 +118,7 @@ const merchantCaseImageUpload = multer({
       callback(null, `merchant-case-${req.user.id}-${Date.now()}${extension}`);
     },
   }),
-  limits: { fileSize: 8 * 1024 * 1024 },
+  limits: { fileSize: 5 * 1024 * 1024 },
   fileFilter: (req, file, callback) => {
     const extension = path.extname(file.originalname).toLowerCase();
     const allowedExtensions = new Set([
