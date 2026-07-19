@@ -12,6 +12,7 @@ const {
 } = require('../utils/upload-permissions');
 const multer = require('multer');
 const path = require('path');
+const { randomUUID } = require('crypto');
 
 const avatarDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'avatars')
@@ -88,7 +89,10 @@ const merchantProductImageUpload = multer({
     destination: merchantProductsDir,
     filename: (req, file, callback) => {
       const extension = path.extname(file.originalname).toLowerCase() || '.jpg';
-      callback(null, `merchant-product-${req.user.id}-${Date.now()}${extension}`);
+      callback(
+        null,
+        `merchant-product-${req.user.id}-${Date.now()}-${randomUUID()}${extension}`
+      );
     },
   }),
   limits: { fileSize: 8 * 1024 * 1024 },
@@ -115,7 +119,10 @@ const merchantCaseImageUpload = multer({
     destination: merchantCasesDir,
     filename: (req, file, callback) => {
       const extension = path.extname(file.originalname).toLowerCase() || '.jpg';
-      callback(null, `merchant-case-${req.user.id}-${Date.now()}${extension}`);
+      callback(
+        null,
+        `merchant-case-${req.user.id}-${Date.now()}-${randomUUID()}${extension}`
+      );
     },
   }),
   limits: { fileSize: 5 * 1024 * 1024 },

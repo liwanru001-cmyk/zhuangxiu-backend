@@ -742,7 +742,11 @@ async function uploadCaseImage(req, res) {
       fs.rm(sourcePath, { force: true }),
       fs.rm(outputPath, { force: true }),
     ]);
-    throw uploadError;
+    console.error('merchant case image processing failed', {
+      code: uploadError.code || '',
+      message: uploadError.message || String(uploadError),
+    });
+    return error(res, '图片处理失败，请更换图片或降低图片大小', 422);
   }
 }
 

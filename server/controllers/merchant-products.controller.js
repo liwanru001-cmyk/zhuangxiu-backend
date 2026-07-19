@@ -603,7 +603,11 @@ async function uploadProductImage(req, res) {
     }, '图片上传成功');
   } catch (uploadError) {
     await Promise.all([fs.rm(sourcePath, { force: true }), fs.rm(outputPath, { force: true })]);
-    throw uploadError;
+    console.error('merchant product image processing failed', {
+      code: uploadError.code || '',
+      message: uploadError.message || String(uploadError),
+    });
+    return error(res, '图片处理失败，请更换图片或降低图片大小', 422);
   }
 }
 
