@@ -1,0 +1,44 @@
+name: Deploy Legal Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/public/privacy-policy/**'
+      - 'server/public/user-agreement/**'
+      - '.github/workflows/deploy-legal-pages.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate legal pages
+        run: |
+          test -f server/public/privacy-policy/index.html
+          test -f server/public/user-agreement/index.html
+          grep -q '装修不凡隐私政策' server/public/privacy-policy/index.html
+          grep -q '装修不凡用户协议' server/public/user-agreement/index.html
+      - name: Upload legal pages
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          test "$SSH_HOST" = '115.29.194.46'
+          ssh_port="${SSH_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          tar -C server/public -czf /tmp/yinnkhome-legal.tar.gz privacy-policy user-agreement
+          scp -i ~/.ssh/deploy_key -P "$ssh_port" -o StrictHostKeyChecking=accept-new /tmp/yinnkhome-legal.tar.gz "$SSH_USER@$SSH_HOST:/tmp/yinnkhome-legal.tar.gz"
+          ssh -i ~/.ssh/deploy_key -p "$ssh_port" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" \
+            "set -euo pipefail; sudo mkdir -p /opt/yinnkhome-backend/server/public; sudo tar -xzf /tmp/yinnkhome-legal.tar.gz -C /opt/yinnkhome-backend/server/public; rm -f /tmp/yinnkhome-legal.tar.gz"
+      - name: Verify public URLs
+        run: |
+          curl -fsS https://yinnkhome.com/privacy-policy/ | grep -q '装修不凡隐私政策'
+          curl -fsS https://yinnkhome.com/user-agreement/ | grep -q '装修不凡用户协议'

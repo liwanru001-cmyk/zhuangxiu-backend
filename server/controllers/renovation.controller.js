@@ -533,7 +533,7 @@ async function setup(req, res) {
   if (!startDate || Number.isNaN(Date.parse(startDate))) return error(res, '开工日期格式不正确');
   if (!Number.isFinite(area) || area <= 0) return error(res, '房屋面积不正确');
   if (!stages.some((stage) => stage.id === stageId)) return error(res, '装修阶段不正确');
-  if (projectType && !['refined', 'rough', 'office', 'commercial'].includes(projectType)) {
+  if (projectType && !['refined', 'rough', 'second_hand', 'partial', 'office', 'commercial'].includes(projectType)) {
     return error(res, '项目类型不正确');
   }
   if (renovationMethod && !['self', 'company', 'independent_designer'].includes(renovationMethod)) {
@@ -1751,13 +1751,15 @@ async function getMyProjects(req, res) {
     : 'designer';
   const [rows] = await db.query(
     `SELECT p.id, p.project_code, p.house_area, p.start_date, p.total_days,
-            p.current_stage, p.status, u.nickname AS owner_nickname, u.phone AS owner_phone,
-            u.city AS owner_city, pm.role AS member_role
+            p.current_stage, p.status, p.lifecycle_status,
+            u.nickname AS owner_nickname, u.phone AS owner_phone,
+            u.city AS owner_city, pm.role AS member_role,
+            pm.status AS member_status
      FROM project_members pm
      JOIN renovation_projects p ON p.id = pm.project_id
      JOIN users u ON p.user_id = u.id
-     WHERE pm.user_id = ? AND pm.role = ? AND pm.status = 1
-       AND COALESCE(p.lifecycle_status, 'active') = 'active'
+     WHERE pm.user_id = ? AND pm.role = ? AND pm.status IN (1, 2)
+       AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
      ORDER BY p.updated_at DESC`,
     [req.user.id, memberRole]
   );
@@ -2692,7 +2694,9 @@ async function getMemberCandidates(req, res) {
   const projectId = Number(req.query.project_id);
   if (!projectId) return error(res, '项目ID不能为空');
   const keyword = String(req.query.keyword || '').trim();
-  if (!keyword) return success(res, []);
+  if (role !== 'merchant' && !/^1[3-9]\d{9}$/.test(keyword)) {
+    return error(res, '请输入完整的 11 位手机号进行精准查找');
+  }
   const [owners] = await db.query(
     `SELECT id FROM project_members
      WHERE project_id = ? AND user_id = ? AND role = 'owner' AND status = 1`,
@@ -2711,20 +2715,24 @@ async function getMemberCandidates(req, res) {
          ON pm.project_id = ? AND pm.user_id = u.id
             AND pm.role IN ('owner', 'owner_member') AND pm.status = 1
        WHERE u.id != ?
-         AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.city LIKE ?)
+         AND u.phone = ?
        ORDER BY u.id DESC
        LIMIT 30`,
       [
         projectId,
         req.user.id,
-        `%${keyword}%`,
-        `%${keyword}%`,
-        `%${keyword}%`,
+        keyword,
       ]
     );
     return success(res, rows);
   }
 
+  const memberMatchSql = role === 'merchant'
+    ? '(u.nickname LIKE ? OR u.phone LIKE ? OR u.city LIKE ?)'
+    : 'u.phone = ?';
+  const memberMatchParams = role === 'merchant'
+    ? [`%${keyword}%`, `%${keyword}%`, `%${keyword}%`]
+    : [keyword];
   const [rows] = await db.query(
     `SELECT u.id, u.nickname, u.avatar, u.city, u.bio, u.phone, ur.role,
             pm.status AS member_status,
@@ -2738,7 +2746,7 @@ async function getMemberCandidates(req, res) {
        ON r.project_id = ? AND r.target_user_id = u.id
           AND r.member_role = ur.role
      WHERE ur.role = ? AND u.id != ?
-       AND (u.nickname LIKE ? OR u.phone LIKE ? OR u.city LIKE ?)
+       AND ${memberMatchSql}
      ORDER BY u.id DESC
      LIMIT 30`,
     [
@@ -2746,9 +2754,7 @@ async function getMemberCandidates(req, res) {
       projectId,
       role,
       req.user.id,
-      `%${keyword}%`,
-      `%${keyword}%`,
-      `%${keyword}%`,
+      ...memberMatchParams,
     ]
   );
   return success(res, rows);

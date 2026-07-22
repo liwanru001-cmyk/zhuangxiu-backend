@@ -1731,6 +1731,18 @@ async function markNotificationRead(req, res) {
   return success(res, { id: notificationId, is_read: true });
 }
 
+async function deleteNotification(req, res) {
+  const notificationId = Number(req.params.id);
+  if (!notificationId) return error(res, '通知不存在', 404);
+  const [result] = await db.query(
+    `DELETE FROM project_action_notifications
+     WHERE id = ? AND recipient_id = ?`,
+    [notificationId, req.user.id]
+  );
+  if (result.affectedRows === 0) return error(res, '通知不存在', 404);
+  return success(res, { id: notificationId }, '通知已删除');
+}
+
 async function getViewerId(req) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return null;
@@ -2081,6 +2093,7 @@ module.exports = {
   getConsultationConversations,
   getNotifications,
   markNotificationRead,
+  deleteNotification,
   getHelpFaqs,
   submitFeedback,
 };

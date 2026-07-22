@@ -208,6 +208,7 @@ router.get('/my-consultations', asyncHandler(auth), asyncHandler(userController.
 router.get('/consultation-conversations', asyncHandler(auth), asyncHandler(userController.getConsultationConversations));
 router.get('/notifications', asyncHandler(auth), asyncHandler(userController.getNotifications));
 router.post('/notifications/:id/read', asyncHandler(auth), asyncHandler(userController.markNotificationRead));
+router.delete('/notifications/:id', asyncHandler(auth), asyncHandler(userController.deleteNotification));
 router.get('/help/faqs', asyncHandler(auth), asyncHandler(userController.getHelpFaqs));
 router.post('/help/feedback', asyncHandler(auth), asyncHandler(userController.submitFeedback));
 router.get('/consultations/:id/messages', asyncHandler(auth), asyncHandler(userController.getConsultationMessages));
