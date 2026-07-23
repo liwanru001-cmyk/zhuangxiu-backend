@@ -8272,6 +8272,15 @@ async function getProjectInspectionStepRecords(req, res) {
             record.created_at, record.updated_at,
             creator.nickname AS creator_name,
             target.nickname AS target_name,
+            (SELECT pm.role
+             FROM project_members pm
+             WHERE pm.project_id = record.project_id
+               AND pm.user_id = record.target_user_id
+               AND pm.status = 1
+             ORDER BY FIELD(pm.role, 'owner', 'owner_member',
+                            'project_manager', 'project_supervisor',
+                            'designer', 'merchant'), pm.id
+             LIMIT 1) AS target_role,
             reviewer.nickname AS reviewer_name,
             responder.nickname AS responder_name
      FROM project_inspection_step_records record
