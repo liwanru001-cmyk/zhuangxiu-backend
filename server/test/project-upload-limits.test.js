@@ -72,6 +72,73 @@ test('project check-in enforces daily quota', async () => {
   assert.match(res.payload.message, /每天最多发布 3 条工地打卡/);
 });
 
+test('owner family member sees only own and explicitly shared check-ins', async () => {
+  let visibilityChecked = false;
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 8]);
+        return [[{ role: 'owner_member' }]];
+      }
+      if (/CREATE TABLE IF NOT EXISTS project_checkin_circle_shares/.test(sql)) {
+        return [{ affectedRows: 0 }];
+      }
+      if (/FROM project_checkins checkin/.test(sql)) {
+        assert.match(sql, /checkin\.user_id = \?/);
+        assert.match(sql, /visible_share\.shared_with_user_id = \?/);
+        assert.deepEqual(params, [9, 8, 8]);
+        visibilityChecked = true;
+        return [[]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.getProjectCheckIns({
+    user: { id: 8 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(visibilityChecked, true);
+  assert.deepEqual(res.payload.data, []);
+});
+
+test('main owner sees all project check-ins without member visibility filter', async () => {
+  let visibilityChecked = false;
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'owner' }]];
+      }
+      if (/CREATE TABLE IF NOT EXISTS project_checkin_circle_shares/.test(sql)) {
+        return [{ affectedRows: 0 }];
+      }
+      if (/FROM project_checkins checkin/.test(sql)) {
+        assert.doesNotMatch(sql, /visible_share/);
+        assert.deepEqual(params, [9]);
+        visibilityChecked = true;
+        return [[]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.getProjectCheckIns({
+    user: { id: 7 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(visibilityChecked, true);
+  assert.deepEqual(res.payload.data, []);
+});
+
 test('project inspection rejects more than three images', async () => {
   const dbMock = {
     async query(sql, params) {

@@ -3465,11 +3465,20 @@ async function getProjectCheckIns(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
-  if (!isOwnerSideRole(role)) {
-    return error(res, '无权限查看工地打卡', 403);
-  }
   await ensureProjectCheckInCircleSharesTable();
 
+  const canViewAllCheckIns = role === 'owner';
+  const visibilityClause = canViewAllCheckIns
+    ? ''
+    : `AND (
+         checkin.user_id = ?
+         OR EXISTS (
+           SELECT 1
+           FROM project_checkin_shares visible_share
+           WHERE visible_share.checkin_id = checkin.id
+             AND visible_share.shared_with_user_id = ?
+         )
+       )`;
   const [rows] = await db.query(
     `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
             checkin.description, checkin.checkin_date,
@@ -3478,8 +3487,11 @@ async function getProjectCheckIns(req, res) {
      FROM project_checkins checkin
      JOIN users user ON user.id = checkin.user_id
      WHERE checkin.project_id = ?
+     ${visibilityClause}
      ORDER BY checkin.checkin_date DESC, checkin.created_at DESC, checkin.id DESC`,
-    [projectId]
+    canViewAllCheckIns
+      ? [projectId]
+      : [projectId, req.user.id, req.user.id]
   );
   if (!rows.length) return success(res, []);
   const ids = rows.map((item) => item.id);
