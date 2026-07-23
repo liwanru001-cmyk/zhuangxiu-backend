@@ -5140,7 +5140,9 @@ async function getProjectDesignHandoverItems(req, res) {
     ? "AND item.check_type IN ('inspection_check', 'both')"
     : "AND item.check_type IN ('progress_note', 'both')";
   const stageFilter = stageId
-    ? 'AND (item.related_stage_id = ? OR item.related_stage_id IS NULL)'
+    ? usage === 'progress'
+      ? 'AND item.related_stage_id = ?'
+      : 'AND (item.related_stage_id = ? OR item.related_stage_id IS NULL)'
     : '';
   const params = stageId ? [projectId, stageId] : [projectId];
   const [rows] = await db.query(
@@ -5166,7 +5168,11 @@ async function getProjectDesignHandoverItems(req, res) {
      FROM project_handovers
      WHERE project_id = ?
        AND status = 'confirmed'
-       ${stageId ? 'AND (stage_id = ? OR stage_id IS NULL)' : ''}
+       ${stageId
+         ? usage === 'progress'
+           ? 'AND stage_id = ?'
+           : 'AND (stage_id = ? OR stage_id IS NULL)'
+         : ''}
      ORDER BY stage_id IS NULL ASC, confirmed_at DESC, id DESC
      LIMIT 5`,
     stageId ? [projectId, stageId] : [projectId]
@@ -6546,6 +6552,7 @@ function dateOnly(value) {
 
 function derivedLeafProgressStatus(item, inspection) {
   if (inspection?.status === 'passed') return 'completed';
+  if (item.actual_finish) return 'completed';
   if (inspection?.status === 'pending' || inspection?.status === 'rework') {
     return 'in_progress';
   }
@@ -6573,7 +6580,7 @@ function progressStatusToTaskStatus(status) {
 async function recomputeProjectProgressDerivedStatuses(projectId) {
   const [items] = await db.query(
     `SELECT id, project_id, stage_id, task_id, parent_id, planned_start,
-            planned_end, status
+            planned_end, actual_finish, status
      FROM project_progress_items
      WHERE project_id = ?
      ORDER BY id DESC`,
@@ -7355,6 +7362,10 @@ async function updateProjectProgressItem(req, res) {
     parent_id: req.body.parent_id ?? existingRows[0].parent_id,
     template_key: req.body.template_key ?? existingRows[0].template_key,
     status: existingRows[0].status,
+    actual_finish:
+      req.body.actual_finish === undefined
+        ? existingRows[0].actual_finish
+        : req.body.actual_finish,
     requires_inspection:
       req.body.requires_inspection ?? existingRows[0].requires_inspection,
     inspection_template_key:
