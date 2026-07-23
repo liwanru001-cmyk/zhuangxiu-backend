@@ -105,6 +105,80 @@ test('project inspection rejects more than three images', async () => {
   assert.match(res.payload.message, /验收图片最多上传 3 张/);
 });
 
+test('assigned manager can resubmit a legacy pending owner inspection', async () => {
+  let committed = false;
+  const connection = {
+    async beginTransaction() {},
+    async query(sql, params) {
+      if (/SELECT id, submission_round FROM project_inspections/.test(sql)) {
+        assert.match(sql, /status = 'pending'/);
+        assert.match(sql, /submission_round = 1/);
+        assert.deepEqual(params, [17, 9, 7]);
+        return [[{ id: 17, submission_round: 1 }]];
+      }
+      if (/UPDATE project_inspections/.test(sql)) {
+        assert.deepEqual(params, ['整改完成', 2, 17]);
+        return [{ affectedRows: 1 }];
+      }
+      if (/INSERT INTO project_inspection_images/.test(sql)) {
+        assert.deepEqual(params, [
+          17,
+          'https://example.test/uploads/inspections/fixed.jpg',
+          2,
+          7,
+        ]);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected connection query: ${sql}`);
+    },
+    async commit() {
+      committed = true;
+    },
+    async rollback() {},
+    release() {},
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{
+          id: 9,
+          user_id: 3,
+          lifecycle_status: 'active',
+          role: 'project_manager',
+        }]];
+      }
+      if (/SELECT id FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ id: 2 }]];
+      }
+      if (/information_schema\.COLUMNS/.test(sql)) {
+        return [[{ COLUMN_NAME: 'member_role' }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() {
+      return connection;
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.resubmitProjectInspection({
+    user: { id: 7, role: 'project_manager' },
+    params: { id: '9', inspectionId: '17' },
+    originalUrl: '/api/renovation/projects/9/inspections/17/resubmit',
+    protocol: 'https',
+    get: () => 'example.test',
+    body: { description: '整改完成' },
+    files: [{ path: '/tmp/fixed.jpg', filename: 'fixed.jpg' }],
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.submission_round, 2);
+  assert.equal(committed, true);
+});
+
 test('design document upload enforces project total quota', async () => {
   const dbMock = {
     async query(sql, params) {

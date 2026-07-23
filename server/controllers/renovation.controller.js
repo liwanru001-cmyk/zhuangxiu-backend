@@ -7573,6 +7573,7 @@ async function getProjectInspections(req, res) {
             CASE
               WHEN i.status = 'pending'
                    AND ${memberRoleExpression} IN (${ownerRoleSql})
+                   AND i.submission_round = 1
                    AND i.responsible_user_id IS NOT NULL THEN 'rework'
               WHEN i.status = 'pending'
                    AND ${memberRoleExpression} IN (${ownerRoleSql})
@@ -8760,14 +8761,24 @@ async function resubmitProjectInspection(req, res) {
     await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, `整改验收图片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
   }
+  const hasMemberRole = await ensureProjectInspectionMemberRoleColumn();
+  const legacyAssignedReworkFilter = hasMemberRole
+    ? `OR (status = 'pending'
+           AND member_role IN ('owner', 'owner_member')
+           AND responsible_user_id = ?
+           AND submission_round = 1)`
+    : `OR (status = 'pending'
+           AND responsible_user_id = ?
+           AND submission_round = 1)`;
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query(
       `SELECT id, submission_round FROM project_inspections
-       WHERE id = ? AND project_id = ? AND status = 'rework'
+       WHERE id = ? AND project_id = ?
+         AND (status = 'rework' ${legacyAssignedReworkFilter})
        FOR UPDATE`,
-      [inspectionId, projectId]
+      [inspectionId, projectId, req.user.id]
     );
     if (!rows[0]) {
       await connection.rollback();
