@@ -7619,6 +7619,15 @@ async function getProjectInspections(req, res) {
             COALESCE(progress_item.title, t.task_name) AS task_name,
             submitter.nickname AS submitter_name,
             responsible.nickname AS responsible_name,
+            (SELECT pm.role
+             FROM project_members pm
+             WHERE pm.project_id = i.project_id
+               AND pm.user_id = i.responsible_user_id
+               AND pm.status = 1
+             ORDER BY FIELD(pm.role, 'owner', 'owner_member',
+                            'project_manager', 'project_supervisor',
+                            'designer', 'merchant'), pm.id
+             LIMIT 1) AS responsible_role,
             reviewer.nickname AS reviewer_name
      FROM project_inspections i
      JOIN renovation_tasks t ON t.id = i.task_id
