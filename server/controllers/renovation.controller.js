@@ -6903,6 +6903,9 @@ async function planProjectTask(req, res) {
   const taskName = req.body.task_name === undefined
     ? undefined
     : String(req.body.task_name || '').trim().slice(0, 100);
+  const remark = req.body.remark === undefined
+    ? undefined
+    : String(req.body.remark || '').trim().slice(0, 1000);
   const status = req.body.status === undefined ? undefined : Number(req.body.status);
   const isKey = req.body.is_key === undefined ? undefined : (req.body.is_key ? 1 : 0);
   if (plannedStart && Number.isNaN(Date.parse(plannedStart))) {
@@ -6936,6 +6939,10 @@ async function planProjectTask(req, res) {
   if (taskName !== undefined) {
     fields.push('task_name = ?');
     params.push(taskName);
+  }
+  if (remark !== undefined) {
+    fields.push('remark = ?');
+    params.push(remark);
   }
   if (status !== undefined) {
     fields.push('status = ?');
@@ -7969,7 +7976,7 @@ async function createProjectInspection(req, res) {
 
   const memberRole =
     (await getProjectMemberRole(projectId, req.user.id)) || req.user.role || 'owner';
-  const ownerSideSubmission = isOwnerSideRole(memberRole);
+  const ownerSideSubmission = memberRole === 'owner';
   const initialStatus = ownerSideSubmission
     ? (responsibleUserId ? 'rework' : 'passed')
     : 'pending';
@@ -8025,8 +8032,39 @@ async function createProjectInspection(req, res) {
         req.user.id,
       ])
     );
+    if (initialStatus === 'passed') {
+      if (progressItemId) {
+        await connection.query(
+          `UPDATE project_progress_items
+           SET status = 'completed',
+               actual_finish = COALESCE(actual_finish, CURDATE())
+           WHERE id = ? AND project_id = ?`,
+          [progressItemId, projectId]
+        );
+      } else {
+        await connection.query(
+          `UPDATE renovation_tasks
+           SET status = 2,
+               actual_end = COALESCE(actual_end, CURDATE())
+           WHERE id = ? AND project_id = ?`,
+          [taskId, projectId]
+        );
+      }
+    }
     await connection.commit();
-    return success(res, { id: result.insertId }, '验收已提交');
+    let progress = null;
+    if (initialStatus === 'passed') {
+      try {
+        progress = await refreshProjectStageByTaskCompletion(projectId);
+      } catch (progressError) {
+        console.warn('refresh project stage after owner inspection failed', {
+          projectId,
+          taskId,
+          message: progressError.message,
+        });
+      }
+    }
+    return success(res, { id: result.insertId, progress }, '验收已提交');
   } catch (inspectionError) {
     await connection.rollback();
     await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
