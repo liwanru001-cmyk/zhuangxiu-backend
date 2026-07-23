@@ -8013,11 +8013,6 @@ async function createProjectInspection(req, res) {
         req.user.id,
       ])
     );
-    await createInspectionDesignChecks(connection, {
-      projectId,
-      inspectionId: result.insertId,
-      stageId: progressItem?.stage_id || tasks[0].stage_id,
-    });
     await connection.commit();
     return success(res, { id: result.insertId }, '验收已提交');
   } catch (inspectionError) {
