@@ -138,6 +138,6 @@ jobs:
           merchant_file="$(mktemp)"
           curl -fsS https://yinnkhome.com/ -o "$home_file"
           curl -fsS https://yinnkhome.com/merchant/ -o "$merchant_file"
-          grep -q '商家登录' "$home_file"
+          ! grep -q 'href="/merchant/"' "$home_file"
           grep -q '商家中心 - 装修不凡' "$merchant_file"
           curl -fsS https://yinnkhome.com/assets/screens/project-overview.jpg -o /dev/null
