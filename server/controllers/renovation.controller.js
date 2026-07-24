@@ -6213,16 +6213,40 @@ async function getProjectProgress(req, res) {
   if (!projectId || !(await canAccessProject(projectId, req.user.id))) {
     return error(res, '项目不存在', 404);
   }
-  const [projectRows] = await db.query(
-    `SELECT p.id, p.current_stage, p.status, p.start_date, p.total_days,
-            p.pace_mode, p.pace_updated_at, p.lifecycle_status
-     FROM renovation_projects p
-     WHERE p.id = ?`,
-    [projectId]
-  );
+  let projectRows;
+  try {
+    [projectRows] = await db.query(
+      `SELECT p.id, p.current_stage, p.status, p.start_date, p.total_days,
+              p.pace_mode, p.pace_updated_at, p.lifecycle_status
+       FROM renovation_projects p
+       WHERE p.id = ?`,
+      [projectId]
+    );
+  } catch (queryError) {
+    if (queryError.code !== 'ER_BAD_FIELD_ERROR') throw queryError;
+    console.error('project progress base query fell back', {
+      projectId,
+      code: queryError.code,
+      message: queryError.message,
+    });
+    [projectRows] = await db.query(
+      `SELECT p.id, p.current_stage, p.status, p.start_date
+       FROM renovation_projects p
+       WHERE p.id = ?`,
+      [projectId]
+    );
+  }
   if (!projectRows[0]) return error(res, '项目不存在', 404);
   if (normalizeProjectLifecycle(projectRows[0]) === 'active') {
-    await recomputeProjectProgressDerivedStatuses(projectId);
+    try {
+      await recomputeProjectProgressDerivedStatuses(projectId);
+    } catch (progressError) {
+      console.error('project progress derived status skipped', {
+        projectId,
+        code: progressError.code,
+        message: progressError.message,
+      });
+    }
   }
 
   const [taskStats] = await db.query(
@@ -6250,16 +6274,28 @@ async function getProjectProgress(req, res) {
     projectRows[0].current_stage,
     projectRows[0].status
   );
-  const [designBriefRows] = await db.query(
-    `SELECT id, title, content, confirmed_at
-     FROM project_handovers
-     WHERE project_id = ?
-       AND status = 'confirmed'
-       AND (stage_id = ? OR stage_id IS NULL)
-     ORDER BY stage_id IS NULL ASC, confirmed_at DESC, id DESC
-     LIMIT 5`,
-    [projectId, derivedProgress.current_stage]
-  );
+  let designBriefRows = [];
+  try {
+    [designBriefRows] = await db.query(
+      `SELECT id, title, content, confirmed_at
+       FROM project_handovers
+       WHERE project_id = ?
+         AND status = 'confirmed'
+         AND (stage_id = ? OR stage_id IS NULL)
+       ORDER BY stage_id IS NULL ASC, confirmed_at DESC, id DESC
+       LIMIT 5`,
+      [projectId, derivedProgress.current_stage]
+    );
+  } catch (handoverError) {
+    if (handoverError.code !== 'ER_NO_SUCH_TABLE' && handoverError.code !== 'ER_BAD_FIELD_ERROR') {
+      throw handoverError;
+    }
+    console.error('project progress design brief query skipped', {
+      projectId,
+      code: handoverError.code,
+      message: handoverError.message,
+    });
+  }
   const designBriefTips = designBriefRows.map((row) => {
     const sections = extractDesignBriefSections(row.content);
     return {
