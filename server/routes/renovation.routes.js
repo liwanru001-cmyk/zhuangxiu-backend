@@ -1,6 +1,7 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const controller = require('../controllers/renovation.controller');
+const projectContentSharesController = require('../controllers/project-content-shares.controller');
 const asyncHandler = require('../utils/async-handler');
 const { requireProjectContext } = require('../utils/project-context');
 const {
@@ -750,6 +751,16 @@ router.delete(
   asyncHandler(controller.removeProjectMember)
 );
 router.get('/member-candidates', ...protectedRoute, asyncHandler(controller.getMemberCandidates));
+router.get(
+  '/projects/:id/content-shares',
+  ...protectedRoute,
+  asyncHandler(projectContentSharesController.listShares)
+);
+router.post(
+  '/projects/:id/content-shares',
+  ...protectedRoute,
+  asyncHandler(projectContentSharesController.createShare)
+);
 router.post('/member-requests', ...protectedRoute, asyncHandler(controller.requestProjectMember));
 router.get(
   '/projects/:id/member-requests',
