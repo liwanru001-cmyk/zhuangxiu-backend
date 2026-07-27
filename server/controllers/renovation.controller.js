@@ -1750,7 +1750,7 @@ async function getMyProjects(req, res) {
     ? req.user.role
     : 'designer';
   const [rows] = await db.query(
-    `SELECT p.id, p.project_code, p.house_area, p.start_date, p.total_days,
+    `SELECT p.id, p.project_code, p.project_name, p.house_area, p.start_date, p.total_days,
             p.current_stage, p.status, p.lifecycle_status,
             u.nickname AS owner_nickname, u.phone AS owner_phone,
             u.city AS owner_city, pm.role AS member_role,
@@ -6663,10 +6663,12 @@ async function recomputeProjectProgressDerivedStatuses(projectId) {
   const computeItem = (item) => {
     const itemId = Number(item.id);
     if (statusByItem.has(itemId)) return statusByItem.get(itemId);
+    const inspection = inspectionByItem.get(itemId);
     const children = childrenByParent.get(itemId) || [];
     const childStatus = aggregateProgressStatuses(children.map(computeItem));
-    const status =
-      childStatus || derivedLeafProgressStatus(item, inspectionByItem.get(itemId));
+    const status = inspection
+      ? derivedLeafProgressStatus(item, inspection)
+      : childStatus || derivedLeafProgressStatus(item, null);
     statusByItem.set(itemId, status);
     return status;
   };
@@ -7141,9 +7143,9 @@ async function getProjectProgressItemAdjustments(req, res) {
     `SELECT adjustment.id, adjustment.project_id, adjustment.progress_item_id,
             adjustment.action, adjustment.changed_fields,
             adjustment.changed_by, adjustment.changed_role, adjustment.created_at,
-            user.nickname AS changed_by_name
+            COALESCE(user.nickname, '项目成员') AS changed_by_name
      FROM project_progress_item_adjustments adjustment
-     JOIN users user ON user.id = adjustment.changed_by
+     LEFT JOIN users user ON user.id = adjustment.changed_by
      WHERE adjustment.project_id = ? AND adjustment.progress_item_id = ?
      ORDER BY adjustment.created_at DESC, adjustment.id DESC`,
     [projectId, itemId]
@@ -8332,7 +8334,8 @@ async function getProjectInspectionStepRecords(req, res) {
   const params = [projectId];
   const filters = ['record.project_id = ?'];
   const requesterRole = await getProjectMemberRole(projectId, req.user.id);
-  if (!isOwnerSideRole(requesterRole)) {
+  const requesterCompanyAdminReadOnly = requesterRole === companyAdminViewerRole;
+  if (!isOwnerSideRole(requesterRole) && !requesterCompanyAdminReadOnly) {
     filters.push(
       '(record.created_by = ? OR record.target_user_id = ? OR record.response_by = ?)'
     );

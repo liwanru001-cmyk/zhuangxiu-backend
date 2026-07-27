@@ -345,7 +345,7 @@ test('my project companies come from project participants and are read only', as
   assert.equal(queries.length, 1);
 });
 
-test('company workbench summary uses explicit company project links', async () => {
+test('company workbench summary uses explicit and company-member project links', async () => {
   const queries = [];
   const dbMock = {
     async query(sql, params) {
@@ -358,8 +358,9 @@ test('company workbench summary uses explicit company project links', async () =
         assert.match(sql, /project_participants_ext ppe/);
         assert.match(sql, /ppe\.company_id = \?/);
         assert.match(sql, /participant_type = 'company'/);
-        assert.doesNotMatch(sql, /JOIN project_members project_pm/);
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.match(sql, /JOIN project_members project_member/);
+        assert.match(sql, /company_member\.company_id = \?/);
+        assert.deepEqual(params, [9, 9, 9, 9]);
         return [[{
           total: 18,
           project_count: 6,
@@ -378,7 +379,7 @@ test('company workbench summary uses explicit company project links', async () =
       if (/nearest_due_at/.test(sql)) {
         assert.match(sql, /project_progress_items item/);
         assert.match(sql, /item\.status NOT IN \('completed', 'delayed'\)/);
-        assert.deepEqual(params, [9, 9]);
+        assert.deepEqual(params, [9, 9, 9]);
         return [[{
           total: 4,
           project_count: 3,
@@ -387,7 +388,7 @@ test('company workbench summary uses explicit company project links', async () =
       }
       if (/COUNT\(DISTINCT handover\.project_id\) AS project_count/.test(sql)) {
         assert.match(sql, /handover\.status = 'pending_confirm'/);
-        assert.deepEqual(params, [9, 9]);
+        assert.deepEqual(params, [9, 9, 9]);
         return [[{
           total: 3,
           project_count: 3,
@@ -400,7 +401,7 @@ test('company workbench summary uses explicit company project links', async () =
         assert.match(sql, /project_participants_ext ppe/);
         assert.match(sql, /responsible\.id = project\.user_id/);
         assert.doesNotMatch(sql, /ppe_resp\./);
-        assert.deepEqual(params, [9, 9]);
+        assert.deepEqual(params, [9, 9, 9]);
         return [[{
           item_type: 'task',
           item_id: 101,
@@ -417,7 +418,7 @@ test('company workbench summary uses explicit company project links', async () =
       }
       if (sql.includes("SELECT 'action' AS item_type")
         && sql.includes('FROM project_action_items item')) {
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.deepEqual(params, [9, 9, 9, 9]);
         return [[]];
       }
       if (/SELECT 'consultation' AS item_type/.test(sql)) {
@@ -440,7 +441,7 @@ test('company workbench summary uses explicit company project links', async () =
         && sql.includes('FROM renovation_tasks task')
         && sql.includes('task.planned_end <= DATE_ADD')) {
         assert.match(sql, /responsible\.id = project\.user_id/);
-        assert.deepEqual(params, [9, 9]);
+        assert.deepEqual(params, [9, 9, 9]);
         return [[]];
       }
       if (sql.includes("SELECT 'progress' AS item_type")
@@ -448,7 +449,7 @@ test('company workbench summary uses explicit company project links', async () =
         assert.match(sql, /project_progress_items item/);
         assert.match(sql, /item\.status NOT IN \('completed', 'delayed'\)/);
         assert.doesNotMatch(sql, /ppe_resp\./);
-        assert.deepEqual(params, [9, 9]);
+        assert.deepEqual(params, [9, 9, 9]);
         return [[{
           item_type: 'progress',
           item_id: 301,
@@ -465,11 +466,11 @@ test('company workbench summary uses explicit company project links', async () =
       }
       if (sql.includes("SELECT 'action' AS item_type")
         && sql.includes('FROM project_action_items action')) {
-        assert.deepEqual(params, [9, 9, 9]);
+        assert.deepEqual(params, [9, 9, 9, 9]);
         return [[]];
       }
       if (/SELECT 'handover' AS item_type/.test(sql)) {
-        assert.deepEqual(params, [9, 9]);
+        assert.deepEqual(params, [9, 9, 9]);
         return [[{
           item_type: 'handover',
           item_id: 401,

@@ -301,12 +301,27 @@ const companyProjectsCte = `
     FROM project_participants_ext ppe
     JOIN renovation_projects p
       ON p.id = ppe.project_id
-     AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+     AND COALESCE(p.lifecycle_status, 'active') = 'active'
+     AND COALESCE(p.status, 1) <> 2
     WHERE ppe.status <> 'removed'
       AND (
         ppe.company_id = ?
         OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
       )
+
+    UNION
+
+    SELECT DISTINCT p.id AS project_id
+    FROM company_members company_member
+    JOIN project_members project_member
+      ON project_member.user_id = company_member.user_id
+     AND project_member.status = 1
+    JOIN renovation_projects p
+      ON p.id = project_member.project_id
+     AND COALESCE(p.lifecycle_status, 'active') = 'active'
+     AND COALESCE(p.status, 1) <> 2
+    WHERE company_member.company_id = ?
+      AND company_member.status = 'active'
   )
 `;
 
@@ -430,6 +445,7 @@ function mapCompanyProjectRow(row) {
     projectName: row.project_name || '装修项目',
     houseArea: row.house_area === null ? null : Number(row.house_area),
     currentStage: row.current_stage || 1,
+    projectStatus: Number(row.project_status || 1),
     lifecycleStatus: row.lifecycle_status || 'active',
     roleType: row.role_type || 'contractor',
     participantStatus: row.participant_status || 'active',
@@ -1985,29 +2001,61 @@ async function submitConsultationEvaluationFeedback(req, res) {
     return error(res, '请选择 1-5 分评价', 400);
   }
   const [rows] = await db.query(
-    `SELECT target.target_id AS company_id,
-            relation.target_id AS project_id,
+    `SELECT c.id AS consultation_id,
             c.user_id,
-            c.designer_id
-     FROM consultation_targets target
-     LEFT JOIN designer_consultations c ON c.id = target.consultation_id
-     LEFT JOIN entity_relations relation
-       ON relation.source_type = 'consultation'
-      AND relation.source_id = c.id
-      AND relation.target_type = 'project'
-     WHERE (target.consultation_id = ? OR target.id = ?)
-       AND target.target_type = 'company'
+            c.designer_id,
+            COALESCE(
+              (
+                SELECT target.target_id
+                FROM consultation_targets target
+                JOIN companies direct_company
+                  ON direct_company.id = target.target_id
+                 AND direct_company.status = 'active'
+                 AND direct_company.verification_status = 'verified'
+                WHERE target.consultation_id = c.id
+                  AND target.target_type = 'company'
+                  AND target.target_id > 0
+                ORDER BY target.id ASC
+                LIMIT 1
+              ),
+              (
+                SELECT merchant_company.id
+                FROM companies merchant_company
+                LEFT JOIN company_members merchant_member
+                  ON merchant_member.company_id = merchant_company.id
+                 AND merchant_member.user_id = c.designer_id
+                 AND merchant_member.status = 'active'
+                WHERE c.target_role = 'merchant'
+                  AND (
+                    merchant_company.owner_user_id = c.designer_id
+                    OR merchant_member.user_id IS NOT NULL
+                  )
+                  AND merchant_company.status = 'active'
+                  AND merchant_company.verification_status = 'verified'
+                ORDER BY merchant_company.id ASC
+                LIMIT 1
+              )
+            ) AS company_id,
+            (
+              SELECT relation.target_id
+              FROM entity_relations relation
+              WHERE relation.source_type = 'consultation'
+                AND relation.source_id = c.id
+                AND relation.target_type = 'project'
+              ORDER BY relation.id ASC
+              LIMIT 1
+            ) AS project_id
+     FROM designer_consultations c
+     WHERE c.id = ?
      LIMIT 1`,
-    [consultationId, consultationId]
+    [consultationId]
   );
   const row = rows[0];
-  if (!row) return error(res, '咨询不存在或未关联装修公司', 404);
-  if (
-    row.user_id &&
-    row.designer_id &&
-    Number(req.user.id) !== Number(row.user_id) &&
-    Number(req.user.id) !== Number(row.designer_id)
-  ) {
+  if (!row) return error(res, '咨询不存在', 404);
+  if (!Number(row.company_id || 0)) {
+    return error(res, '该咨询未关联装修公司，暂不支持评价', 422);
+  }
+  if (Number(req.user.id) !== Number(row.user_id)) {
     return error(res, '无权限评价该咨询', 403);
   }
   await db.query(
@@ -2023,7 +2071,7 @@ async function submitConsultationEvaluationFeedback(req, res) {
     [
       Number(row.company_id),
       row.project_id || null,
-      consultationId,
+      Number(row.consultation_id),
       req.user.id,
       dimension,
       score,
@@ -2155,6 +2203,7 @@ async function searchCompanyMemberCandidates(req, res) {
 
 async function listCompanyProjects(req, res) {
   const companyId = Number(req.params.id);
+  const includeHistory = String(req.query?.include_history || '') === '1';
   if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
   if (!(await canManageCompany(companyId, req.user.id))) {
     return error(res, '无权限查看该公司项目', 403);
@@ -2162,7 +2211,7 @@ async function listCompanyProjects(req, res) {
 
   const [extRows] = await db.query(
     `SELECT p.id AS project_id, p.project_code, p.project_name, p.house_area,
-            p.current_stage, p.lifecycle_status,
+            p.current_stage, p.status AS project_status, p.lifecycle_status,
             ppe.role_type, ppe.status AS participant_status,
             'project_participants_ext' AS source,
             COALESCE(ppe.user_id, prof.user_id) AS responsible_user_id,
@@ -2175,7 +2224,7 @@ async function listCompanyProjects(req, res) {
       AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
      LEFT JOIN professionals prof ON prof.id = ppe.professional_id
      LEFT JOIN users u ON u.id = COALESCE(ppe.user_id, prof.user_id)
-     WHERE ppe.status <> 'removed'
+     WHERE ${includeHistory ? '1 = 1' : "ppe.status <> 'removed'"}
        AND (
          ppe.company_id = ?
          OR (ppe.participant_type = 'company' AND ppe.participant_id = ?)
@@ -2186,7 +2235,8 @@ async function listCompanyProjects(req, res) {
 
   const [inferredRows] = await db.query(
     `SELECT DISTINCT p.id AS project_id, p.project_code, p.project_name,
-            p.house_area, p.current_stage, p.lifecycle_status,
+            p.house_area, p.current_stage, p.status AS project_status,
+            p.lifecycle_status,
             CASE cm.member_role
               WHEN 'designer' THEN 'designer'
               WHEN 'supervisor' THEN 'supervisor'
@@ -2550,7 +2600,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        WHERE item.status = 'pending'
          AND item.due_date = CURDATE()
      ) todo_items`,
-    [companyId, companyId, companyId]
+    [companyId, companyId, companyId, companyId]
   );
 
   const [pendingConsultationRows] = await db.query(
@@ -2613,7 +2663,7 @@ async function getCompanyWorkbenchSummary(req, res) {
          AND action.due_date >= CURDATE()
          AND action.due_date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
      ) deadline_items`,
-    [companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const [pendingHandoverRows] = await db.query(
@@ -2624,7 +2674,7 @@ async function getCompanyWorkbenchSummary(req, res) {
      FROM project_handovers handover
      JOIN company_projects cp ON cp.project_id = handover.project_id
      WHERE handover.status = 'pending_confirm'`,
-    [companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const todayTaskItemRows = await queryWorkbenchDetailItems('todayTodoTasks', companyId,
@@ -2649,7 +2699,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        AND task.planned_end >= CURDATE()
      ORDER BY task.planned_end ASC, task.updated_at ASC, task.id ASC
      LIMIT 3`,
-    [companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const todayActionItemRows = await queryWorkbenchDetailItems('todayTodoActions', companyId,
@@ -2686,7 +2736,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        AND item.due_date = CURDATE()
      ORDER BY item.due_date ASC, item.created_at ASC, item.id ASC
      LIMIT 3`,
-    [companyId, companyId, companyId]
+    [companyId, companyId, companyId, companyId]
   );
 
   const todayTodoItemRows = sortWorkbenchRows([
@@ -2755,7 +2805,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        AND task.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
      ORDER BY task.planned_end ASC, task.updated_at ASC, task.id ASC
      LIMIT 3`,
-    [companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const upcomingProgressDeadlineRows = await queryWorkbenchDetailItems('upcomingProgressDeadlines', companyId,
@@ -2781,7 +2831,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
      ORDER BY item.planned_end ASC, item.updated_at ASC, item.id ASC
      LIMIT 3`,
-    [companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const upcomingActionDeadlineRows = await queryWorkbenchDetailItems('upcomingActionDeadlines', companyId,
@@ -2814,7 +2864,7 @@ async function getCompanyWorkbenchSummary(req, res) {
        AND action.due_date <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
      ORDER BY action.due_date ASC, action.created_at ASC, action.id ASC
      LIMIT 3`,
-    [companyId, companyId, companyId]
+    [companyId, companyId, companyId, companyId]
   );
 
   const upcomingDeadlineItemRows = sortWorkbenchRows([
@@ -2844,7 +2894,7 @@ async function getCompanyWorkbenchSummary(req, res) {
      WHERE handover.status = 'pending_confirm'
      ORDER BY handover.created_at ASC, handover.id ASC
      LIMIT 3`,
-    [companyId, companyId]
+    [companyId, companyId, companyId]
   );
 
   const todo = todayTodoRows[0] || {};

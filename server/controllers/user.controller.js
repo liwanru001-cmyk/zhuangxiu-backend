@@ -1246,6 +1246,19 @@ async function createDesignerConsultation(req, res) {
     req.body.has_project === 'true' ||
     req.body.has_project === '1' ||
     req.body.has_project === 1;
+  const requestedProductId = Number(req.body.product_id || req.body.productId || 0);
+  let productId = null;
+  if (requestedProductId > 0) {
+    if (targetRole !== 'merchant') return error(res, '只有商品咨询可以关联产品');
+    const [productRows] = await db.query(
+      `SELECT id FROM merchant_products
+       WHERE id = ? AND merchant_user_id = ? AND status = 'active'
+       LIMIT 1`,
+      [requestedProductId, targetId]
+    );
+    if (!productRows.length) return error(res, '产品不存在或已下架', 404);
+    productId = Number(productRows[0].id);
+  }
   if (!content) return error(res, '请填写咨询内容');
 
   const todayConsultations = await countRows(
@@ -1273,12 +1286,13 @@ async function createDesignerConsultation(req, res) {
 
   const [result] = await db.query(
     `INSERT INTO designer_consultations
-     (designer_id, target_role, user_id, content, project_city, renovation_stage, has_project)
-     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+     (designer_id, target_role, user_id, product_id, content, project_city, renovation_stage, has_project)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       targetId,
       targetRole,
       req.user.id,
+      productId,
       content,
       projectCity || null,
       renovationStage || null,
@@ -1363,9 +1377,26 @@ async function getMyConsultations(req, res) {
             c.created_at, c.updated_at,
             designer.nickname AS designer_nickname,
             designer.avatar AS designer_avatar,
-            designer.city AS designer_city
+            designer.city AS designer_city,
+            CASE
+              WHEN target.target_type = 'company' THEN 'company'
+              WHEN c.target_role = 'merchant' THEN 'merchant'
+              ELSE 'professional'
+            END AS subject_type,
+            COALESCE(company.name, merchant.shop_name, designer.nickname) AS subject_name,
+            COALESCE(company.id, merchant.user_id, designer.id) AS subject_id
      FROM designer_consultations c
      JOIN users designer ON designer.id = c.designer_id
+     LEFT JOIN consultation_targets target
+       ON target.id = (
+         SELECT target_latest.id FROM consultation_targets target_latest
+         WHERE target_latest.consultation_id = c.id
+         ORDER BY target_latest.id DESC LIMIT 1
+       )
+     LEFT JOIN companies company
+       ON target.target_type = 'company' AND company.id = target.target_id
+     LEFT JOIN merchant_profiles merchant
+       ON c.target_role = 'merchant' AND merchant.user_id = c.designer_id
      WHERE c.user_id = ?
      ORDER BY c.created_at DESC, c.id DESC
      LIMIT 100`,
@@ -1382,14 +1413,51 @@ async function getMyConsultations(req, res) {
 
 async function getConsultationForUser(consultationId, userId) {
   const [rows] = await db.query(
-    `SELECT c.id, c.designer_id, c.target_role, c.user_id, c.content, c.status,
+    `SELECT c.id, c.designer_id, c.target_role, c.user_id, c.product_id,
+            c.content, c.status,
             designer.nickname AS designer_nickname,
             designer.avatar AS designer_avatar,
             owner.nickname AS user_nickname,
-            owner.avatar AS user_avatar
+            owner.avatar AS user_avatar,
+            product.name AS product_name,
+            product.cover_url AS product_cover_url,
+            COALESCE(
+              (
+                SELECT target.target_id
+                FROM consultation_targets target
+                JOIN companies direct_company
+                  ON direct_company.id = target.target_id
+                 AND direct_company.status = 'active'
+                 AND direct_company.verification_status = 'verified'
+                WHERE target.consultation_id = c.id
+                  AND target.target_type = 'company'
+                  AND target.target_id > 0
+                ORDER BY target.id ASC
+                LIMIT 1
+              ),
+              (
+                SELECT merchant_company.id
+                FROM companies merchant_company
+                LEFT JOIN company_members merchant_member
+                  ON merchant_member.company_id = merchant_company.id
+                 AND merchant_member.user_id = c.designer_id
+                 AND merchant_member.status = 'active'
+                WHERE c.target_role = 'merchant'
+                  AND (
+                    merchant_company.owner_user_id = c.designer_id
+                    OR merchant_member.user_id IS NOT NULL
+                  )
+                  AND merchant_company.status = 'active'
+                  AND merchant_company.verification_status = 'verified'
+                ORDER BY merchant_company.id ASC
+                LIMIT 1
+              )
+            ) AS evaluation_company_id
      FROM designer_consultations c
      JOIN users designer ON designer.id = c.designer_id
      JOIN users owner ON owner.id = c.user_id
+     LEFT JOIN merchant_products product
+       ON product.id = c.product_id AND product.merchant_user_id = c.designer_id
      WHERE c.id = ?
        AND (c.designer_id = ? OR c.user_id = ?)
      LIMIT 1`,
@@ -1420,7 +1488,12 @@ async function getConsultationMessages(req, res) {
     [consultationId]
   );
   return success(res, {
-    consultation,
+    consultation: {
+      ...consultation,
+      can_evaluate_communication:
+        Number(consultation.evaluation_company_id || 0) > 0 &&
+        Number(req.user.id) === Number(consultation.user_id),
+    },
     messages: rows,
   });
 }
@@ -1550,6 +1623,13 @@ async function getConsultationConversations(req, res) {
               WHEN c.designer_id = ? THEN owner.avatar
               ELSE designer.avatar
             END AS peer_avatar,
+            CASE
+              WHEN target.target_type = 'company' THEN 'company'
+              WHEN c.target_role = 'merchant' THEN 'merchant'
+              ELSE 'professional'
+            END AS subject_type,
+            COALESCE(company.name, merchant.shop_name, designer.nickname) AS subject_name,
+            COALESCE(company.id, merchant.user_id, designer.id) AS subject_id,
             (
               SELECT COUNT(*) FROM consultation_messages unread_msg
               LEFT JOIN consultation_message_reads read_state
@@ -1562,6 +1642,16 @@ async function getConsultationConversations(req, res) {
      FROM designer_consultations c
      JOIN users designer ON designer.id = c.designer_id
      JOIN users owner ON owner.id = c.user_id
+     LEFT JOIN consultation_targets target
+       ON target.id = (
+         SELECT target_latest.id FROM consultation_targets target_latest
+         WHERE target_latest.consultation_id = c.id
+         ORDER BY target_latest.id DESC LIMIT 1
+       )
+     LEFT JOIN companies company
+       ON target.target_type = 'company' AND company.id = target.target_id
+     LEFT JOIN merchant_profiles merchant
+       ON c.target_role = 'merchant' AND merchant.user_id = c.designer_id
      LEFT JOIN consultation_messages last_msg
        ON last_msg.id = (
          SELECT m.id FROM consultation_messages m

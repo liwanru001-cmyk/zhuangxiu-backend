@@ -106,6 +106,74 @@ test('owner family member sees only own and explicitly shared check-ins', async 
   assert.deepEqual(res.payload.data, []);
 });
 
+test('company admin read-only viewer sees all project inspection step records', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT id FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 42]);
+        return [[]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 42]);
+        return [[]];
+      }
+      if (/SELECT c\.id[\s\S]*FROM companies c/.test(sql)) {
+        assert.deepEqual(params, [42, 42, 9, 9]);
+        return [[{ id: 3 }]];
+      }
+      if (/FROM project_inspection_step_records record/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        assert.doesNotMatch(sql, /record\.created_by = \?/);
+        return [[{
+          id: 501,
+          project_id: 9,
+          stage_id: 3,
+          progress_item_id: null,
+          step_key: 'water-pressure',
+          step_title: '水压测试',
+          step_action: null,
+          record_type: 'member_checked',
+          status: 'rework',
+          description: '压力不足',
+          review_remark: '重新加压',
+          response_description: null,
+          response_by: null,
+          response_at: null,
+          created_by: 7,
+          member_role: 'project_manager',
+          target_user_id: 8,
+          reviewed_by: 6,
+          reviewed_at: null,
+          created_at: null,
+          updated_at: null,
+          creator_name: '项目经理',
+          target_name: '水电工',
+          target_role: 'merchant',
+          reviewer_name: '业主',
+          responder_name: null,
+        }]];
+      }
+      if (/FROM project_inspection_step_record_images/.test(sql)) {
+        assert.deepEqual(params, [501]);
+        return [[]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.getProjectInspectionStepRecords({
+    user: { id: 42 },
+    params: { id: '9' },
+    query: {},
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.length, 1);
+  assert.equal(res.payload.data[0].step_title, '水压测试');
+});
+
 test('main owner sees all project check-ins without member visibility filter', async () => {
   let visibilityChecked = false;
   const dbMock = {

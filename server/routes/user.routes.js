@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const userController = require('../controllers/user.controller');
 const merchantProductsController = require('../controllers/merchant-products.controller');
+const entityFavoritesController = require('../controllers/entity-favorites.controller');
 const merchantCasesController = require('../controllers/merchant-cases.controller');
 const auth = require('../middleware/auth');
 const requireActiveVerifiedMerchant = require('../middleware/verified-merchant');
@@ -175,6 +176,10 @@ router.post('/merchant-products', asyncHandler(auth), asyncHandler(merchantProdu
 router.get('/merchant-products/favorites', asyncHandler(auth), asyncHandler(merchantProductsController.listFavoriteProducts));
 router.post('/merchant-products/:id/favorite', asyncHandler(auth), asyncHandler(merchantProductsController.favoriteProduct));
 router.delete('/merchant-products/:id/favorite', asyncHandler(auth), asyncHandler(merchantProductsController.unfavoriteProduct));
+router.get('/favorites/entities', asyncHandler(auth), asyncHandler(entityFavoritesController.listFavorites));
+router.get('/favorites/:type/:id', asyncHandler(auth), asyncHandler(entityFavoritesController.getFavoriteStatus));
+router.post('/favorites/:type/:id', asyncHandler(auth), asyncHandler(entityFavoritesController.setFavorite));
+router.delete('/favorites/:type/:id', asyncHandler(auth), asyncHandler(entityFavoritesController.unsetFavorite));
 router.put('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchantProductsController.updateProduct));
 router.delete('/merchant-products/:id', asyncHandler(auth), asyncHandler(merchantProductsController.deleteProduct));
 router.get('/merchant/dashboard/cases', asyncHandler(auth), asyncHandler(merchantCasesController.listDashboardCases));

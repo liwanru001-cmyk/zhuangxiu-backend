@@ -366,6 +366,7 @@ async function ensureAppTables() {
   await ensureProjectInfoChangeRequestTables();
   await ensureProjectSpaceChangeRequestTables();
   await ensureProjectCaseShareTables();
+  await ensureEntityFavoriteTables();
   const [inspectionTables] = await pool.query(`
     SELECT TABLE_NAME FROM information_schema.TABLES
     WHERE TABLE_SCHEMA = DATABASE()
@@ -439,6 +440,7 @@ async function ensureAppTables() {
       designer_id BIGINT UNSIGNED NOT NULL,
       target_role ENUM('designer', 'project_manager', 'project_supervisor', 'merchant') NOT NULL DEFAULT 'designer',
       user_id BIGINT UNSIGNED NOT NULL,
+      product_id BIGINT UNSIGNED DEFAULT NULL,
       content TEXT NOT NULL,
       project_city VARCHAR(80) DEFAULT NULL,
       renovation_stage VARCHAR(80) DEFAULT NULL,
@@ -451,6 +453,37 @@ async function ensureAppTables() {
       KEY idx_consultation_target_role (designer_id, target_role, status, created_at),
       KEY idx_user_created (user_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const [consultationProductColumns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'designer_consultations'
+      AND COLUMN_NAME = 'product_id'
+  `);
+  if (!consultationProductColumns.length) {
+    await pool.query(`
+      ALTER TABLE designer_consultations
+      ADD COLUMN product_id BIGINT UNSIGNED DEFAULT NULL AFTER user_id,
+      ADD KEY idx_consultation_product (product_id)
+    `);
+  }
+  await pool.query(`
+    UPDATE designer_consultations consultation
+    JOIN (
+      SELECT existing.id AS consultation_id, MIN(product.id) AS product_id
+      FROM designer_consultations existing
+      JOIN merchant_products product
+        ON product.merchant_user_id = existing.designer_id
+       AND LEFT(
+         existing.content,
+         CHAR_LENGTH(CONCAT('咨询商品：', product.name, CHAR(10)))
+       ) = CONCAT('咨询商品：', product.name, CHAR(10))
+      WHERE existing.target_role = 'merchant'
+        AND existing.product_id IS NULL
+      GROUP BY existing.id
+      HAVING COUNT(*) = 1
+    ) matched ON matched.consultation_id = consultation.id
+    SET consultation.product_id = matched.product_id
   `);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS consultation_messages (
@@ -1601,6 +1634,25 @@ async function ensureProjectCaseShareTables() {
       KEY idx_case_share_project (project_id, status, updated_at),
       KEY idx_case_share_designer (designer_id, status, updated_at),
       KEY idx_case_share_owner (owner_id, status, updated_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureEntityFavoriteTables() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_entity_favorites (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      user_id BIGINT UNSIGNED NOT NULL,
+      entity_type ENUM('shop', 'company', 'merchant_case', 'company_case') NOT NULL,
+      entity_id BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_user_entity_favorite (user_id, entity_type, entity_id),
+      KEY idx_user_entity_created (user_id, entity_type, created_at),
+      KEY idx_entity_favorite (entity_type, entity_id),
+      CONSTRAINT fk_entity_favorite_user
+        FOREIGN KEY (user_id) REFERENCES users(id)
+        ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 }
