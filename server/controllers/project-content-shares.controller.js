@@ -211,4 +211,43 @@ async function listShares(req, res) {
   return success(res, items);
 }
 
-module.exports = { createShare, listShares };
+async function unreadCount(req, res) {
+  const projectId = Number(req.params.id);
+  if (!projectId || !(await projectAccess(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const [rows] = await db.query(
+    `SELECT COUNT(*) AS unread_count
+     FROM project_content_shares share
+     LEFT JOIN project_content_share_reads read_state
+       ON read_state.project_id = share.project_id
+      AND read_state.user_id = ?
+     WHERE share.project_id = ?
+       AND share.shared_by <> ?
+       AND share.created_at > COALESCE(read_state.last_read_at, '1970-01-01')
+       AND (
+         share.shared_to_all = 1 OR EXISTS (
+           SELECT 1 FROM project_content_share_recipients target
+           WHERE target.share_id = share.id AND target.user_id = ?
+         )
+       )`,
+    [req.user.id, projectId, req.user.id, req.user.id]
+  );
+  return success(res, { unread_count: Number(rows[0]?.unread_count || 0) });
+}
+
+async function markRead(req, res) {
+  const projectId = Number(req.params.id);
+  if (!projectId || !(await projectAccess(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  await db.query(
+    `INSERT INTO project_content_share_reads (project_id, user_id, last_read_at)
+     VALUES (?, ?, NOW())
+     ON DUPLICATE KEY UPDATE last_read_at = NOW()`,
+    [projectId, req.user.id]
+  );
+  return success(res, null, '已读');
+}
+
+module.exports = { createShare, listShares, unreadCount, markRead };

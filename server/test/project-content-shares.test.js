@@ -113,3 +113,46 @@ test('project share list query supports ONLY_FULL_GROUP_BY', async () => {
   assert.doesNotMatch(listSql, /\bGROUP BY share\.id\b/);
   assert.match(listSql, /WHERE target\.share_id = share\.id/);
 });
+
+test('unread count excludes the current user shares and respects recipients', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) return [[{ id: 5 }]];
+      if (/COUNT\(\*\) AS unread_count/.test(sql)) {
+        assert.deepEqual(params, [7, 5, 7, 7]);
+        assert.match(sql, /share\.shared_by <> \?/);
+        assert.match(sql, /target\.user_id = \?/);
+        return [[{ unread_count: 3 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = controllerWith(dbMock);
+  const res = response();
+  await controller.unreadCount({
+    user: { id: 7 },
+    params: { id: '5' },
+  }, res);
+  assert.equal(res.payload.data.unread_count, 3);
+});
+
+test('mark read upserts the project member read timestamp', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) return [[{ id: 5 }]];
+      if (/INSERT INTO project_content_share_reads/.test(sql)) {
+        assert.deepEqual(params, [5, 7]);
+        assert.match(sql, /ON DUPLICATE KEY UPDATE last_read_at = NOW\(\)/);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = controllerWith(dbMock);
+  const res = response();
+  await controller.markRead({
+    user: { id: 7 },
+    params: { id: '5' },
+  }, res);
+  assert.equal(res.statusCode, 200);
+});

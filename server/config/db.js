@@ -1692,6 +1692,19 @@ async function ensureProjectContentShareTables() {
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_content_share_reads (
+      project_id BIGINT UNSIGNED NOT NULL,
+      user_id BIGINT UNSIGNED NOT NULL,
+      last_read_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (project_id, user_id),
+      KEY idx_content_share_read_user (user_id, last_read_at),
+      CONSTRAINT fk_content_share_read_project
+        FOREIGN KEY (project_id) REFERENCES renovation_projects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_content_share_read_user
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 async function ensureSmsCodesTable() {

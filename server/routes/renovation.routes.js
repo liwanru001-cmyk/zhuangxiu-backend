@@ -761,6 +761,16 @@ router.post(
   ...protectedRoute,
   asyncHandler(projectContentSharesController.createShare)
 );
+router.get(
+  '/projects/:id/content-shares/unread-count',
+  ...protectedRoute,
+  asyncHandler(projectContentSharesController.unreadCount)
+);
+router.post(
+  '/projects/:id/content-shares/read',
+  ...protectedRoute,
+  asyncHandler(projectContentSharesController.markRead)
+);
 router.post('/member-requests', ...protectedRoute, asyncHandler(controller.requestProjectMember));
 router.get(
   '/projects/:id/member-requests',
