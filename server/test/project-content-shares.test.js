@@ -87,3 +87,29 @@ test('project share rejects recipients outside the project', async () => {
   assert.equal(res.statusCode, 400);
   assert.equal(res.payload.message, '所选成员不在当前项目中');
 });
+
+test('project share list query supports ONLY_FULL_GROUP_BY', async () => {
+  let listSql = '';
+  const dbMock = {
+    async query(sql) {
+      if (/FROM renovation_projects p/.test(sql)) return [[{ id: 5 }]];
+      if (/FROM project_content_shares share/.test(sql)) {
+        listSql = sql;
+        return [[]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = controllerWith(dbMock);
+  const res = response();
+
+  await controller.listShares({
+    user: { id: 7 },
+    params: { id: '5' },
+    query: {},
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.doesNotMatch(listSql, /\bGROUP BY share\.id\b/);
+  assert.match(listSql, /WHERE target\.share_id = share\.id/);
+});

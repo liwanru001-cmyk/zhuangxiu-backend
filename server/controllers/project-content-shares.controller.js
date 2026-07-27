@@ -167,7 +167,12 @@ async function listShares(req, res) {
             share.share_note, share.shared_to_all, share.created_at,
             sharer.nickname AS shared_by_name, share.shared_by,
             COALESCE(member.role, CASE WHEN project.user_id = share.shared_by THEN 'owner' ELSE '' END) AS shared_by_role,
-            GROUP_CONCAT(DISTINCT recipient.nickname ORDER BY recipient.nickname SEPARATOR '、') AS recipient_names
+            (
+              SELECT GROUP_CONCAT(DISTINCT recipient.nickname ORDER BY recipient.nickname SEPARATOR '、')
+              FROM project_content_share_recipients target
+              JOIN users recipient ON recipient.id = target.user_id
+              WHERE target.share_id = share.id
+            ) AS recipient_names
      FROM project_content_shares share
      JOIN renovation_projects project ON project.id = share.project_id
      JOIN users sharer ON sharer.id = share.shared_by
@@ -175,8 +180,6 @@ async function listShares(req, res) {
        ON member.project_id = share.project_id
       AND member.user_id = share.shared_by
       AND member.status = 1
-     LEFT JOIN project_content_share_recipients target ON target.share_id = share.id
-     LEFT JOIN users recipient ON recipient.id = target.user_id
      WHERE share.project_id = ?
        AND (
          share.shared_by = ? OR share.shared_to_all = 1 OR
@@ -186,7 +189,6 @@ async function listShares(req, res) {
          )
        )
        ${where}
-     GROUP BY share.id
      ORDER BY share.created_at DESC, share.id DESC
      LIMIT 100`,
     params
