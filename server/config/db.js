@@ -1664,7 +1664,7 @@ async function ensureProjectContentShareTables() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       project_id BIGINT UNSIGNED NOT NULL,
       shared_by BIGINT UNSIGNED NOT NULL,
-      content_type ENUM('merchant_product', 'merchant_case', 'company_case') NOT NULL,
+      content_type ENUM('merchant_product', 'merchant', 'company', 'merchant_case', 'company_case') NOT NULL,
       content_id BIGINT UNSIGNED NOT NULL,
       share_note VARCHAR(200) DEFAULT NULL,
       shared_to_all TINYINT(1) NOT NULL DEFAULT 0,

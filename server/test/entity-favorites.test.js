@@ -67,6 +67,67 @@ test('shop favorite only accepts an active verified merchant', async () => {
   assert.equal(calls.length, 2);
 });
 
+test('merchant favorite alias stores as legacy shop type', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM merchant_profiles mp/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{
+          entity_id: 42,
+          title: '木作店',
+          merchant_user_id: 42,
+        }]];
+      }
+      if (/INSERT IGNORE INTO user_entity_favorites/.test(sql)) {
+        assert.deepEqual(params, [7, 'shop', 42]);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.setFavorite({
+    user: { id: 7 },
+    params: { type: 'merchant', id: '42' },
+    query: {},
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.favorited, true);
+});
+
+test('merchant favorite list reads legacy shop records but returns merchant type', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM user_entity_favorites/.test(sql)) {
+        assert.deepEqual(params, [7, 'shop', 20, 0]);
+        return [[{ id: 1, entity_id: 42, created_at: '2026-07-28 12:00:00' }]];
+      }
+      if (/FROM merchant_profiles mp/.test(sql)) {
+        return [[{
+          entity_id: 42,
+          title: '木作店',
+          merchant_user_id: 42,
+        }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.listFavorites({
+    user: { id: 7 },
+    params: {},
+    query: { type: 'merchant' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.items[0].entity_type, 'merchant');
+});
+
 test('company favorite rejects a company that is not publicly visible', async () => {
   const dbMock = {
     async query(sql, params) {

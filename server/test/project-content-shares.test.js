@@ -62,6 +62,91 @@ test('project member can share an active merchant product to all members', async
   assert.equal(res.payload.data.id, 31);
 });
 
+test('project member can share a merchant shop to project members', async () => {
+  const connection = {
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {},
+    release() {},
+    async query(sql, params) {
+      if (/INSERT INTO project_content_shares/.test(sql)) {
+        assert.deepEqual(params, [5, 7, 'merchant', 42, null, 1]);
+        return [{ insertId: 32 }];
+      }
+      throw new Error(`unexpected transaction query: ${sql}`);
+    },
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) return [[{ id: 5 }]];
+      if (/FROM merchant_profiles profile/.test(sql)) {
+        assert.deepEqual(params, [42]);
+        return [[{ id: 42, title: '木作店', merchant_user_id: 42 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() { return connection; },
+  };
+  const controller = controllerWith(dbMock);
+  const res = response();
+
+  await controller.createShare({
+    user: { id: 7 },
+    params: { id: '5' },
+    body: {
+      content_type: 'merchant',
+      content_id: 42,
+      shared_to_all: true,
+    },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.id, 32);
+});
+
+test('project member can share a verified company to project members', async () => {
+  const connection = {
+    async beginTransaction() {},
+    async commit() {},
+    async rollback() {},
+    release() {},
+    async query(sql, params) {
+      if (/INSERT INTO project_content_shares/.test(sql)) {
+        assert.deepEqual(params, [5, 7, 'company', 9, null, 1]);
+        return [{ insertId: 33 }];
+      }
+      throw new Error(`unexpected transaction query: ${sql}`);
+    },
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) return [[{ id: 5 }]];
+      if (/FROM companies company/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        assert.match(sql, /verification_status = 'verified'/);
+        return [[{ id: 9, title: '不凡装饰', company_id: 9 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() { return connection; },
+  };
+  const controller = controllerWith(dbMock);
+  const res = response();
+
+  await controller.createShare({
+    user: { id: 7 },
+    params: { id: '5' },
+    body: {
+      content_type: 'company',
+      content_id: 9,
+      shared_to_all: true,
+    },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.id, 33);
+});
+
 test('project share rejects recipients outside the project', async () => {
   const dbMock = {
     async query(sql) {

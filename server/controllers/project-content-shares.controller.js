@@ -2,7 +2,7 @@ const db = require('../config/db');
 const { success, error } = require('../utils/response');
 const { activeVerifiedMerchantExistsSql } = require('../utils/verified-merchant');
 
-const TYPES = new Set(['merchant_product', 'merchant_case', 'company_case']);
+const TYPES = new Set(['merchant_product', 'merchant', 'company', 'merchant_case', 'company_case']);
 
 async function projectAccess(projectId, userId) {
   const [rows] = await db.query(
@@ -22,6 +22,41 @@ async function projectAccess(projectId, userId) {
 }
 
 async function loadContent(type, id) {
+  if (type === 'merchant') {
+    const [rows] = await db.query(
+      `SELECT profile.user_id AS id,
+              COALESCE(NULLIF(profile.shop_name, ''), merchant.nickname, '商家店铺') AS title,
+              profile.logo_url AS cover_url,
+              profile.brand_intro AS summary,
+              profile.user_id AS merchant_user_id,
+              COALESCE(NULLIF(profile.shop_name, ''), merchant.nickname, '商家店铺') AS source_name
+       FROM merchant_profiles profile
+       JOIN users merchant ON merchant.id = profile.user_id
+       WHERE profile.user_id = ?
+         AND EXISTS (
+           SELECT 1 FROM user_roles ur
+           WHERE ur.user_id = profile.user_id
+             AND ${activeVerifiedMerchantExistsSql('ur')}
+         )
+       LIMIT 1`,
+      [id]
+    );
+    return rows[0];
+  }
+  if (type === 'company') {
+    const [rows] = await db.query(
+      `SELECT company.id, company.name AS title, company.logo_url AS cover_url,
+              company.intro AS summary, company.id AS company_id,
+              company.name AS source_name
+       FROM companies company
+       WHERE company.id = ?
+         AND company.status = 'active'
+         AND company.verification_status = 'verified'
+       LIMIT 1`,
+      [id]
+    );
+    return rows[0];
+  }
   if (type === 'merchant_product') {
     const [rows] = await db.query(
       `SELECT product.id, product.name AS title, product.cover_url,

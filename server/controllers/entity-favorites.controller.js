@@ -4,7 +4,11 @@ const {
   activeVerifiedMerchantExistsSql,
 } = require('../utils/verified-merchant');
 
-const ENTITY_TYPES = new Set(['shop', 'company', 'merchant_case', 'company_case']);
+const ENTITY_TYPES = new Set(['shop', 'merchant', 'company', 'merchant_case', 'company_case']);
+
+function storageType(type) {
+  return type === 'merchant' ? 'shop' : type;
+}
 
 function parseTarget(req, res) {
   const type = String(req.params.type || req.query.type || '').trim();
@@ -13,7 +17,7 @@ function parseTarget(req, res) {
     error(res, '收藏对象不正确', 400);
     return null;
   }
-  return { type, id };
+  return { type: storageType(type), responseType: type, id };
 }
 
 async function loadEntity(type, id) {
@@ -130,8 +134,9 @@ async function getFavoriteStatus(req, res) {
 }
 
 async function listFavorites(req, res) {
-  const type = String(req.query.type || '').trim();
-  if (!ENTITY_TYPES.has(type)) return error(res, '收藏类型不正确', 400);
+  const requestedType = String(req.query.type || '').trim();
+  if (!ENTITY_TYPES.has(requestedType)) return error(res, '收藏类型不正确', 400);
+  const type = storageType(requestedType);
   const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
   const pageSize = Math.min(50, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 20));
   const offset = (page - 1) * pageSize;
@@ -148,7 +153,7 @@ async function listFavorites(req, res) {
     if (entity) {
       items.push({
         ...entity,
-        entity_type: type,
+        entity_type: requestedType,
         favorite_id: Number(favorite.id),
         favorite_created_at: favorite.created_at,
       });
