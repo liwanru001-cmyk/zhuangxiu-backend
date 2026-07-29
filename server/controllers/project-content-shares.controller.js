@@ -246,6 +246,99 @@ async function listShares(req, res) {
   return success(res, items);
 }
 
+async function listAccountShares(req, res) {
+  const type = String(req.query.type || '').trim();
+  const scope = String(req.query.scope || 'all').trim();
+  const params = [
+    req.user.id,
+    req.user.id,
+    req.user.id,
+    req.user.id,
+    req.user.id,
+    req.user.id
+  ];
+  let where = '';
+  if (TYPES.has(type)) {
+    where += ' AND share.content_type = ?';
+    params.push(type);
+  }
+  if (scope === 'mine') {
+    where += ' AND share.shared_by = ?';
+    params.push(req.user.id);
+  } else if (scope === 'received') {
+    where += ' AND share.shared_by <> ?';
+    params.push(req.user.id);
+  }
+  const [rows] = await db.query(
+    `SELECT share.id, share.project_id, share.content_type, share.content_id,
+            share.share_note, share.shared_to_all, share.created_at,
+            sharer.nickname AS shared_by_name, share.shared_by,
+            project.project_name,
+            COALESCE(member.role, CASE WHEN project.user_id = share.shared_by THEN 'owner' ELSE '' END) AS shared_by_role,
+            (
+              SELECT GROUP_CONCAT(DISTINCT recipient.nickname ORDER BY recipient.nickname SEPARATOR '、')
+              FROM project_content_share_recipients target
+              JOIN users recipient ON recipient.id = target.user_id
+              WHERE target.share_id = share.id
+            ) AS recipient_names
+     FROM project_content_shares share
+     LEFT JOIN renovation_projects project ON project.id = share.project_id
+     JOIN users sharer ON sharer.id = share.shared_by
+     LEFT JOIN project_members current_member
+       ON current_member.project_id = share.project_id
+      AND current_member.user_id = ?
+      AND current_member.status = 1
+     LEFT JOIN project_members member
+       ON member.project_id = share.project_id
+      AND member.user_id = share.shared_by
+      AND member.status = 1
+     WHERE (
+       (
+         share.project_id IS NULL
+         AND (
+           share.shared_by = ? OR EXISTS (
+             SELECT 1 FROM project_content_share_recipients mine
+             WHERE mine.share_id = share.id AND mine.user_id = ?
+           )
+         )
+       )
+       OR
+       (
+         share.project_id IS NOT NULL
+         AND COALESCE(project.lifecycle_status, 'active') <> 'deleted'
+         AND (project.user_id = ? OR current_member.user_id IS NOT NULL)
+         AND (
+           share.shared_by = ? OR share.shared_to_all = 1 OR
+           EXISTS (
+             SELECT 1 FROM project_content_share_recipients mine
+             WHERE mine.share_id = share.id AND mine.user_id = ?
+           )
+         )
+       )
+     )
+       ${where}
+     ORDER BY share.created_at DESC, share.id DESC
+     LIMIT 100`,
+    params
+  );
+  const items = [];
+  for (const row of rows) {
+    const content = await loadContent(row.content_type, Number(row.content_id));
+    if (!content) continue;
+    items.push({
+      ...row,
+      shared_to_all: Boolean(row.shared_to_all),
+      title: content.title || '',
+      cover_url: content.cover_url || '',
+      summary: content.summary || '',
+      source_name: content.source_name || '',
+      merchant_user_id: Number(content.merchant_user_id || 0),
+      company_id: Number(content.company_id || 0),
+    });
+  }
+  return success(res, items);
+}
+
 async function unreadCount(req, res) {
   const projectId = Number(req.params.id);
   if (!projectId || !(await projectAccess(projectId, req.user.id))) {
@@ -285,4 +378,4 @@ async function markRead(req, res) {
   return success(res, null, '已读');
 }
 
-module.exports = { createShare, listShares, unreadCount, markRead };
+module.exports = { createShare, listShares, listAccountShares, unreadCount, markRead };

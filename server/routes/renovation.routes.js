@@ -752,6 +752,11 @@ router.delete(
 );
 router.get('/member-candidates', ...protectedRoute, asyncHandler(controller.getMemberCandidates));
 router.get(
+  '/content-shares',
+  ...protectedRoute,
+  asyncHandler(projectContentSharesController.listAccountShares)
+);
+router.get(
   '/projects/:id/content-shares',
   ...protectedRoute,
   asyncHandler(projectContentSharesController.listShares)

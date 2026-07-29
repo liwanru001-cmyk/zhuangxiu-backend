@@ -199,6 +199,45 @@ test('project share list query supports ONLY_FULL_GROUP_BY', async () => {
   assert.match(listSql, /WHERE target\.share_id = share\.id/);
 });
 
+test('account share list includes accessible project and no-project shares', async () => {
+  let listSql = '';
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM project_content_shares share/.test(sql)) {
+        listSql = sql;
+        assert.deepEqual(params, [7, 7, 7, 7, 7, 7, 'merchant_product', 7]);
+        return [[{
+          id: 41,
+          project_id: null,
+          content_type: 'merchant_product',
+          content_id: 88,
+          shared_by_name: '业主',
+          shared_by: 9,
+          shared_to_all: 0,
+          project_name: null,
+        }]];
+      }
+      if (/FROM merchant_products product/.test(sql)) {
+        return [[{ id: 88, title: '吊灯', source_name: '灯具店' }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = controllerWith(dbMock);
+  const res = response();
+
+  await controller.listAccountShares({
+    user: { id: 7 },
+    query: { type: 'merchant_product', scope: 'received' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data[0].id, 41);
+  assert.match(listSql, /share\.project_id IS NULL/);
+  assert.match(listSql, /current_member\.project_id = share\.project_id/);
+  assert.match(listSql, /project\.user_id = \?/);
+});
+
 test('unread count excludes the current user shares and respects recipients', async () => {
   const dbMock = {
     async query(sql, params) {

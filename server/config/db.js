@@ -1662,7 +1662,7 @@ async function ensureProjectContentShareTables() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS project_content_shares (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
-      project_id BIGINT UNSIGNED NOT NULL,
+      project_id BIGINT UNSIGNED NULL,
       shared_by BIGINT UNSIGNED NOT NULL,
       content_type ENUM('merchant_product', 'merchant', 'company', 'merchant_case', 'company_case') NOT NULL,
       content_id BIGINT UNSIGNED NOT NULL,
