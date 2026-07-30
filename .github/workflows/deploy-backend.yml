@@ -390,6 +390,7 @@ jobs:
               --single-transaction \
               --quick \
               --skip-lock-tables \
+              --no-tablespaces \
               "$DB_NAME" | gzip -c > "$db_backup_file"
             test -s "$db_backup_file"
 
@@ -397,17 +398,18 @@ jobs:
             echo "Running backend smoke test on port $smoke_port before activation."
             PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
             smoke_pid=$!
-            sleep 5
-            if ! kill -0 "$smoke_pid" 2>/dev/null; then
-              echo "Smoke test process exited early."
-              echo "Smoke stdout:"
-              cat /tmp/yinnkhome-smoke-out.log || true
-              echo "Smoke stderr:"
-              cat /tmp/yinnkhome-smoke-err.log || true
-              wait "$smoke_pid" || true
-              exit 1
-            fi
-            if ! curl -fsS "http://127.0.0.1:${smoke_port}/health"; then
+            smoke_ready="false"
+            for attempt in $(seq 1 15); do
+              if ! kill -0 "$smoke_pid" 2>/dev/null; then
+                break
+              fi
+              if curl -fsS "http://127.0.0.1:${smoke_port}/health"; then
+                smoke_ready="true"
+                break
+              fi
+              sleep 1
+            done
+            if [ "$smoke_ready" != "true" ]; then
               echo "Smoke health check failed."
               echo "Smoke stdout:"
               cat /tmp/yinnkhome-smoke-out.log || true
