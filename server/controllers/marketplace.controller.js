@@ -1965,8 +1965,28 @@ async function getCompanyEvaluationDetails(req, res) {
      LIMIT 200`,
     [companyId]
   );
+  const serviceProjectIds = await listCompanyServiceProjectIds(companyId);
+  let publishedCaseCount = 0;
+  let authorizedProjectCount = 0;
+  if (serviceProjectIds.length) {
+    const [[caseStats]] = await db.query(
+      `SELECT COUNT(*) AS published_case_count,
+              COUNT(DISTINCT share.project_id) AS authorized_project_count
+       FROM project_case_shares share
+       WHERE share.status = 1
+         AND share.project_id IN (?)`,
+      [serviceProjectIds]
+    );
+    publishedCaseCount = Number(caseStats?.published_case_count || 0);
+    authorizedProjectCount = Number(caseStats?.authorized_project_count || 0);
+  }
   return success(res, {
     summary: await buildCompanyEvaluationSummary(companyId),
+    case_data: {
+      published_case_count: publishedCaseCount,
+      authorized_project_count: authorizedProjectCount,
+      participated_project_count: serviceProjectIds.length,
+    },
     feedback: rows.map((row) => ({
       id: Number(row.id),
       company_id: Number(row.company_id),
