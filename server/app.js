@@ -16,6 +16,9 @@ const entityRelationsRoutes = require('./routes/entity-relations.routes');
 const billingRoutes = require('./routes/billing.routes');
 const locationRoutes = require('./routes/location.routes');
 const billingService = require('./services/billing.service');
+const {
+  startCompanyEvaluationScheduler,
+} = require('./services/company-evaluation-scheduler.service');
 
 const app = express();
 const PORT = process.env.PORT || 3001;
@@ -4022,6 +4025,7 @@ app.use((err, req, res, next) => {
 app.listen(PORT, () => {
   console.log(`🚀 装修不凡后端启动: http://localhost:${PORT}`);
   console.log(`📋 管理后台: http://localhost:${PORT}/admin/`);
+  startCompanyEvaluationScheduler();
 });
 
 module.exports = app;

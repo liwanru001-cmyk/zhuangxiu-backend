@@ -1916,7 +1916,7 @@ async function calculateDimension(companyId, dimension, projectId = null) {
   };
 }
 
-async function buildCompanyEvaluationSummary(companyId, projectId = null) {
+async function calculateCompanyEvaluationSummaryLive(companyId, projectId = null) {
   const entries = await Promise.all(
     Object.keys(evaluationDimensions).map((dimension) =>
       calculateDimension(companyId, dimension, projectId)
@@ -1927,6 +1927,131 @@ async function buildCompanyEvaluationSummary(companyId, projectId = null) {
     project_id: projectId || null,
     dimensions: entries,
   };
+}
+
+async function readCompanyEvaluationSummarySnapshot(companyId) {
+  const [rows] = await db.query(
+    `SELECT snapshot.dimension, snapshot.composite_score,
+            snapshot.system_score, snapshot.user_score,
+            snapshot.feedback_count, snapshot.metrics,
+            snapshot.calculated_at
+     FROM company_evaluation_daily_snapshots snapshot
+     JOIN (
+       SELECT dimension, MAX(snapshot_date) AS snapshot_date
+       FROM company_evaluation_daily_snapshots
+       WHERE company_id = ?
+       GROUP BY dimension
+     ) latest
+       ON latest.dimension = snapshot.dimension
+      AND latest.snapshot_date = snapshot.snapshot_date
+     WHERE snapshot.company_id = ?`,
+    [companyId, companyId]
+  );
+  const byDimension = new Map(rows.map((row) => [row.dimension, row]));
+  const calculatedDates = rows
+    .map((row) => row.calculated_at)
+    .filter(Boolean)
+    .map((value) => new Date(value));
+  const calculatedAt = calculatedDates.length
+    ? new Date(Math.min(...calculatedDates.map((value) => value.getTime())))
+    : null;
+  return {
+    company_id: companyId,
+    project_id: null,
+    calculated_at: calculatedAt,
+    update_frequency: 'daily',
+    dimensions: Object.keys(evaluationDimensions).map((dimension) => {
+      const row = byDimension.get(dimension);
+      let metrics = {};
+      if (row?.metrics) {
+        try {
+          metrics = typeof row.metrics === 'string' ? JSON.parse(row.metrics) : row.metrics;
+        } catch (_) {
+          metrics = {};
+        }
+      }
+      return {
+        key: dimension,
+        label: evaluationDimensions[dimension].label,
+        source: evaluationDimensions[dimension].source,
+        score: row?.composite_score == null ? null : Number(row.composite_score),
+        system_score: row?.system_score == null ? null : Number(row.system_score),
+        user_score: row?.user_score == null ? null : Number(row.user_score),
+        feedback_count: Number(row?.feedback_count || 0),
+        metrics,
+      };
+    }),
+  };
+}
+
+async function buildCompanyEvaluationSummary(companyId, projectId = null) {
+  if (projectId) {
+    return calculateCompanyEvaluationSummaryLive(companyId, projectId);
+  }
+  return readCompanyEvaluationSummarySnapshot(companyId);
+}
+
+async function refreshCompanyEvaluationSnapshot(companyId, snapshotDate) {
+  const summary = await calculateCompanyEvaluationSummaryLive(companyId);
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    for (const dimension of summary.dimensions) {
+      await connection.query(
+        `INSERT INTO company_evaluation_daily_snapshots
+           (company_id, dimension, snapshot_date, composite_score,
+            system_score, user_score, feedback_count, metrics, calculated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+         ON DUPLICATE KEY UPDATE
+           composite_score = VALUES(composite_score),
+           system_score = VALUES(system_score),
+           user_score = VALUES(user_score),
+           feedback_count = VALUES(feedback_count),
+           metrics = VALUES(metrics),
+           calculated_at = CURRENT_TIMESTAMP`,
+        [
+          companyId,
+          dimension.key,
+          snapshotDate,
+          dimension.score,
+          dimension.system_score,
+          dimension.user_score,
+          dimension.feedback_count,
+          JSON.stringify(dimension.metrics || {}),
+        ]
+      );
+    }
+    await connection.commit();
+  } catch (err) {
+    await connection.rollback();
+    throw err;
+  } finally {
+    connection.release();
+  }
+}
+
+async function refreshAllCompanyEvaluationSnapshots(snapshotDate) {
+  const [companies] = await db.query(
+    `SELECT id FROM companies
+     WHERE status <> 'deleted'
+     ORDER BY id ASC`
+  );
+  const failures = [];
+  let refreshed = 0;
+  for (const company of companies) {
+    try {
+      await refreshCompanyEvaluationSnapshot(Number(company.id), snapshotDate);
+      refreshed += 1;
+    } catch (err) {
+      failures.push({ company_id: Number(company.id), error: err.message });
+    }
+  }
+  await db.query(
+    `DELETE FROM company_evaluation_daily_snapshots
+     WHERE snapshot_date < DATE_SUB(?, INTERVAL 90 DAY)`,
+    [snapshotDate]
+  );
+  return { total: companies.length, refreshed, failures };
 }
 
 async function getCompanyEvaluationSummary(req, res) {
@@ -3421,6 +3546,7 @@ module.exports = {
   getProjectCompanyEvaluation,
   submitCompanyEvaluationFeedback,
   submitConsultationEvaluationFeedback,
+  refreshAllCompanyEvaluationSnapshots,
   listProfessionals,
   getProfessional,
   listCompanyMembers,

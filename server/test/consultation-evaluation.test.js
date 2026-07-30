@@ -89,6 +89,9 @@ test('legacy merchant consultation resolves its company and accepts rating', asy
         feedbackParams = params;
         return [{ insertId: 1 }];
       }
+      if (/FROM company_evaluation_daily_snapshots snapshot/.test(sql)) {
+        return [[]];
+      }
       if (/SELECT DISTINCT p\.id/.test(sql)) return [[]];
       if (/SELECT user_id FROM company_members/.test(sql)) return [[]];
       if (/SELECT COUNT\(DISTINCT c\.id\)/.test(sql)) {
