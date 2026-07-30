@@ -731,7 +731,7 @@ async function upsertMerchantProfile(req, res) {
   const mapProvider = normalizeMapProvider(req.body.map_provider);
   const contactPhone = String(req.body.contact_phone || '').trim().slice(0, 40);
   const businessHours = String(req.body.business_hours || '').trim().slice(0, 120);
-  const categoryGroup = ['建材', '家居'].includes(String(req.body.category_group || '').trim())
+  let categoryGroup = ['建材', '家居'].includes(String(req.body.category_group || '').trim())
     ? String(req.body.category_group).trim()
     : '';
   const categories = normalizeStringList(req.body.categories, 12);
@@ -751,6 +751,9 @@ async function upsertMerchantProfile(req, res) {
     req.body.consultation_enabled === '1' ||
     req.body.consultation_enabled === 1;
   const currentProfile = await getMerchantProfileData(req.user.id);
+  if (currentProfile && String(currentProfile.category_group || '').trim()) {
+    categoryGroup = String(currentProfile.category_group).trim();
+  }
   const imageFieldsChanged = currentProfile
     ? ['logo_url', 'cover_url', 'license_url', 'authorization_url'].some((field) =>
         valuesDiffer(req.body[field], currentProfile[field])

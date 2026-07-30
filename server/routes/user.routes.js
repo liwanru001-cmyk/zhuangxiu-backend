@@ -145,6 +145,24 @@ const merchantCaseImageUpload = multer({
   },
 });
 
+function uploadSingleImage(upload, sizeLabel) {
+  return (req, res, next) => {
+    upload.single('image')(req, res, (err) => {
+      if (!err) return next();
+      if (err instanceof multer.MulterError) {
+        const message = err.code === 'LIMIT_FILE_SIZE'
+          ? `图片不能超过 ${sizeLabel}`
+          : '图片上传失败，请重新选择';
+        return res.status(400).json({ code: 400, message });
+      }
+      return res.status(422).json({
+        code: 422,
+        message: '图片格式无法识别，请使用 JPG、PNG、WebP、GIF 或 HEIC',
+      });
+    });
+  };
+}
+
 router.get('/profile', asyncHandler(auth), asyncHandler(userController.getProfile));
 router.get('/profile-display-settings', asyncHandler(auth), asyncHandler(userController.getPublicProfileDisplaySettings));
 router.put('/profile-display-settings', asyncHandler(auth), asyncHandler(userController.updatePublicProfileDisplaySettings));
@@ -192,7 +210,7 @@ router.post(
   '/merchant/dashboard/cases/image',
   asyncHandler(auth),
   asyncHandler(requireActiveVerifiedMerchant),
-  merchantCaseImageUpload.single('image'),
+  uploadSingleImage(merchantCaseImageUpload, '5MB'),
   setUploadedFilePermissions,
   asyncHandler(merchantCasesController.uploadCaseImage)
 );

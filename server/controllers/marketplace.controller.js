@@ -243,8 +243,13 @@ function parseBusinessCatalogIds(body = {}) {
 async function validateLeafBusinessCatalogIds(ids) {
   if (ids.length === 0) return [];
   const [catalogRows] = await db.query(
-    `SELECT id FROM business_catalog
-     WHERE id IN (?) AND status = 'active' AND level = 3`,
+    `SELECT child.id
+     FROM business_catalog child
+     JOIN business_catalog parent
+       ON parent.id = child.parent_id
+      AND parent.code = 'find_renovation'
+      AND parent.status = 'active'
+     WHERE child.id IN (?) AND child.status = 'active' AND child.level = 3`,
     [ids]
   );
   const validIds = new Set(catalogRows.map((row) => Number(row.id)));
@@ -1089,6 +1094,16 @@ async function createCompany(req, res) {
   const payload = companyPayload(req.body);
   if (!payload.name) return error(res, '请填写公司名称');
 
+  const [ownedCompanies] = await db.query(
+    `SELECT id FROM companies
+     WHERE owner_user_id = ? AND status <> 'deleted'
+     LIMIT 1`,
+    [req.user.id]
+  );
+  if (ownedCompanies.length > 0) {
+    return error(res, '每个账户只能创建一个装修公司', 409);
+  }
+
   const businessIds = parseBusinessCatalogIds(req.body);
   const validBusinessIds = await validateLeafBusinessCatalogIds(businessIds);
   if (validBusinessIds === null) return error(res, '业务分类不正确');
@@ -1728,20 +1743,13 @@ async function calculateMaterialsSystemScore(companyId, projectId = null) {
   const [rows] = await db.query(
     `SELECT COUNT(*) AS total_items,
             SUM(CASE WHEN confirm_status IN ('confirmed', 'approved') THEN 1 ELSE 0 END) AS confirmed_items,
-            SUM(CASE WHEN arrival_status IN ('arrived', 'completed', 'delivered') THEN 1 ELSE 0 END) AS arrived_items,
             SUM(CASE
               WHEN name <> ''
                AND category <> ''
                AND (brand_model IS NOT NULL AND brand_model <> '')
                AND quantity IS NOT NULL
               THEN 1 ELSE 0 END
-            ) AS complete_items,
-            AVG(CASE
-              WHEN budget_unit_price IS NOT NULL AND budget_unit_price > 0
-               AND actual_unit_price IS NOT NULL
-              THEN ABS(actual_unit_price - budget_unit_price) / budget_unit_price
-              ELSE NULL END
-            ) AS avg_price_variance
+            ) AS complete_items
      FROM project_material_items
      WHERE project_id IN (?)`,
     [projectIds]
@@ -1750,23 +1758,16 @@ async function calculateMaterialsSystemScore(companyId, projectId = null) {
   const total = Number(stats.total_items || 0);
   if (!total) return { score: null, metrics: { total_items: 0 } };
   const confirmedRate = percent(stats.confirmed_items, total);
-  const arrivedRate = percent(stats.arrived_items, total);
   const completeRate = percent(stats.complete_items, total);
-  const variance = stats.avg_price_variance === null ? null : Number(stats.avg_price_variance);
-  const priceScore = variance === null ? 0.7 : Math.max(0, Math.min(1, 1 - variance));
   const weighted =
-    (completeRate ?? 0) * 0.35 +
-    (confirmedRate ?? 0) * 0.25 +
-    (arrivedRate ?? 0) * 0.25 +
-    priceScore * 0.15;
+    (completeRate ?? 0) * 0.55 +
+    (confirmedRate ?? 0) * 0.45;
   return {
     score: scoreFromRatio(weighted),
     metrics: {
       total_items: total,
       complete_rate: completeRate,
       confirmed_rate: confirmedRate,
-      arrived_rate: arrivedRate,
-      avg_price_variance: variance,
     },
   };
 }
@@ -1941,6 +1942,47 @@ async function getCompanyEvaluationSummary(req, res) {
   );
   if (!companyRows[0]) return error(res, '公司不存在', 404);
   return success(res, await buildCompanyEvaluationSummary(companyId));
+}
+
+async function getCompanyEvaluationDetails(req, res) {
+  const companyId = Number(req.params.id);
+  if (!companyId || companyId < 0) return error(res, '公司不存在', 404);
+  if (!(await canManageCompany(companyId, req.user.id))) {
+    return error(res, '无权限查看公司评价明细', 403);
+  }
+  const [rows] = await db.query(
+    `SELECT feedback.id, feedback.company_id, feedback.project_id,
+            feedback.consultation_id, feedback.dimension, feedback.score,
+            feedback.comment_private, feedback.source_scene,
+            feedback.created_at, feedback.updated_at,
+            project.project_name,
+            reviewer.nickname AS reviewer_name
+     FROM company_evaluation_feedback feedback
+     LEFT JOIN renovation_projects project ON project.id = feedback.project_id
+     LEFT JOIN users reviewer ON reviewer.id = feedback.reviewer_user_id
+     WHERE feedback.company_id = ? AND feedback.status = 1
+     ORDER BY feedback.updated_at DESC, feedback.id DESC
+     LIMIT 200`,
+    [companyId]
+  );
+  return success(res, {
+    summary: await buildCompanyEvaluationSummary(companyId),
+    feedback: rows.map((row) => ({
+      id: Number(row.id),
+      company_id: Number(row.company_id),
+      project_id: row.project_id ? Number(row.project_id) : null,
+      consultation_id: row.consultation_id ? Number(row.consultation_id) : null,
+      dimension: row.dimension || '',
+      dimension_label: evaluationDimensions[row.dimension]?.label || row.dimension || '',
+      score: Number(row.score || 0),
+      comment: row.comment_private || '',
+      source_scene: row.source_scene || '',
+      project_name: row.project_name || '',
+      reviewer_name: row.reviewer_name || '用户',
+      created_at: row.created_at || null,
+      updated_at: row.updated_at || null,
+    })),
+  });
 }
 
 async function getProjectCompanyEvaluation(req, res) {
@@ -3355,6 +3397,7 @@ module.exports = {
   listPublicCompanyReviews,
   submitCompanyReview,
   getCompanyEvaluationSummary,
+  getCompanyEvaluationDetails,
   getProjectCompanyEvaluation,
   submitCompanyEvaluationFeedback,
   submitConsultationEvaluationFeedback,

@@ -28,6 +28,17 @@ function normalizeStatus(value) {
   return ['draft', 'active', 'hidden'].includes(status) ? status : 'active';
 }
 
+function normalizeHttpUrl(value) {
+  const raw = normalizeString(value, 500);
+  if (!raw) return '';
+  try {
+    const url = new URL(raw);
+    return ['http:', 'https:'].includes(url.protocol) ? url.toString() : null;
+  } catch (_) {
+    return null;
+  }
+}
+
 const MERCHANT_PRODUCT_QUOTAS = {
   maxCategories: 10,
   maxProducts: 50,
@@ -118,6 +129,8 @@ function mapProduct(row) {
     summary: row.summary || '',
     description: row.description || '',
     content_delta: normalizeContentDelta(row.content_delta).value || [],
+    case_link_title: row.case_link_title || '',
+    case_link_url: row.case_link_url || '',
     brand: row.brand || '',
     spec: row.spec || '',
     price_text: row.price_text || '',
@@ -293,6 +306,12 @@ async function normalizeProductPayload(body, merchantUserId) {
   const coverUrl = normalizeString(body.cover_url || imageUrls[0] || '', 500);
   const contentDelta = normalizeContentDelta(body.content_delta);
   if (contentDelta.error) return { error: contentDelta.error };
+  const caseLinkTitle = normalizeString(body.case_link_title, 80);
+  const caseLinkUrl = normalizeHttpUrl(body.case_link_url);
+  if (caseLinkUrl === null) return { error: '案例链接必须是有效的 http/https 地址' };
+  if (Boolean(caseLinkTitle) !== Boolean(caseLinkUrl)) {
+    return { error: '案例链接标题和地址需要同时填写' };
+  }
   return {
     value: {
       categoryId,
@@ -302,6 +321,8 @@ async function normalizeProductPayload(body, merchantUserId) {
       summary: normalizeString(body.summary, 300),
       description: normalizeString(body.description, 3000),
       contentDelta: contentDelta.value,
+      caseLinkTitle,
+      caseLinkUrl,
       brand: normalizeString(body.brand, 120),
       spec: normalizeString(body.spec, 200),
       priceText: normalizeString(body.price_text, 80),
@@ -333,8 +354,9 @@ async function createProduct(req, res) {
   const [result] = await db.query(
     `INSERT INTO merchant_products
      (merchant_user_id, category_id, name, cover_url, image_urls, summary,
-      description, content_delta, brand, spec, price_text, sort_order, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      description, content_delta, case_link_title, case_link_url,
+      brand, spec, price_text, sort_order, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       req.user.id,
       item.categoryId,
@@ -344,6 +366,8 @@ async function createProduct(req, res) {
       item.summary || null,
       item.description || null,
       JSON.stringify(item.contentDelta),
+      item.caseLinkTitle || null,
+      item.caseLinkUrl || null,
       item.brand || null,
       item.spec || null,
       item.priceText || null,
@@ -365,7 +389,8 @@ async function updateProduct(req, res) {
   await db.query(
     `UPDATE merchant_products
      SET category_id = ?, name = ?, cover_url = ?, image_urls = ?, summary = ?,
-         description = ?, content_delta = ?, brand = ?, spec = ?, price_text = ?, sort_order = ?, status = ?
+         description = ?, content_delta = ?, case_link_title = ?, case_link_url = ?,
+         brand = ?, spec = ?, price_text = ?, sort_order = ?, status = ?
      WHERE id = ? AND merchant_user_id = ?`,
     [
       item.categoryId,
@@ -375,6 +400,8 @@ async function updateProduct(req, res) {
       item.summary || null,
       item.description || null,
       JSON.stringify(item.contentDelta),
+      item.caseLinkTitle || null,
+      item.caseLinkUrl || null,
       item.brand || null,
       item.spec || null,
       item.priceText || null,
