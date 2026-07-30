@@ -174,6 +174,122 @@ test('company admin read-only viewer sees all project inspection step records', 
   assert.equal(res.payload.data[0].step_title, '水压测试');
 });
 
+test('inspection workspace returns one main inspection with nested check items', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT id FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ id: 1 }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'owner' }]];
+      }
+      if (/SELECT id, project_name, current_stage/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{
+          id: 9,
+          project_name: '测试项目',
+          current_stage: 3,
+          renovation_type: 'rough',
+          updated_at: '2026-07-30 08:00:00',
+        }]];
+      }
+      if (/FROM project_progress_items/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{
+          id: 21,
+          task_id: null,
+          parent_id: null,
+          stage_id: 3,
+          title: '水电阶段验收',
+          status: 'in_progress',
+          requires_inspection: 1,
+          inspection_template_key: 'hidden_water_electric',
+          sort_order: 10,
+        }]];
+      }
+      if (/FROM inspection_templates template/.test(sql)) {
+        assert.equal(params, undefined);
+        return [[{
+          id: 2,
+          code: 'hidden_water_electric',
+          title: '水电隐蔽验收',
+          stage_id: 3,
+          node_type: 'stage',
+          description: '水电检查',
+          standard_basis: 'standard',
+          recommended_tools: '[]',
+          sort_order: 10,
+          item_id: 11,
+          item_code: 'hwe_pressure',
+          item_title: '水压测试',
+          standard_text: '稳压检查',
+          check_method: '试压',
+          required_tools: '[]',
+          risk_level: 'must',
+          failure_action: '整改',
+          require_photo: 1,
+          item_sort_order: 10,
+        }]];
+      }
+      if (/FROM project_inspections/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[{
+          id: 31,
+          project_id: 9,
+          task_id: null,
+          progress_item_id: 21,
+          stage_id: 3,
+          title: '水电阶段验收',
+          template_id: 2,
+          template_code: 'hidden_water_electric',
+          status: 'draft',
+          calculation_summary: '{"passed":1}',
+          row_version: 2,
+        }]];
+      }
+      if (/FROM project_inspection_items/.test(sql)) {
+        assert.deepEqual(params, [[31]]);
+        return [[
+          {
+            id: 41,
+            inspection_id: 31,
+            item_key: 'hwe_pressure',
+            title: '水压测试',
+            result: 'passed',
+            require_photo: 1,
+            sort_order: 10,
+          },
+          {
+            id: 42,
+            inspection_id: 31,
+            item_key: 'hwe_socket',
+            title: '电路测试',
+            result: 'pending',
+            require_photo: 0,
+            sort_order: 20,
+          },
+        ]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.getProjectInspectionWorkspace({
+    user: { id: 7 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.inspections.length, 1);
+  assert.equal(res.payload.data.inspections[0].items.length, 2);
+  assert.equal(res.payload.data.inspections[0].items[0].require_photo, true);
+  assert.equal(res.payload.data.progress_items[0].requires_inspection, true);
+});
+
 test('main owner sees all project check-ins without member visibility filter', async () => {
   let visibilityChecked = false;
   const dbMock = {

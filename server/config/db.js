@@ -85,15 +85,14 @@ async function ensureAppTables() {
   await ensureProjectHandoverTables();
   await ensureProjectDesignHandoverReferenceTables();
   await ensureProjectInspectionStepRecordTables();
+  await ensureUnifiedProjectInspectionTables();
   await ensureConstructionDisclosureDocumentTables();
   await ensureProjectMaterialTables();
   await ensureProjectTipsTable();
   await ensureWorkItemTemplateTables();
   await ensureHelpFeedbackTables();
   await ensureDesignerProjectInvitationRoleColumn();
-  if (process.env.FEATURE_INSPECTION_KB === 'true') {
-    await ensureProjectInspectionTemplateTables();
-  }
+  await ensureProjectInspectionTemplateTables();
   await pool.query(`
     CREATE TABLE IF NOT EXISTS project_checkins (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
@@ -966,6 +965,7 @@ async function ensureProjectInspectionStepRecordTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   const optionalColumns = [
+    ['inspection_id', "BIGINT UNSIGNED DEFAULT NULL AFTER progress_item_id"],
     ['review_remark', "VARCHAR(500) DEFAULT NULL AFTER description"],
     ['response_description', "VARCHAR(500) DEFAULT NULL AFTER review_remark"],
     ['response_by', "BIGINT UNSIGNED DEFAULT NULL AFTER reviewed_at"],
@@ -986,6 +986,144 @@ async function ensureProjectInspectionStepRecordTables() {
         ADD COLUMN ${columnName} ${definition}
       `);
     }
+  }
+  const [inspectionLinkIndexes] = await pool.query(`
+    SELECT INDEX_NAME FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspection_step_records'
+      AND INDEX_NAME = 'idx_step_records_inspection'
+  `);
+  if (!inspectionLinkIndexes.length) {
+    await pool.query(`
+      CREATE INDEX idx_step_records_inspection
+      ON project_inspection_step_records (inspection_id, updated_at)
+    `);
+  }
+}
+
+async function ensureUnifiedProjectInspectionTables() {
+  const [inspectionTables] = await pool.query(`
+    SELECT TABLE_NAME FROM information_schema.TABLES
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspections'
+  `);
+  if (!inspectionTables.length) return;
+
+  const [columns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspections'
+  `);
+  const existing = new Set(columns.map((row) => row.COLUMN_NAME));
+  const additions = [
+    ['title', "ADD COLUMN title VARCHAR(160) DEFAULT NULL AFTER stage_id"],
+    ['template_id', 'ADD COLUMN template_id BIGINT UNSIGNED DEFAULT NULL AFTER title'],
+    ['template_code', 'ADD COLUMN template_code VARCHAR(64) DEFAULT NULL AFTER template_id'],
+    ['client_request_id', 'ADD COLUMN client_request_id VARCHAR(64) DEFAULT NULL AFTER template_code'],
+    ['algorithm_version', 'ADD COLUMN algorithm_version VARCHAR(40) DEFAULT NULL AFTER client_request_id'],
+    ['calculation_summary', 'ADD COLUMN calculation_summary JSON DEFAULT NULL AFTER algorithm_version'],
+    ['row_version', 'ADD COLUMN row_version INT UNSIGNED NOT NULL DEFAULT 1 AFTER calculation_summary'],
+    ['calculated_at', 'ADD COLUMN calculated_at TIMESTAMP NULL DEFAULT NULL AFTER row_version'],
+  ];
+  for (const [columnName, clause] of additions) {
+    if (!existing.has(columnName)) {
+      await pool.query(`ALTER TABLE project_inspections ${clause}`);
+    }
+  }
+  const [taskColumns] = await pool.query(`
+    SELECT IS_NULLABLE FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspections'
+      AND COLUMN_NAME = 'task_id'
+  `);
+  if (taskColumns[0]?.IS_NULLABLE === 'NO') {
+    await pool.query(`
+      ALTER TABLE project_inspections
+      MODIFY COLUMN task_id BIGINT UNSIGNED DEFAULT NULL
+    `);
+  }
+
+  const [requestIndexes] = await pool.query(`
+    SELECT INDEX_NAME FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspections'
+      AND INDEX_NAME = 'uk_inspection_client_request'
+  `);
+  if (!requestIndexes.length) {
+    await pool.query(`
+      CREATE UNIQUE INDEX uk_inspection_client_request
+      ON project_inspections (project_id, client_request_id)
+    `);
+  }
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_inspection_items (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      inspection_id BIGINT UNSIGNED NOT NULL,
+      project_id BIGINT UNSIGNED NOT NULL,
+      template_item_id BIGINT UNSIGNED DEFAULT NULL,
+      item_key VARCHAR(160) NOT NULL,
+      title VARCHAR(160) NOT NULL,
+      standard_text TEXT DEFAULT NULL,
+      check_method TEXT DEFAULT NULL,
+      failure_action TEXT DEFAULT NULL,
+      risk_level VARCHAR(16) NOT NULL DEFAULT 'normal',
+      require_photo TINYINT(1) NOT NULL DEFAULT 0,
+      result VARCHAR(24) NOT NULL DEFAULT 'pending',
+      description VARCHAR(500) DEFAULT NULL,
+      responsible_user_id BIGINT UNSIGNED DEFAULT NULL,
+      checked_by BIGINT UNSIGNED DEFAULT NULL,
+      checked_at TIMESTAMP NULL DEFAULT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      source_step_record_id BIGINT UNSIGNED DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_inspection_item_key (inspection_id, item_key),
+      KEY idx_inspection_items_parent (inspection_id, sort_order, id),
+      KEY idx_inspection_items_project (project_id, result, updated_at),
+      KEY idx_inspection_items_responsible (responsible_user_id, result, updated_at),
+      KEY idx_inspection_items_source_step (source_step_record_id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_inspection_item_images (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      inspection_item_id BIGINT UNSIGNED NOT NULL,
+      source_step_image_id BIGINT UNSIGNED DEFAULT NULL,
+      image_url VARCHAR(500) NOT NULL,
+      uploaded_by BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_inspection_item_images (inspection_item_id, id),
+      UNIQUE KEY uk_inspection_item_source_image (source_step_image_id),
+      KEY idx_inspection_item_image_uploader (uploaded_by, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  const [itemImageColumns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspection_item_images'
+      AND COLUMN_NAME = 'source_step_image_id'
+  `);
+  if (!itemImageColumns.length) {
+    await pool.query(`
+      ALTER TABLE project_inspection_item_images
+      ADD COLUMN source_step_image_id BIGINT UNSIGNED DEFAULT NULL AFTER inspection_item_id
+    `);
+  }
+  const [sourceImageIndexes] = await pool.query(`
+    SELECT INDEX_NAME FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspection_item_images'
+      AND INDEX_NAME = 'uk_inspection_item_source_image'
+  `);
+  if (!sourceImageIndexes.length) {
+    await pool.query(`
+      CREATE UNIQUE INDEX uk_inspection_item_source_image
+      ON project_inspection_item_images (source_step_image_id)
+    `);
   }
 }
 

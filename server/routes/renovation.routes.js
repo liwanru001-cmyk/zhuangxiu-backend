@@ -483,6 +483,26 @@ router.get(
   asyncHandler(controller.getProjectInspections)
 );
 router.get(
+  '/projects/:id/inspection-workspace',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectInspectionWorkspace)
+);
+router.post(
+  '/projects/:id/inspections/draft',
+  ...protectedRoute,
+  asyncHandler(controller.createProjectInspectionDraft)
+);
+router.put(
+  '/projects/:id/inspections/:inspectionId/batch',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectInspectionBatch)
+);
+router.post(
+  '/projects/:id/inspections/:inspectionId/confirm',
+  ...protectedRoute,
+  asyncHandler(controller.confirmProjectInspection)
+);
+router.get(
   '/projects/:id/inspection-step-records',
   ...protectedRoute,
   asyncHandler(controller.getProjectInspectionStepRecords)

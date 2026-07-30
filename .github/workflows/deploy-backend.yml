@@ -394,6 +394,10 @@ jobs:
               "$DB_NAME" | gzip -c > "$db_backup_file"
             test -s "$db_backup_file"
 
+            echo "Applying unified inspection schema before smoke test."
+            node scripts/run-migration.js migrations/20260619_inspection_templates.sql
+            node scripts/run-migration.js migrations/20260730_unified_project_inspections.sql
+
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
             PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
@@ -444,6 +448,7 @@ jobs:
             set +a
 
             # Keep backend business migrations explicit and ordered.
+            node scripts/run-migration.js migrations/20260619_inspection_templates.sql
             node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
             node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
             node scripts/run-migration.js migrations/20260702_merchant_permission_review.sql
@@ -481,6 +486,7 @@ jobs:
             node scripts/run-migration.js migrations/20260730_merchant_product_case_link.sql
             node scripts/run-migration.js migrations/20260730_migrate_company_reviews_to_dimensions.sql
             node scripts/run-migration.js migrations/20260730_company_evaluation_daily_snapshots.sql
+            node scripts/run-migration.js migrations/20260730_unified_project_inspections.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true
