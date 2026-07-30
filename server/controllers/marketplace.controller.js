@@ -2065,7 +2065,10 @@ async function getCompanyEvaluationSummary(req, res) {
      LIMIT 1`,
     [companyId]
   );
-  if (!companyRows[0]) return error(res, '公司不存在', 404);
+  const canManage = req.user?.id
+    ? await canManageCompany(companyId, req.user.id)
+    : false;
+  if (!companyRows[0] && !canManage) return error(res, '公司不存在', 404);
   return success(res, await buildCompanyEvaluationSummary(companyId));
 }
 
@@ -2075,21 +2078,6 @@ async function getCompanyEvaluationDetails(req, res) {
   if (!(await canManageCompany(companyId, req.user.id))) {
     return error(res, '无权限查看公司评价明细', 403);
   }
-  const [rows] = await db.query(
-    `SELECT feedback.id, feedback.company_id, feedback.project_id,
-            feedback.consultation_id, feedback.dimension, feedback.score,
-            feedback.comment_private, feedback.source_scene,
-            feedback.created_at, feedback.updated_at,
-            project.project_name,
-            reviewer.nickname AS reviewer_name
-     FROM company_evaluation_feedback feedback
-     LEFT JOIN renovation_projects project ON project.id = feedback.project_id
-     LEFT JOIN users reviewer ON reviewer.id = feedback.reviewer_user_id
-     WHERE feedback.company_id = ? AND feedback.status = 1
-     ORDER BY feedback.updated_at DESC, feedback.id DESC
-     LIMIT 200`,
-    [companyId]
-  );
   const serviceProjectIds = await listCompanyServiceProjectIds(companyId);
   let publishedCaseCount = 0;
   let authorizedProjectCount = 0;
@@ -2112,21 +2100,7 @@ async function getCompanyEvaluationDetails(req, res) {
       authorized_project_count: authorizedProjectCount,
       participated_project_count: serviceProjectIds.length,
     },
-    feedback: rows.map((row) => ({
-      id: Number(row.id),
-      company_id: Number(row.company_id),
-      project_id: row.project_id ? Number(row.project_id) : null,
-      consultation_id: row.consultation_id ? Number(row.consultation_id) : null,
-      dimension: row.dimension || '',
-      dimension_label: evaluationDimensions[row.dimension]?.label || row.dimension || '',
-      score: Number(row.score || 0),
-      comment: row.comment_private || '',
-      source_scene: row.source_scene || '',
-      project_name: row.project_name || '',
-      reviewer_name: row.reviewer_name || '用户',
-      created_at: row.created_at || null,
-      updated_at: row.updated_at || null,
-    })),
+    feedback: [],
   });
 }
 

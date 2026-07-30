@@ -2,6 +2,7 @@ const express = require('express');
 const controller = require('../controllers/marketplace.controller');
 const asyncHandler = require('../utils/async-handler');
 const auth = require('../middleware/auth');
+const optionalAuth = require('../middleware/optional-auth');
 const { requireProjectContext } = require('../utils/project-context');
 const {
   ensureUploadDir,
@@ -70,7 +71,7 @@ router.get('/companies/search', asyncHandler(controller.searchPublicCompanies));
 router.get('/companies', asyncHandler(controller.listCompanies));
 router.get('/companies/:id/public', asyncHandler(controller.getPublicCompany));
 router.get('/companies/:id/case-shares', asyncHandler(controller.listPublicCompanyCaseShares));
-router.get('/companies/:id/evaluation-summary', asyncHandler(controller.getCompanyEvaluationSummary));
+router.get('/companies/:id/evaluation-summary', asyncHandler(optionalAuth), asyncHandler(controller.getCompanyEvaluationSummary));
 router.get('/companies/:id/evaluation-details', asyncHandler(auth), asyncHandler(controller.getCompanyEvaluationDetails));
 router.get('/companies/:id/reviews', asyncHandler(controller.listPublicCompanyReviews));
 router.post('/companies/:id/reviews', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.submitCompanyReview));
