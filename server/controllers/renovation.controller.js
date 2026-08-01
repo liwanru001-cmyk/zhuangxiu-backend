@@ -7093,6 +7093,13 @@ async function deleteProjectTask(req, res) {
   if (inspections[0]) {
     return error(res, '该事项已有验收记录，不能删除，可调整名称或状态', 409);
   }
+  const [stepRecords] = await db.query(
+    'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND task_id = ? LIMIT 1',
+    [projectId, taskId]
+  );
+  if (stepRecords[0]) {
+    return error(res, '该事项已有现场记录，不能删除，可调整名称或状态', 409);
+  }
   const [result] = await db.query(
     'DELETE FROM renovation_tasks WHERE id = ? AND project_id = ?',
     [taskId, projectId]
@@ -8033,9 +8040,9 @@ async function validateUnifiedInspectionTemplate(
     [templateCode]
   );
   const template = templates[0];
-  if (!template) return { error: '验收模板不存在或已停用' };
+  if (!template) return { error: '现场查看模板不存在或已停用' };
   if (template.stage_id && Number(template.stage_id) !== Number(stageId)) {
-    return { error: '验收模板与项目阶段不匹配' };
+    return { error: '现场查看模板与项目阶段不匹配' };
   }
   const [templateItems] = await executor.query(
     `SELECT id, code, title
@@ -8048,7 +8055,7 @@ async function validateUnifiedInspectionTemplate(
   const missing = templateItems.filter((item) => !submittedKeys.has(item.code));
   if (missing.length) {
     return {
-      error: `验收检查项不完整，缺少：${missing
+      error: `现场查看项不完整，缺少：${missing
         .slice(0, 5)
         .map((item) => item.title)
         .join('、')}`,
@@ -8214,10 +8221,10 @@ async function createProjectInspectionDraft(req, res) {
   const projectId = Number(req.params.id);
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role || role === companyAdminViewerRole) {
-    return error(res, '当前身份只能查看验收信息', 403);
+    return error(res, '当前身份只能查看现场记录', 403);
   }
   const items = normalizeUnifiedInspectionItems(req.body.items);
-  if (!items) return error(res, '请提交1至100个有效验收检查项');
+  if (!items) return error(res, '请提交1至100个有效现场查看项');
   const progressItemId = req.body.progress_item_id
     ? Number(req.body.progress_item_id)
     : null;
@@ -8233,17 +8240,17 @@ async function createProjectInspectionDraft(req, res) {
       [progressItemId, projectId]
     );
     progressItem = rows[0];
-    if (!progressItem) return error(res, '验收事项不存在', 404);
+    if (!progressItem) return error(res, '进度事项不存在', 404);
   }
   const stageId = Number(req.body.stage_id || progressItem?.stage_id);
   const taskId = taskIdInput || (progressItem?.task_id ? Number(progressItem.task_id) : null);
-  if (!stageId) return error(res, '缺少验收阶段');
+  if (!stageId) return error(res, '缺少记录阶段');
   if (taskId) {
     const [tasks] = await db.query(
       'SELECT id FROM renovation_tasks WHERE id = ? AND project_id = ?',
       [taskId, projectId]
     );
-    if (!tasks[0]) return error(res, '验收任务不存在', 404);
+    if (!tasks[0]) return error(res, '关联任务不存在', 404);
   }
   const templateCode = String(
     req.body.template_code || progressItem?.inspection_template_key || ''
@@ -8251,7 +8258,7 @@ async function createProjectInspectionDraft(req, res) {
   const validation = await validateUnifiedInspectionTemplate(templateCode, stageId, items);
   if (validation.error) return error(res, validation.error);
   const status = String(req.body.status || 'draft');
-  if (!unifiedInspectionDraftStatuses.has(status)) return error(res, '验收草稿状态不正确');
+  if (!unifiedInspectionDraftStatuses.has(status)) return error(res, '现场记录草稿状态不正确');
 
   const connection = await db.getConnection();
   try {
@@ -8264,7 +8271,7 @@ async function createProjectInspectionDraft(req, res) {
     );
     if (existing[0]) {
       await connection.commit();
-      return success(res, existing[0], '验收草稿已存在');
+      return success(res, existing[0], '现场记录草稿已存在');
     }
     const [result] = await connection.query(
       `INSERT INTO project_inspections
@@ -8296,7 +8303,7 @@ async function createProjectInspectionDraft(req, res) {
     );
     await insertUnifiedInspectionItems(connection, result.insertId, projectId, items);
     await connection.commit();
-    return success(res, { id: result.insertId, row_version: 1, status }, '验收草稿已保存');
+    return success(res, { id: result.insertId, row_version: 1, status }, '现场记录草稿已保存');
   } catch (draftError) {
     await connection.rollback();
     if (draftError.code === 'ER_DUP_ENTRY') {
@@ -8305,7 +8312,7 @@ async function createProjectInspectionDraft(req, res) {
          WHERE project_id = ? AND client_request_id = ? LIMIT 1`,
         [projectId, clientRequestId]
       );
-      if (existing[0]) return success(res, existing[0], '验收草稿已存在');
+      if (existing[0]) return success(res, existing[0], '现场记录草稿已存在');
     }
     throw draftError;
   } finally {
@@ -8321,9 +8328,9 @@ async function updateProjectInspectionBatch(req, res) {
   const baseVersion = Number(req.body.base_version);
   const items = normalizeUnifiedInspectionItems(req.body.items);
   if (!Number.isInteger(baseVersion) || baseVersion < 1) return error(res, '缺少有效的数据版本');
-  if (!items) return error(res, '请提交1至100个有效验收检查项');
+  if (!items) return error(res, '请提交1至100个有效现场查看项');
   const status = String(req.body.status || 'in_progress');
-  if (!unifiedInspectionDraftStatuses.has(status)) return error(res, '验收状态不正确');
+  if (!unifiedInspectionDraftStatuses.has(status)) return error(res, '现场记录状态不正确');
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -8337,7 +8344,7 @@ async function updateProjectInspectionBatch(req, res) {
     const inspection = rows[0];
     if (!inspection) {
       await connection.rollback();
-      return error(res, '验收记录不存在', 404);
+      return error(res, '现场记录不存在', 404);
     }
     const role = await getProjectMemberRole(projectId, req.user.id);
     if (
@@ -8346,15 +8353,15 @@ async function updateProjectInspectionBatch(req, res) {
       !['project_manager', 'project_supervisor'].includes(role)
     ) {
       await connection.rollback();
-      return error(res, '无权修改该验收记录', 403);
+      return error(res, '无权修改该现场记录', 403);
     }
     if (Number(inspection.row_version) !== baseVersion) {
       await connection.rollback();
-      return error(res, '验收记录已被其他成员更新，请刷新后重试', 409);
+      return error(res, '现场记录已被其他成员更新，请刷新后重试', 409);
     }
     if (inspection.status === 'passed') {
       await connection.rollback();
-      return error(res, '已处理的验收记录不能直接覆盖', 409);
+      return error(res, '已确认完成的现场记录不能直接覆盖', 409);
     }
     const validation = await validateUnifiedInspectionTemplate(
       inspection.template_code,
@@ -8388,7 +8395,7 @@ async function updateProjectInspectionBatch(req, res) {
     return success(
       res,
       { id: inspectionId, row_version: baseVersion + 1, status },
-      '验收结果已保存'
+      '现场记录已保存'
     );
   } catch (batchError) {
     await connection.rollback();
@@ -8405,11 +8412,14 @@ async function confirmProjectInspection(req, res) {
   const inspectionId = Number(req.params.inspectionId);
   const baseVersion = Number(req.body.base_version);
   if (!Number.isInteger(baseVersion) || baseVersion < 1) return error(res, '缺少有效的数据版本');
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  const confirmsCompletion = isOwnerSideRole(memberRole);
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
     const [rows] = await connection.query(
-      `SELECT id, submitted_by, responsible_user_id, status, row_version
+      `SELECT id, task_id, progress_item_id, submitted_by,
+              responsible_user_id, status, row_version
        FROM project_inspections
        WHERE id = ? AND project_id = ?
        LIMIT 1 FOR UPDATE`,
@@ -8418,22 +8428,22 @@ async function confirmProjectInspection(req, res) {
     const inspection = rows[0];
     if (!inspection) {
       await connection.rollback();
-      return error(res, '验收记录不存在', 404);
+      return error(res, '现场记录不存在', 404);
     }
     if (
       Number(inspection.submitted_by) !== Number(req.user.id) &&
       Number(inspection.responsible_user_id) !== Number(req.user.id)
     ) {
       await connection.rollback();
-      return error(res, '只有草稿提交人或整改责任人可以发起确认', 403);
+      return error(res, '只有记录提交人或问题处理人可以确认完成', 403);
     }
     if (Number(inspection.row_version) !== baseVersion) {
       await connection.rollback();
-      return error(res, '验收记录已更新，请刷新后重试', 409);
+      return error(res, '现场记录已更新，请刷新后重试', 409);
     }
     if (!['draft', 'in_progress'].includes(inspection.status)) {
       await connection.rollback();
-      return error(res, '当前验收状态不能提交确认', 409);
+      return error(res, '当前记录状态不能确认完成', 409);
     }
     const [[counts]] = await connection.query(
       `SELECT COUNT(*) AS total,
@@ -8445,28 +8455,65 @@ async function confirmProjectInspection(req, res) {
     );
     if (!Number(counts.total)) {
       await connection.rollback();
-      return error(res, '验收记录没有检查项');
+      return error(res, '现场记录没有检查项');
     }
     if (Number(counts.pending_total)) {
       await connection.rollback();
-      return error(res, '仍有未检查项目，不能提交确认');
+      return error(res, '仍有未查看项目，不能确认完成');
     }
     await connection.query(
       `UPDATE project_inspections
-       SET status = 'pending', row_version = row_version + 1
+       SET status = ?, reviewed_by = ?,
+           reviewed_at = CASE WHEN ? = 'passed' THEN NOW() ELSE reviewed_at END,
+           row_version = row_version + 1
        WHERE id = ?`,
-      [inspectionId]
+      [
+        confirmsCompletion ? 'passed' : 'pending',
+        confirmsCompletion ? req.user.id : null,
+        confirmsCompletion ? 'passed' : 'pending',
+        inspectionId,
+      ]
     );
+    if (confirmsCompletion && inspection.progress_item_id) {
+      await connection.query(
+        `UPDATE project_progress_items
+         SET status = 'completed',
+             actual_finish = COALESCE(actual_finish, CURDATE())
+         WHERE id = ? AND project_id = ?`,
+        [inspection.progress_item_id, projectId]
+      );
+    } else if (confirmsCompletion && inspection.task_id) {
+      await connection.query(
+        `UPDATE renovation_tasks
+         SET status = 2,
+             actual_end = COALESCE(actual_end, CURDATE())
+         WHERE id = ? AND project_id = ?`,
+        [inspection.task_id, projectId]
+      );
+    }
     await connection.commit();
+    let progress = null;
+    if (confirmsCompletion) {
+      try {
+        progress = await refreshProjectStageByTaskCompletion(projectId);
+      } catch (progressError) {
+        console.warn('refresh project stage after completion confirmation failed', {
+          projectId,
+          inspectionId,
+          message: progressError.message,
+        });
+      }
+    }
     return success(
       res,
       {
         id: inspectionId,
-        status: 'pending',
+        status: confirmsCompletion ? 'passed' : 'pending',
         row_version: baseVersion + 1,
-        failed_item_count: Number(counts.failed_total || 0),
+        issue_item_count: Number(counts.failed_total || 0),
+        progress,
       },
-      '验收已提交确认'
+      confirmsCompletion ? '事项已确认完成' : '完成记录已提交，等待业主确认'
     );
   } catch (confirmError) {
     await connection.rollback();
@@ -8901,7 +8948,8 @@ async function getProjectInspectionStepRecords(req, res) {
   }
   const [rows] = await db.query(
     `SELECT record.id, record.project_id, record.stage_id,
-            record.progress_item_id, record.step_key, record.step_title,
+            record.task_id, record.progress_item_id,
+            record.step_key, record.step_title,
             record.step_action, record.record_type, record.status,
             record.description, record.review_remark,
             record.response_description, record.response_by, record.response_at,
@@ -8959,6 +9007,7 @@ async function createProjectInspectionStepRecord(req, res) {
 
   const projectId = Number(req.params.id);
   const stageId = Number(req.body.stage_id);
+  let taskId = req.body.task_id ? Number(req.body.task_id) : null;
   const progressItemId = req.body.progress_item_id
     ? Number(req.body.progress_item_id)
     : null;
@@ -8978,15 +9027,39 @@ async function createProjectInspectionStepRecord(req, res) {
     await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, '记录事项信息不完整');
   }
+  if (taskId) {
+    const [tasks] = await db.query(
+      'SELECT id, stage_id FROM renovation_tasks WHERE id = ? AND project_id = ?',
+      [taskId, projectId]
+    );
+    if (!tasks[0]) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '事项不存在', 404);
+    }
+    if (Number(tasks[0].stage_id) !== stageId) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '事项与当前阶段不匹配');
+    }
+  }
   if (progressItemId) {
     const [items] = await db.query(
-      'SELECT id FROM project_progress_items WHERE id = ? AND project_id = ?',
+      'SELECT id, task_id, stage_id FROM project_progress_items WHERE id = ? AND project_id = ?',
       [progressItemId, projectId]
     );
     if (!items[0]) {
       await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
       return error(res, '进度事项不存在', 404);
     }
+    if (Number(items[0].stage_id) !== stageId) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '子事项与当前阶段不匹配');
+    }
+    const linkedTaskId = items[0].task_id ? Number(items[0].task_id) : null;
+    if (taskId && linkedTaskId && taskId !== linkedTaskId) {
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+      return error(res, '事项与子事项关联不匹配');
+    }
+    taskId = taskId || linkedTaskId;
   }
   if (targetUserId) {
     const targetMember = await requireActiveProjectMember(projectId, targetUserId);
@@ -9027,6 +9100,7 @@ async function createProjectInspectionStepRecord(req, res) {
     `SELECT id FROM project_inspection_step_records
      WHERE project_id = ?
        AND stage_id = ?
+       AND ((task_id IS NULL AND ? IS NULL) OR task_id = ?)
        AND ((progress_item_id IS NULL AND ? IS NULL) OR progress_item_id = ?)
        AND step_key = ?
        AND created_by = ?
@@ -9036,6 +9110,8 @@ async function createProjectInspectionStepRecord(req, res) {
     [
       projectId,
       stageId,
+      taskId,
+      taskId,
       progressItemId,
       progressItemId,
       stepKey,
@@ -9140,15 +9216,16 @@ async function createProjectInspectionStepRecord(req, res) {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `INSERT INTO project_inspection_step_records
-         (project_id, stage_id, progress_item_id, step_key, step_title,
+         (project_id, stage_id, task_id, progress_item_id, step_key, step_title,
           step_action, record_type, status, description, review_remark,
           created_by, member_role, target_user_id, reviewed_by, reviewed_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${
          isReworkRequest ? 'NOW()' : 'NULL'
        })`,
       [
         projectId,
         stageId,
+        taskId,
         progressItemId,
         stepKey,
         stepTitle,

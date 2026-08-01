@@ -13,10 +13,11 @@
 
 ## 分组规则
 
-同一个 `project_id + stage_id + progress_item_id` 组成一条验收主记录。
+同一个 `project_id + stage_id + task_id + progress_item_id` 组成一条验收主记录。
 
-- 有 `progress_item_id` 时，主记录继承进度事项标题及任务。
-- 没有 `progress_item_id` 时，按项目阶段建立主记录，允许 `task_id` 为空。
+- 有 `progress_item_id` 时，主记录继承子事项标题及其所属事项。
+- 没有 `progress_item_id`、有 `task_id` 时，按事项独立建立主记录。
+- 两个关联字段都为空的早期历史记录，才按项目阶段建立主记录。
 - 主记录使用固定 `client_request_id`，重复执行迁移不会重复创建。
 
 ## 检查项规则

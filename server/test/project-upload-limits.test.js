@@ -174,6 +174,78 @@ test('company admin read-only viewer sees all project inspection step records', 
   assert.equal(res.payload.data[0].step_title, '水压测试');
 });
 
+test('inspection step record keeps a formal task link without child items', async () => {
+  let insertStatement = null;
+  let insertParams = null;
+  const connection = {
+    async beginTransaction() {},
+    async query(sql, params) {
+      if (/INSERT INTO project_inspection_step_records/.test(sql)) {
+        insertStatement = sql;
+        insertParams = params;
+        return [{ insertId: 601 }];
+      }
+      throw new Error(`unexpected connection query: ${sql}`);
+    },
+    async commit() {},
+    async rollback() {},
+    release() {},
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{
+          id: 9,
+          user_id: 7,
+          lifecycle_status: 'active',
+          role: 'owner',
+        }]];
+      }
+      if (/SELECT id FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ id: 1 }]];
+      }
+      if (/SELECT id, stage_id FROM renovation_tasks/.test(sql)) {
+        assert.deepEqual(params, [12, 9]);
+        return [[{ id: 12, stage_id: 6 }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'owner' }]];
+      }
+      if (/SELECT id FROM project_inspection_step_records/.test(sql)) {
+        assert.deepEqual(params.slice(0, 6), [9, 6, 12, 12, null, null]);
+        return [[]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() {
+      return connection;
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.createProjectInspectionStepRecord({
+    user: { id: 7, role: 'owner' },
+    params: { id: '9' },
+    body: {
+      project_id: 9,
+      stage_id: 6,
+      task_id: 12,
+      step_key: '墙面',
+      step_title: '墙面',
+      description: '现场已记录',
+    },
+    files: [],
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.match(insertStatement, /task_id, progress_item_id/);
+  assert.deepEqual(insertParams.slice(0, 6), [9, 6, 12, null, '墙面', '墙面']);
+  assert.equal(res.payload.data.id, 601);
+});
+
 test('inspection workspace returns one main inspection with nested check items', async () => {
   const dbMock = {
     async query(sql, params) {
@@ -288,6 +360,86 @@ test('inspection workspace returns one main inspection with nested check items',
   assert.equal(res.payload.data.inspections[0].items.length, 2);
   assert.equal(res.payload.data.inspections[0].items[0].require_photo, true);
   assert.equal(res.payload.data.progress_items[0].requires_inspection, true);
+});
+
+test('confirming a unified record completes its progress item without a second approval', async () => {
+  const executed = [];
+  const connection = {
+    async beginTransaction() {},
+    async query(sql, params) {
+      executed.push({ sql, params });
+      if (/SELECT id, task_id, progress_item_id, submitted_by/.test(sql)) {
+        return [[{
+          id: 31,
+          task_id: 12,
+          progress_item_id: 21,
+          submitted_by: 7,
+          responsible_user_id: null,
+          status: 'in_progress',
+          row_version: 2,
+        }]];
+      }
+      if (/COUNT\(\*\) AS total/.test(sql) && /project_inspection_items/.test(sql)) {
+        return [[{ total: 2, pending_total: 0, failed_total: 1 }]];
+      }
+      if (/UPDATE project_inspections/.test(sql)) {
+        assert.match(sql, /SET status = \?/);
+        assert.deepEqual(params, ['passed', 7, 'passed', 31]);
+        return [{ affectedRows: 1 }];
+      }
+      if (/UPDATE project_progress_items/.test(sql)) {
+        assert.match(sql, /status = 'completed'/);
+        assert.deepEqual(params, [21, 9]);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected connection query: ${sql}`);
+    },
+    async commit() {},
+    async rollback() {},
+    release() {},
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{
+          id: 9,
+          user_id: 7,
+          lifecycle_status: 'active',
+          role: 'owner',
+        }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'owner' }]];
+      }
+      // Stage refresh happens after the completion transaction. Returning no
+      // stages is sufficient for this focused controller test.
+      if (/FROM renovation_stages/.test(sql)) return [[]];
+      if (/FROM renovation_tasks/.test(sql)) return [[]];
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() {
+      return connection;
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.confirmProjectInspection({
+    user: { id: 7 },
+    params: { id: '9', inspectionId: '31' },
+    body: { project_id: 9, base_version: 2 },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.status, 'passed');
+  assert.equal(res.payload.data.issue_item_count, 1);
+  assert.match(res.payload.message, /确认完成/);
+  assert.equal(
+    executed.some(({ sql }) => /UPDATE project_progress_items/.test(sql)),
+    true
+  );
 });
 
 test('main owner sees all project check-ins without member visibility filter', async () => {

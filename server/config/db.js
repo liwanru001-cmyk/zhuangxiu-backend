@@ -927,6 +927,7 @@ async function ensureProjectInspectionStepRecordTables() {
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       project_id BIGINT UNSIGNED NOT NULL,
       stage_id TINYINT UNSIGNED NOT NULL,
+      task_id BIGINT UNSIGNED DEFAULT NULL,
       progress_item_id BIGINT UNSIGNED DEFAULT NULL,
       step_key VARCHAR(160) NOT NULL,
       step_title VARCHAR(160) NOT NULL,
@@ -947,6 +948,7 @@ async function ensureProjectInspectionStepRecordTables() {
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
       KEY idx_step_records_project_stage (project_id, stage_id, updated_at),
+      KEY idx_step_records_task (task_id, updated_at),
       KEY idx_step_records_progress (progress_item_id, updated_at),
       KEY idx_step_records_creator (created_by, updated_at),
       KEY idx_step_records_target (target_user_id, status, updated_at)
@@ -965,6 +967,7 @@ async function ensureProjectInspectionStepRecordTables() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   const optionalColumns = [
+    ['task_id', "BIGINT UNSIGNED DEFAULT NULL AFTER stage_id"],
     ['inspection_id', "BIGINT UNSIGNED DEFAULT NULL AFTER progress_item_id"],
     ['review_remark', "VARCHAR(500) DEFAULT NULL AFTER description"],
     ['response_description', "VARCHAR(500) DEFAULT NULL AFTER review_remark"],
@@ -987,6 +990,27 @@ async function ensureProjectInspectionStepRecordTables() {
       `);
     }
   }
+  const [taskLinkIndexes] = await pool.query(`
+    SELECT INDEX_NAME FROM information_schema.STATISTICS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_inspection_step_records'
+      AND INDEX_NAME = 'idx_step_records_task'
+  `);
+  if (!taskLinkIndexes.length) {
+    await pool.query(`
+      CREATE INDEX idx_step_records_task
+      ON project_inspection_step_records (task_id, updated_at)
+    `);
+  }
+  await pool.query(`
+    UPDATE project_inspection_step_records record
+    JOIN project_progress_items item
+      ON item.id = record.progress_item_id
+     AND item.project_id = record.project_id
+    SET record.task_id = item.task_id
+    WHERE record.task_id IS NULL
+      AND item.task_id IS NOT NULL
+  `);
   const [inspectionLinkIndexes] = await pool.query(`
     SELECT INDEX_NAME FROM information_schema.STATISTICS
     WHERE TABLE_SCHEMA = DATABASE()

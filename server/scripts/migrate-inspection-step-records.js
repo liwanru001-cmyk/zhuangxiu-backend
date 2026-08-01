@@ -23,7 +23,7 @@ function itemResult(status) {
 }
 
 async function migrateGroup(connection, group) {
-  const clientRequestId = `legacy-step-group-${group.project_id}-${group.stage_id}-${group.progress_item_id || 0}`;
+  const clientRequestId = `legacy-step-group-${group.project_id}-${group.stage_id}-${group.task_id || 0}-${group.progress_item_id || 0}`;
   const [existing] = await connection.query(
     `SELECT id FROM project_inspections
      WHERE project_id = ? AND client_request_id = ?
@@ -40,6 +40,15 @@ async function migrateGroup(connection, group) {
         )
       : [[]];
     const progress = progressRows[0];
+    const taskId = progress?.task_id || group.task_id || null;
+    const [taskRows] = !progress && taskId
+      ? await connection.query(
+          `SELECT task_name FROM renovation_tasks
+           WHERE id = ? AND project_id = ? LIMIT 1`,
+          [taskId, group.project_id]
+        )
+      : [[]];
+    const task = taskRows[0];
     const [result] = await connection.query(
       `INSERT INTO project_inspections
        (project_id, task_id, progress_item_id, stage_id, title,
@@ -47,13 +56,13 @@ async function migrateGroup(connection, group) {
         status, description, algorithm_version, calculation_summary,
         row_version, calculated_at)
        VALUES (?, ?, ?, ?, ?, 'legacy_step_records', ?, ?, ?, ?, ?,
-               'legacy-step-migration-v1', ?, 1, NOW())`,
+               'legacy-step-migration-v2', ?, 1, NOW())`,
       [
         group.project_id,
-        progress?.task_id || null,
+        taskId,
         group.progress_item_id || null,
         group.stage_id,
-        progress?.title || `阶段 ${group.stage_id} 验收`,
+        progress?.title || task?.task_name || `阶段 ${group.stage_id} 现场记录`,
         clientRequestId,
         group.records[0].created_by,
         group.records[0].member_role || 'owner',
@@ -125,11 +134,13 @@ async function migrateGroup(connection, group) {
     `UPDATE project_inspection_step_records
      SET inspection_id = ?
      WHERE project_id = ? AND stage_id = ?
+       AND task_id <=> ?
        AND progress_item_id <=> ? AND inspection_id IS NULL`,
     [
       inspectionId,
       group.project_id,
       group.stage_id,
+      group.task_id || null,
       group.progress_item_id || null,
     ]
   );
@@ -138,21 +149,23 @@ async function migrateGroup(connection, group) {
 
 async function run() {
   const [records] = await db.query(
-    `SELECT id, project_id, stage_id, progress_item_id, step_key, step_title,
+    `SELECT id, project_id, stage_id, task_id, progress_item_id,
+            step_key, step_title,
             step_action, status, description, review_remark,
             response_description, created_by, member_role, target_user_id,
             created_at, updated_at
      FROM project_inspection_step_records
      WHERE inspection_id IS NULL
-     ORDER BY project_id, stage_id, progress_item_id, id`
+     ORDER BY project_id, stage_id, task_id, progress_item_id, id`
   );
   const groups = new Map();
   for (const record of records) {
-    const key = `${record.project_id}:${record.stage_id}:${record.progress_item_id || 0}`;
+    const key = `${record.project_id}:${record.stage_id}:${record.task_id || 0}:${record.progress_item_id || 0}`;
     if (!groups.has(key)) {
       groups.set(key, {
         project_id: record.project_id,
         stage_id: record.stage_id,
+        task_id: record.task_id,
         progress_item_id: record.progress_item_id,
         records: [],
       });
@@ -166,6 +179,7 @@ async function run() {
     groups: [...groups.values()].map((group) => ({
       project_id: group.project_id,
       stage_id: group.stage_id,
+      task_id: group.task_id,
       progress_item_id: group.progress_item_id,
       record_count: group.records.length,
       latest_check_item_count: new Set(
