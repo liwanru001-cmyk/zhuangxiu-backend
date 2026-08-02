@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const bcrypt = require('bcryptjs');
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = process.env.JWT_SECRET || 'test-secret';
@@ -144,6 +145,38 @@ test('password login does not create an account for an unknown phone', async () 
 
   assert.equal(res.statusCode, 404);
   assert.match(res.payload.message, /未注册/);
+});
+
+test('password login returns a clear message when the password is wrong', async () => {
+  const passwordHash = await bcrypt.hash('correct123', 4);
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM users WHERE phone = \?/.test(sql)) {
+        assert.deepEqual(params, ['13800138000']);
+        return [[{
+          id: 3,
+          phone: '13800138000',
+          password_hash: passwordHash,
+          nickname: '已注册用户',
+          avatar: '',
+          bio: '',
+          city: '',
+          role: 'owner',
+          admin_status: 'approved',
+        }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.passwordLogin({
+    body: { phone: '13800138000', password: 'wrong123' },
+  }, res);
+
+  assert.equal(res.statusCode, 401);
+  assert.equal(res.payload.message, '密码错误，请重新输入');
 });
 
 test('test login creates an owner account when enabled', async () => {

@@ -398,6 +398,7 @@ jobs:
             node scripts/run-migration.js migrations/20260619_inspection_templates.sql
             node scripts/run-migration.js migrations/20260730_unified_project_inspections.sql
             node scripts/run-migration.js migrations/20260801_inspection_step_record_task_link.sql
+            node scripts/run-migration.js migrations/20260802_project_progress_change_requests.sql
 
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
@@ -489,6 +490,7 @@ jobs:
             node scripts/run-migration.js migrations/20260730_company_evaluation_daily_snapshots.sql
             node scripts/run-migration.js migrations/20260730_unified_project_inspections.sql
             node scripts/run-migration.js migrations/20260801_inspection_step_record_task_link.sql
+            node scripts/run-migration.js migrations/20260802_project_progress_change_requests.sql
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true

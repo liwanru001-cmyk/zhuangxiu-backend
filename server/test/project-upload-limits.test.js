@@ -635,6 +635,21 @@ test('project task delete rejects when inspection records exist', async () => {
         assert.deepEqual(params, [9, 7]);
         return [[{ role: 'owner' }]];
       }
+      if (/FROM renovation_tasks WHERE id = \? AND project_id = \?/.test(sql)) {
+        assert.deepEqual(params, [3, 9]);
+        return [[{
+          id: 3,
+          project_id: 9,
+          stage_id: 3,
+          task_name: '水电施工',
+          is_key: 1,
+          planned_start: '2026-08-01',
+          planned_end: '2026-08-03',
+          status: 1,
+          remark: null,
+          updated_at: '2026-08-02 10:00:00',
+        }]];
+      }
       if (/COUNT\(\*\) AS total FROM project_progress_items/.test(sql)) {
         assert.deepEqual(params, [9, 3]);
         return [[{ total: 0 }]];

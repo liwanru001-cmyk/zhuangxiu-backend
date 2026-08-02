@@ -680,49 +680,13 @@ async function getStageDetail(req, res) {
 async function updateTask(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
-
-  const { status, remark } = req.body;
-  const updates = [];
-  const params = [];
-  if (status !== undefined) {
-    updates.push('t.status = ?');
-    params.push(Number(status));
-    if (Number(status) === 1) updates.push('t.actual_start = COALESCE(t.actual_start, CURDATE())');
-    if (Number(status) === 2) updates.push('t.actual_end = CURDATE()');
-  }
-  if (remark !== undefined) {
-    updates.push('t.remark = ?');
-    params.push(String(remark));
-  }
-  if (updates.length === 0) return error(res, '没有可更新的内容');
-  params.push(Number(req.params.taskId), req.user.id);
-  const [result] = await db.query(
-    `UPDATE renovation_tasks t
-     JOIN renovation_projects p ON t.project_id = p.id
-     SET ${updates.join(', ')}
-     WHERE t.id = ?
-       AND COALESCE(p.lifecycle_status, 'active') = 'active'
-       AND EXISTS (
-         SELECT 1 FROM project_members pm
-         WHERE pm.project_id = p.id
-           AND pm.user_id = ?
-           AND pm.status = 1
-           AND (
-             pm.role IN ('owner', 'designer', 'project_manager', 'project_supervisor')
-             OR JSON_UNQUOTE(
-               JSON_EXTRACT(pm.permissions, '$.manage_tasks')
-             ) = 'true'
-           )
-       )`,
-    params
-  );
-  if (result.affectedRows === 0) return error(res, '任务不存在', 404);
   const [tasks] = await db.query(
     'SELECT project_id FROM renovation_tasks WHERE id = ?',
     [Number(req.params.taskId)]
   );
-  if (tasks[0]) await refreshProjectStageByTaskCompletion(tasks[0].project_id);
-  return success(res, { updated: true });
+  if (!tasks[0]) return error(res, '任务不存在', 404);
+  req.params.id = String(tasks[0].project_id);
+  return planProjectTask(req, res);
 }
 
 async function completeStage(req, res) {
@@ -3234,47 +3198,13 @@ async function handleProjectInvitation(req, res) {
 async function planTask(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
-
-  const { planned_start: plannedStart, planned_end: plannedEnd, task_name: taskName } = req.body;
-  const fields = [];
-  const params = [];
-  if (plannedStart !== undefined) {
-    fields.push('t.planned_start = ?');
-    params.push(plannedStart);
-  }
-  if (plannedEnd !== undefined) {
-    fields.push('t.planned_end = ?');
-    params.push(plannedEnd);
-  }
-  if (taskName !== undefined) {
-    fields.push('t.task_name = ?');
-    params.push(taskName);
-  }
-  if (fields.length === 0) return error(res, '没有可更新的内容');
-  params.push(Number(req.params.taskId), req.user.id, req.user.role);
-  const [result] = await db.query(
-    `UPDATE renovation_tasks t
-     JOIN renovation_projects p ON t.project_id = p.id
-     SET ${fields.join(', ')}
-     WHERE t.id = ?
-       AND COALESCE(p.lifecycle_status, 'active') = 'active'
-       AND EXISTS (
-         SELECT 1 FROM project_members pm
-         WHERE pm.project_id = p.id
-           AND pm.user_id = ?
-           AND pm.role = ?
-           AND pm.status = 1
-           AND pm.role IN ('designer', 'project_manager', 'project_supervisor')
-       )`,
-    params
-  );
-  if (result.affectedRows === 0) return error(res, '任务不存在或无权限', 404);
   const [tasks] = await db.query(
     'SELECT project_id FROM renovation_tasks WHERE id = ?',
     [Number(req.params.taskId)]
   );
-  if (tasks[0]) await refreshProjectStageByTaskCompletion(tasks[0].project_id);
-  return success(res, { updated: true });
+  if (!tasks[0]) return error(res, '任务不存在', 404);
+  req.params.id = String(tasks[0].project_id);
+  return planProjectTask(req, res);
 }
 
 async function addTask(req, res) {
@@ -3306,15 +3236,16 @@ async function addTask(req, res) {
     ]
   );
   if (!projects[0]) return error(res, '暂无可管理项目', 404);
-  if (!taskName || !plannedStart || !plannedEnd) return error(res, '任务信息不完整');
-  const [result] = await db.query(
-    `INSERT INTO renovation_tasks
-     (project_id, stage_id, task_name, is_key, planned_start, planned_end, status)
-     VALUES (?, ?, ?, ?, ?, ?, 0)`,
-    [projects[0].id, Number(stageId), taskName, isKey ? 1 : 0, plannedStart, plannedEnd]
-  );
-  const progress = await refreshProjectStageByTaskCompletion(projects[0].id);
-  return success(res, { id: result.insertId, progress });
+  req.params.id = String(projects[0].id);
+  req.body = {
+    project_id: projects[0].id,
+    stage_id: stageId,
+    task_name: taskName,
+    planned_start: plannedStart,
+    planned_end: plannedEnd,
+    is_key: Boolean(isKey),
+  };
+  return createProjectTask(req, res);
 }
 
 async function getTips(req, res) {
@@ -6344,6 +6275,574 @@ async function canManageProjectProgress(projectId, userId) {
   return ['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role);
 }
 
+const progressChangeRoles = new Set([
+  'owner',
+  'designer',
+  'project_manager',
+  'project_supervisor',
+]);
+
+function parseProgressChangeJson(value, fallback = {}) {
+  if (value === null || value === undefined || value === '') return fallback;
+  if (typeof value === 'object') return value;
+  try {
+    return JSON.parse(value);
+  } catch (_) {
+    return fallback;
+  }
+}
+
+function progressChangeTimestamp(value) {
+  if (!value) return null;
+  const date = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date.getTime();
+}
+
+function progressChangeTargetUnchanged(current, expected) {
+  const expectedTime = progressChangeTimestamp(expected);
+  if (expectedTime === null) return true;
+  return progressChangeTimestamp(current) === expectedTime;
+}
+
+function progressChangeDisplayTitle(entityType, action, payload, before) {
+  const name = String(
+    payload?.task_name || payload?.title || before?.task_name || before?.title || '项目事项'
+  ).trim();
+  const actionLabel = { create: '新建', update: '修改', delete: '删除' }[action] || '调整';
+  return `${actionLabel}${entityType === 'task' ? '事项' : '子事项'}：${name}`;
+}
+
+async function queueProjectProgressChange({
+  projectId,
+  entityType,
+  targetId = null,
+  action,
+  beforeSnapshot = null,
+  proposedPayload = null,
+  userId,
+  role,
+}) {
+  const [result] = await db.query(
+    `INSERT INTO project_progress_change_requests
+       (project_id, entity_type, target_id, action, before_snapshot,
+        proposed_payload, target_updated_at, submitted_by, submitted_role, status)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')`,
+    [
+      projectId,
+      entityType,
+      targetId,
+      action,
+      beforeSnapshot ? JSON.stringify(beforeSnapshot) : null,
+      proposedPayload ? JSON.stringify(proposedPayload) : null,
+      beforeSnapshot?.updated_at || null,
+      userId,
+      role || null,
+    ]
+  );
+  const ownerIds = await getActiveProjectMemberUserIds(projectId, ['owner']);
+  await emitProjectEvent(ProjectEventType.PROGRESS_CHANGE_SUBMITTED, {
+    projectId,
+    actorId: userId,
+    targetUserIds: ownerIds,
+    entityType: 'progress_change_request',
+    entityId: result.insertId,
+    title: '有新的项目进度变更待确认',
+    content: progressChangeDisplayTitle(entityType, action, proposedPayload, beforeSnapshot),
+    route: 'project_progress',
+    deepLink: { projectId, progressTab: 'details' },
+  });
+  return Number(result.insertId);
+}
+
+function progressChangeResponse(res, requestId) {
+  return success(
+    res,
+    { pending_confirmation: true, request_id: requestId },
+    '已提交，等待业主确认'
+  );
+}
+
+async function getProjectProgressChangeRequests(req, res) {
+  const projectId = Number(req.params.id);
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  const requestedStatus = String(req.query.status || 'pending');
+  const statuses = new Set(['pending', 'approved', 'rejected', 'cancelled', 'conflict']);
+  const status = statuses.has(requestedStatus) ? requestedStatus : 'pending';
+  const params = [projectId, status];
+  const relatedWhere = role === 'owner' ? '' : ' AND request.submitted_by = ?';
+  if (role !== 'owner') params.push(req.user.id);
+  const [rows] = await db.query(
+    `SELECT request.id, request.project_id, request.entity_type, request.target_id,
+            request.action, request.before_snapshot, request.proposed_payload,
+            request.submitted_by, request.submitted_role, request.status,
+            request.reviewed_by, request.review_note, request.reviewed_at,
+            request.created_at, request.updated_at,
+            submitter.nickname AS submitter_name,
+            reviewer.nickname AS reviewer_name
+     FROM project_progress_change_requests request
+     JOIN users submitter ON submitter.id = request.submitted_by
+     LEFT JOIN users reviewer ON reviewer.id = request.reviewed_by
+     WHERE request.project_id = ? AND request.status = ?${relatedWhere}
+     ORDER BY request.created_at DESC, request.id DESC
+     LIMIT 100`,
+    params
+  );
+  return success(
+    res,
+    rows.map((row) => ({
+      ...row,
+      before_snapshot: parseProgressChangeJson(row.before_snapshot, null),
+      proposed_payload: parseProgressChangeJson(row.proposed_payload, null),
+      can_review: role === 'owner' && row.status === 'pending',
+      can_cancel:
+        Number(row.submitted_by) === Number(req.user.id) && row.status === 'pending',
+    }))
+  );
+}
+
+async function progressItemDepthWith(executor, projectId, parentId) {
+  if (!parentId) return 0;
+  let depth = 1;
+  let cursor = Number(parentId);
+  while (cursor) {
+    const [rows] = await executor.query(
+      'SELECT id, parent_id FROM project_progress_items WHERE id = ? AND project_id = ?',
+      [cursor, projectId]
+    );
+    if (!rows[0]) return -1;
+    cursor = Number(rows[0].parent_id || 0);
+    if (cursor) depth += 1;
+    if (depth >= 3) break;
+  }
+  return depth;
+}
+
+async function applyTaskProgressChange(connection, request, before, payload) {
+  const projectId = Number(request.project_id);
+  if (request.action === 'create') {
+    const stageId = Number(payload.stage_id);
+    const taskName = String(payload.task_name || '').trim().slice(0, 100);
+    const plannedStart = payload.planned_start;
+    const plannedEnd = payload.planned_end;
+    if (!stages.some((stage) => stage.id === stageId) || !taskName) {
+      return { conflict: '事项信息已失效，请重新提交' };
+    }
+    if (
+      !plannedStart ||
+      !plannedEnd ||
+      Number.isNaN(Date.parse(plannedStart)) ||
+      Number.isNaN(Date.parse(plannedEnd)) ||
+      Date.parse(plannedEnd) < Date.parse(plannedStart)
+    ) {
+      return { conflict: '计划日期已失效，请重新提交' };
+    }
+    const [result] = await connection.query(
+      `INSERT INTO renovation_tasks
+       (project_id, stage_id, task_name, is_key, planned_start, planned_end, status, remark)
+       VALUES (?, ?, ?, ?, ?, ?, 0, ?)`,
+      [
+        projectId,
+        stageId,
+        taskName,
+        payload.is_key ? 1 : 0,
+        plannedStart,
+        plannedEnd,
+        String(payload.remark || '').trim().slice(0, 500) || null,
+      ]
+    );
+    return { entityId: Number(result.insertId) };
+  }
+
+  const [rows] = await connection.query(
+    'SELECT * FROM renovation_tasks WHERE id = ? AND project_id = ? FOR UPDATE',
+    [request.target_id, projectId]
+  );
+  const current = rows[0];
+  if (!current) return { conflict: '原事项已不存在' };
+  if (!progressChangeTargetUnchanged(current.updated_at, request.target_updated_at)) {
+    return { conflict: '原事项已发生变化，请重新提交' };
+  }
+  if (request.action === 'delete') {
+    const [[children], [inspections], [stepRecords]] = await Promise.all([
+      connection.query(
+        'SELECT COUNT(*) AS total FROM project_progress_items WHERE project_id = ? AND task_id = ?',
+        [projectId, request.target_id]
+      ),
+      connection.query(
+        'SELECT id FROM project_inspections WHERE project_id = ? AND task_id = ? LIMIT 1',
+        [projectId, request.target_id]
+      ),
+      connection.query(
+        'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND task_id = ? LIMIT 1',
+        [projectId, request.target_id]
+      ),
+    ]);
+    if (Number(children[0]?.total || 0) > 0 || inspections[0] || stepRecords[0]) {
+      return { conflict: '事项已有下级内容或现场记录，不能删除' };
+    }
+    await connection.query(
+      'DELETE FROM renovation_tasks WHERE id = ? AND project_id = ?',
+      [request.target_id, projectId]
+    );
+    return { entityId: Number(request.target_id) };
+  }
+
+  const taskName = String(payload.task_name || current.task_name).trim().slice(0, 100);
+  const plannedStart = payload.planned_start || dateOnly(current.planned_start);
+  const plannedEnd = payload.planned_end || dateOnly(current.planned_end);
+  const nextStatus = payload.status === undefined
+    ? Number(current.status)
+    : Number(payload.status);
+  if (
+    !taskName ||
+    !plannedStart ||
+    !plannedEnd ||
+    Date.parse(plannedEnd) < Date.parse(plannedStart) ||
+    ![0, 1, 2, 3].includes(nextStatus)
+  ) {
+    return { conflict: '事项内容已失效，请重新提交' };
+  }
+  await connection.query(
+    `UPDATE renovation_tasks
+     SET task_name = ?, planned_start = ?, planned_end = ?, remark = ?, is_key = ?,
+         status = ?,
+         actual_start = CASE
+           WHEN ? = 1 THEN COALESCE(actual_start, CURDATE())
+           ELSE actual_start
+         END,
+         actual_end = CASE
+           WHEN ? = 2 THEN COALESCE(actual_end, CURDATE())
+           ELSE actual_end
+         END
+     WHERE id = ? AND project_id = ?`,
+    [
+      taskName,
+      plannedStart,
+      plannedEnd,
+      String(payload.remark ?? current.remark ?? '').trim().slice(0, 500) || null,
+      payload.is_key === undefined ? Number(current.is_key || 0) : payload.is_key ? 1 : 0,
+      nextStatus,
+      nextStatus,
+      nextStatus,
+      request.target_id,
+      projectId,
+    ]
+  );
+  return { entityId: Number(request.target_id) };
+}
+
+async function resolveProgressItemParent(connection, projectId, item) {
+  const depth = await progressItemDepthWith(connection, projectId, item.parentId);
+  if (depth < 0) return '父级子事项不存在';
+  if (depth >= 3) return '进度计划最多支持三级';
+  if (item.parentId) {
+    const [parents] = await connection.query(
+      'SELECT stage_id, task_id FROM project_progress_items WHERE id = ? AND project_id = ?',
+      [item.parentId, projectId]
+    );
+    if (!parents[0]) return '父级子事项不存在';
+    item.stageId = Number(parents[0].stage_id);
+    item.taskId = parents[0].task_id ? Number(parents[0].task_id) : null;
+  } else if (item.taskId) {
+    const [tasks] = await connection.query(
+      'SELECT id, stage_id FROM renovation_tasks WHERE id = ? AND project_id = ?',
+      [item.taskId, projectId]
+    );
+    if (!tasks[0]) return '所属事项不存在';
+    item.stageId = Number(tasks[0].stage_id);
+  }
+  return null;
+}
+
+async function collectProgressItemIds(connection, projectId, itemId) {
+  const ids = [Number(itemId)];
+  for (let index = 0; index < ids.length; index += 1) {
+    const [children] = await connection.query(
+      'SELECT id FROM project_progress_items WHERE project_id = ? AND parent_id = ?',
+      [projectId, ids[index]]
+    );
+    for (const child of children) ids.push(Number(child.id));
+  }
+  return ids;
+}
+
+async function applyProgressItemChange(connection, request, before, payload) {
+  const projectId = Number(request.project_id);
+  if (request.action === 'create') {
+    const item = sanitizeProgressItemBody(payload);
+    const relationError = await resolveProgressItemParent(connection, projectId, item);
+    const validationError = relationError || validateProgressItem(item);
+    if (validationError) return { conflict: validationError };
+    if (item.templateKey) {
+      const [duplicates] = await connection.query(
+        'SELECT id FROM project_progress_items WHERE project_id = ? AND template_key = ? LIMIT 1',
+        [projectId, item.templateKey]
+      );
+      if (duplicates[0]) return { conflict: '该事项已加入项目进度' };
+    }
+    const [result] = await connection.query(
+      `INSERT INTO project_progress_items
+       (project_id, stage_id, task_id, parent_id, template_key, title,
+        planned_start, planned_end, actual_finish, status, remark, is_key_node,
+        requires_inspection, inspection_template_key, sort_order, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?)`,
+      [
+        projectId,
+        item.stageId,
+        item.taskId,
+        item.parentId,
+        item.templateKey,
+        item.title,
+        item.plannedStart,
+        item.plannedEnd,
+        null,
+        item.remark,
+        item.isKeyNode,
+        item.requiresInspection,
+        item.inspectionTemplateKey,
+        item.sortOrder,
+        request.submitted_by,
+      ]
+    );
+    await recordProjectProgressItemAdjustment(connection, {
+      projectId,
+      itemId: result.insertId,
+      action: 'created',
+      changes: buildProgressItemChanges(null, item, { includeAll: true }),
+      userId: request.submitted_by,
+      role: request.submitted_role,
+    });
+    return { entityId: Number(result.insertId) };
+  }
+
+  const [rows] = await connection.query(
+    'SELECT * FROM project_progress_items WHERE id = ? AND project_id = ? FOR UPDATE',
+    [request.target_id, projectId]
+  );
+  const current = rows[0];
+  if (!current) return { conflict: '原子事项已不存在' };
+  if (!progressChangeTargetUnchanged(current.updated_at, request.target_updated_at)) {
+    return { conflict: '原子事项已发生变化，请重新提交' };
+  }
+  if (request.action === 'delete') {
+    const ids = await collectProgressItemIds(connection, projectId, request.target_id);
+    const [[inspections], [stepRecords]] = await Promise.all([
+      connection.query(
+        'SELECT id FROM project_inspections WHERE project_id = ? AND progress_item_id IN (?) LIMIT 1',
+        [projectId, ids]
+      ),
+      connection.query(
+        'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND progress_item_id IN (?) LIMIT 1',
+        [projectId, ids]
+      ),
+    ]);
+    if (inspections[0] || stepRecords[0]) {
+      return { conflict: '子事项已有现场记录，不能删除' };
+    }
+    await recordProjectProgressItemAdjustment(connection, {
+      projectId,
+      itemId: request.target_id,
+      action: 'deleted',
+      changes: [],
+      userId: request.submitted_by,
+      role: request.submitted_role,
+    });
+    await connection.query(
+      'DELETE FROM project_progress_items WHERE project_id = ? AND id IN (?)',
+      [projectId, ids]
+    );
+    return { entityId: Number(request.target_id) };
+  }
+
+  const item = sanitizeProgressItemBody({
+    ...payload,
+    stage_id: payload.stage_id ?? current.stage_id,
+    task_id: payload.task_id ?? current.task_id,
+    parent_id: payload.parent_id ?? current.parent_id,
+    template_key: payload.template_key ?? current.template_key,
+    actual_finish: current.actual_finish,
+    requires_inspection: payload.requires_inspection ?? current.requires_inspection,
+    inspection_template_key:
+      payload.inspection_template_key ?? current.inspection_template_key,
+  });
+  if (item.parentId === Number(request.target_id)) {
+    return { conflict: '不能把自己设为父级子事项' };
+  }
+  const relationError = await resolveProgressItemParent(connection, projectId, item);
+  const validationError = relationError || validateProgressItem(item);
+  if (validationError) return { conflict: validationError };
+  const changes = buildProgressItemChanges(current, item);
+  await connection.query(
+    `UPDATE project_progress_items
+     SET stage_id = ?, task_id = ?, parent_id = ?, title = ?, planned_start = ?,
+         planned_end = ?, remark = ?, is_key_node = ?, template_key = ?,
+         requires_inspection = ?, inspection_template_key = ?, sort_order = ?
+     WHERE id = ? AND project_id = ?`,
+    [
+      item.stageId,
+      item.taskId,
+      item.parentId,
+      item.title,
+      item.plannedStart,
+      item.plannedEnd,
+      item.remark,
+      item.isKeyNode,
+      item.templateKey,
+      item.requiresInspection,
+      item.inspectionTemplateKey,
+      item.sortOrder,
+      request.target_id,
+      projectId,
+    ]
+  );
+  if (changes.length) {
+    await recordProjectProgressItemAdjustment(connection, {
+      projectId,
+      itemId: request.target_id,
+      action: 'updated',
+      changes,
+      userId: request.submitted_by,
+      role: request.submitted_role,
+    });
+  }
+  return { entityId: Number(request.target_id) };
+}
+
+async function reviewProjectProgressChangeRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const requestId = Number(req.params.requestId);
+  const action = String(req.body.action || '');
+  const note = String(req.body.note || '').trim().slice(0, 500);
+  if (!['approve', 'reject'].includes(action)) return error(res, '确认操作不正确');
+  if (!(await requireProjectOwner(projectId, req.user.id))) {
+    return error(res, '只有业主可以确认项目进度变更', 403);
+  }
+  const connection = await db.getConnection();
+  let submittedBy = 0;
+  let displayTitle = '项目进度变更';
+  let conflictMessage = '';
+  let shouldRefreshProgress = false;
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      `SELECT * FROM project_progress_change_requests
+       WHERE id = ? AND project_id = ? AND status = 'pending' FOR UPDATE`,
+      [requestId, projectId]
+    );
+    const request = rows[0];
+    if (!request) {
+      await connection.rollback();
+      return error(res, '待确认事项不存在或已处理', 404);
+    }
+    submittedBy = Number(request.submitted_by);
+    const before = parseProgressChangeJson(request.before_snapshot, null);
+    const payload = parseProgressChangeJson(request.proposed_payload, {});
+    displayTitle = progressChangeDisplayTitle(
+      request.entity_type,
+      request.action,
+      payload,
+      before
+    );
+    if (action === 'reject') {
+      await connection.query(
+        `UPDATE project_progress_change_requests
+         SET status = 'rejected', reviewed_by = ?, review_note = ?, reviewed_at = NOW()
+         WHERE id = ?`,
+        [req.user.id, note || null, requestId]
+      );
+      await connection.commit();
+    } else {
+      const result = request.entity_type === 'task'
+        ? await applyTaskProgressChange(connection, request, before, payload)
+        : await applyProgressItemChange(connection, request, before, payload);
+      if (result.conflict) {
+        await connection.query(
+          `UPDATE project_progress_change_requests
+           SET status = 'conflict', reviewed_by = ?, review_note = ?, reviewed_at = NOW()
+           WHERE id = ?`,
+          [req.user.id, result.conflict, requestId]
+        );
+        await connection.commit();
+        conflictMessage = result.conflict;
+      } else {
+        await connection.query(
+          `UPDATE project_progress_change_requests
+           SET status = 'approved', target_id = COALESCE(target_id, ?),
+               reviewed_by = ?, review_note = ?, reviewed_at = NOW()
+           WHERE id = ?`,
+          [result.entityId || null, req.user.id, note || null, requestId]
+        );
+        await connection.commit();
+        shouldRefreshProgress = true;
+      }
+    }
+  } catch (reviewError) {
+    await connection.rollback();
+    throw reviewError;
+  } finally {
+    connection.release();
+  }
+  if (conflictMessage) {
+    await emitProjectEvent(ProjectEventType.PROGRESS_CHANGE_REJECTED, {
+      projectId,
+      actorId: req.user.id,
+      targetUserIds: [submittedBy],
+      entityType: 'progress_change_request',
+      entityId: requestId,
+      title: '项目进度变更需要重新提交',
+      content: conflictMessage,
+      route: 'project_progress',
+      deepLink: { projectId, progressTab: 'details' },
+    });
+    return error(res, conflictMessage, 409);
+  }
+  if (shouldRefreshProgress) {
+    await refreshProjectStageByTaskCompletion(projectId);
+  }
+  await emitProjectEvent(
+    action === 'approve'
+      ? ProjectEventType.PROGRESS_CHANGE_APPROVED
+      : ProjectEventType.PROGRESS_CHANGE_REJECTED,
+    {
+      projectId,
+      actorId: req.user.id,
+      targetUserIds: [submittedBy],
+      entityType: 'progress_change_request',
+      entityId: requestId,
+      title: action === 'approve' ? '项目进度变更已确认' : '项目进度变更已拒绝',
+      content: displayTitle,
+      route: 'project_progress',
+      deepLink: { projectId, progressTab: 'details' },
+    }
+  );
+  return success(
+    res,
+    { status: action === 'approve' ? 'approved' : 'rejected' },
+    action === 'approve' ? '已确认并更新项目进度' : '已拒绝该变更'
+  );
+}
+
+async function cancelProjectProgressChangeRequest(req, res) {
+  const projectId = Number(req.params.id);
+  const requestId = Number(req.params.requestId);
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const [result] = await db.query(
+    `UPDATE project_progress_change_requests
+     SET status = 'cancelled', reviewed_at = NOW()
+     WHERE id = ? AND project_id = ? AND submitted_by = ? AND status = 'pending'`,
+    [requestId, projectId, req.user.id]
+  );
+  if (!result.affectedRows) return error(res, '待确认事项不存在或已处理', 404);
+  return success(res, { status: 'cancelled' }, '已撤回变更申请');
+}
+
 async function requireActiveProjectMember(projectId, userId) {
   if (!userId) return null;
   const [rows] = await db.query(
@@ -6990,8 +7489,48 @@ async function planProjectTask(req, res) {
   if (status !== undefined && ![0, 1, 2, 3].includes(status)) {
     return error(res, '任务状态不正确');
   }
-  if (!(await canManageProjectProgress(projectId, req.user.id))) {
+  if (
+    plannedStart === undefined &&
+    plannedEnd === undefined &&
+    taskName === undefined &&
+    remark === undefined &&
+    status === undefined &&
+    isKey === undefined
+  ) {
+    return error(res, '没有可更新的内容');
+  }
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!progressChangeRoles.has(memberRole)) {
     return error(res, '只有业主、设计师或项目经理可以调整任务', 403);
+  }
+  if (memberRole !== 'owner') {
+    const [existingRows] = await db.query(
+      `SELECT id, project_id, stage_id, task_name, is_key, planned_start,
+              planned_end, actual_start, actual_end, status, remark, updated_at
+       FROM renovation_tasks WHERE id = ? AND project_id = ?`,
+      [taskId, projectId]
+    );
+    const existing = existingRows[0];
+    if (!existing) return error(res, '任务不存在', 404);
+    const requestId = await queueProjectProgressChange({
+      projectId,
+      entityType: 'task',
+      targetId: taskId,
+      action: 'update',
+      beforeSnapshot: existing,
+      proposedPayload: {
+        stage_id: Number(existing.stage_id),
+        task_name: taskName ?? existing.task_name,
+        planned_start: plannedStart ?? dateOnly(existing.planned_start),
+        planned_end: plannedEnd ?? dateOnly(existing.planned_end),
+        remark: remark ?? existing.remark,
+        is_key: isKey === undefined ? Boolean(existing.is_key) : Boolean(isKey),
+        status: status === undefined ? Number(existing.status) : status,
+      },
+      userId: req.user.id,
+      role: memberRole,
+    });
+    return progressChangeResponse(res, requestId);
   }
   const fields = [];
   const params = [];
@@ -7045,7 +7584,8 @@ async function createProjectTask(req, res) {
   const plannedEnd = req.body.planned_end;
   const status = req.body.status === undefined ? 0 : Number(req.body.status);
   const isKey = req.body.is_key ? 1 : 0;
-  if (!(await canManageProjectProgress(projectId, req.user.id))) {
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!progressChangeRoles.has(memberRole)) {
     return error(res, '只有业主、设计师或项目经理可以新增任务', 403);
   }
   if (!stages.some((stage) => stage.id === stageId)) return error(res, '项目阶段不正确');
@@ -7060,6 +7600,23 @@ async function createProjectTask(req, res) {
     return error(res, '计划日期不正确');
   }
   if (![0, 1, 2, 3].includes(status)) return error(res, '任务状态不正确');
+  if (memberRole !== 'owner') {
+    const requestId = await queueProjectProgressChange({
+      projectId,
+      entityType: 'task',
+      action: 'create',
+      proposedPayload: {
+        stage_id: stageId,
+        task_name: taskName,
+        planned_start: plannedStart,
+        planned_end: plannedEnd,
+        is_key: Boolean(isKey),
+      },
+      userId: req.user.id,
+      role: memberRole,
+    });
+    return progressChangeResponse(res, requestId);
+  }
   const [result] = await db.query(
     `INSERT INTO renovation_tasks
        (project_id, stage_id, task_name, is_key, planned_start, planned_end, status)
@@ -7076,9 +7633,17 @@ async function deleteProjectTask(req, res) {
 
   const projectId = Number(req.params.id);
   const taskId = Number(req.params.taskId);
-  if (!(await canManageProjectProgress(projectId, req.user.id))) {
+  const memberRole = await getProjectMemberRole(projectId, req.user.id);
+  if (!progressChangeRoles.has(memberRole)) {
     return error(res, '只有业主、设计师或项目经理可以删除事项', 403);
   }
+  const [existingRows] = await db.query(
+    `SELECT id, project_id, stage_id, task_name, is_key, planned_start,
+            planned_end, actual_start, actual_end, status, remark, updated_at
+     FROM renovation_tasks WHERE id = ? AND project_id = ?`,
+    [taskId, projectId]
+  );
+  if (!existingRows[0]) return error(res, '事项不存在', 404);
   const [children] = await db.query(
     'SELECT COUNT(*) AS total FROM project_progress_items WHERE project_id = ? AND task_id = ?',
     [projectId, taskId]
@@ -7099,6 +7664,18 @@ async function deleteProjectTask(req, res) {
   );
   if (stepRecords[0]) {
     return error(res, '该事项已有现场记录，不能删除，可调整名称或状态', 409);
+  }
+  if (memberRole !== 'owner') {
+    const requestId = await queueProjectProgressChange({
+      projectId,
+      entityType: 'task',
+      targetId: taskId,
+      action: 'delete',
+      beforeSnapshot: existingRows[0],
+      userId: req.user.id,
+      role: memberRole,
+    });
+    return progressChangeResponse(res, requestId);
   }
   const [result] = await db.query(
     'DELETE FROM renovation_tasks WHERE id = ? AND project_id = ?',
@@ -7386,6 +7963,31 @@ async function createProjectProgressItem(req, res) {
     if (duplicates[0]) return error(res, '该事项已加入项目进度', 409);
   }
 
+  if (memberRole !== 'owner') {
+    const requestId = await queueProjectProgressChange({
+      projectId,
+      entityType: 'progress_item',
+      action: 'create',
+      proposedPayload: {
+        stage_id: item.stageId,
+        task_id: item.taskId,
+        parent_id: item.parentId,
+        template_key: item.templateKey,
+        title: item.title,
+        planned_start: item.plannedStart,
+        planned_end: item.plannedEnd,
+        remark: item.remark,
+        is_key_node: Boolean(item.isKeyNode),
+        requires_inspection: Boolean(item.requiresInspection),
+        inspection_template_key: item.inspectionTemplateKey,
+        sort_order: item.sortOrder,
+      },
+      userId: req.user.id,
+      role: memberRole,
+    });
+    return progressChangeResponse(res, requestId);
+  }
+
   const [result] = await db.query(
     `INSERT INTO project_progress_items
        (project_id, stage_id, task_id, parent_id, template_key, title,
@@ -7442,7 +8044,8 @@ async function updateProjectProgressItem(req, res) {
   const [existingRows] = await db.query(
     `SELECT id, stage_id, task_id, parent_id, template_key, title,
             planned_start, planned_end, actual_finish, status, remark,
-            is_key_node, requires_inspection, inspection_template_key, sort_order
+            is_key_node, requires_inspection, inspection_template_key, sort_order,
+            updated_at
      FROM project_progress_items
      WHERE id = ? AND project_id = ?`,
     [itemId, projectId]
@@ -7487,6 +8090,32 @@ async function updateProjectProgressItem(req, res) {
   const validationError = validateProgressItem(item);
   if (validationError) return error(res, validationError);
   const changes = buildProgressItemChanges(existingRows[0], item);
+  if (memberRole !== 'owner') {
+    const requestId = await queueProjectProgressChange({
+      projectId,
+      entityType: 'progress_item',
+      targetId: itemId,
+      action: 'update',
+      beforeSnapshot: existingRows[0],
+      proposedPayload: {
+        stage_id: item.stageId,
+        task_id: item.taskId,
+        parent_id: item.parentId,
+        template_key: item.templateKey,
+        title: item.title,
+        planned_start: item.plannedStart,
+        planned_end: item.plannedEnd,
+        remark: item.remark,
+        is_key_node: Boolean(item.isKeyNode),
+        requires_inspection: Boolean(item.requiresInspection),
+        inspection_template_key: item.inspectionTemplateKey,
+        sort_order: item.sortOrder,
+      },
+      userId: req.user.id,
+      role: memberRole,
+    });
+    return progressChangeResponse(res, requestId);
+  }
   const [result] = await db.query(
     `UPDATE project_progress_items
      SET stage_id = ?, task_id = ?, parent_id = ?, title = ?, planned_start = ?,
@@ -7556,6 +8185,41 @@ async function deleteProjectProgressItem(req, res) {
   const memberRole = await getProjectMemberRole(projectId, req.user.id);
   if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(memberRole)) {
     return error(res, '只有业主、设计师、项目经理或项目监理可以维护子事项', 403);
+  }
+  if (memberRole !== 'owner') {
+    const [existingRows] = await db.query(
+      `SELECT id, stage_id, task_id, parent_id, template_key, title,
+              planned_start, planned_end, actual_finish, status, remark,
+              is_key_node, requires_inspection, inspection_template_key,
+              sort_order, updated_at
+       FROM project_progress_items WHERE id = ? AND project_id = ?`,
+      [itemId, projectId]
+    );
+    if (!existingRows[0]) return error(res, '子事项不存在', 404);
+    const ids = await collectProgressItemIds(db, projectId, itemId);
+    const [[inspectionRows], [stepRecordRows]] = await Promise.all([
+      db.query(
+        'SELECT id FROM project_inspections WHERE project_id = ? AND progress_item_id IN (?) LIMIT 1',
+        [projectId, ids]
+      ),
+      db.query(
+        'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND progress_item_id IN (?) LIMIT 1',
+        [projectId, ids]
+      ),
+    ]);
+    if (inspectionRows[0] || stepRecordRows[0]) {
+      return error(res, '该子事项已有验收记录，不能删除，可调整名称或状态', 409);
+    }
+    const requestId = await queueProjectProgressChange({
+      projectId,
+      entityType: 'progress_item',
+      targetId: itemId,
+      action: 'delete',
+      beforeSnapshot: existingRows[0],
+      userId: req.user.id,
+      role: memberRole,
+    });
+    return progressChangeResponse(res, requestId);
   }
   const connection = await db.getConnection();
   try {
@@ -9714,6 +10378,9 @@ module.exports = {
   createProjectTask,
   deleteProjectTask,
   completeProjectStage,
+  getProjectProgressChangeRequests,
+  reviewProjectProgressChangeRequest,
+  cancelProjectProgressChangeRequest,
   getProjectProgressItems,
   getProjectProgressItemAdjustments,
   createProjectProgressItem,

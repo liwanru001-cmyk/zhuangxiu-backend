@@ -458,6 +458,21 @@ router.get(
   asyncHandler(controller.getProjectProgressItems)
 );
 router.get(
+  '/projects/:id/progress-change-requests',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectProgressChangeRequests)
+);
+router.put(
+  '/projects/:id/progress-change-requests/:requestId/review',
+  ...protectedRoute,
+  asyncHandler(controller.reviewProjectProgressChangeRequest)
+);
+router.put(
+  '/projects/:id/progress-change-requests/:requestId/cancel',
+  ...protectedRoute,
+  asyncHandler(controller.cancelProjectProgressChangeRequest)
+);
+router.get(
   '/projects/:id/progress-items/:itemId/adjustments',
   ...protectedRoute,
   asyncHandler(controller.getProjectProgressItemAdjustments)

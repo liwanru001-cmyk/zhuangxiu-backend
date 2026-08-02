@@ -257,7 +257,7 @@ async function passwordLogin(req, res) {
   }
   const passwordMatches = await bcrypt.compare(String(password || ''), user.password_hash);
   if (!passwordMatches) {
-    return error(res, '手机号或密码错误', 401);
+    return error(res, '密码错误，请重新输入', 401);
   }
   return success(res, await buildLoginResponse(user));
 }
