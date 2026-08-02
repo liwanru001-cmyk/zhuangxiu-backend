@@ -905,6 +905,177 @@ test('project task delete checks legacy step records without task link column', 
   assert.equal(deleteCalled, false);
 });
 
+test('project task delete returns success when derived progress refresh fails afterwards', async () => {
+  let deleteCalled = false;
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        return [[{ role: 'owner' }]];
+      }
+      if (/SELECT[\s\S]*FROM renovation_tasks WHERE id = \? AND project_id = \?/.test(sql)) {
+        return [[{
+          id: 3,
+          project_id: 9,
+          stage_id: 3,
+          task_name: '水电施工',
+          is_key: 1,
+          planned_start: '2026-08-01',
+          planned_end: '2026-08-03',
+          status: 1,
+          remark: null,
+          updated_at: '2026-08-02 10:00:00',
+        }]];
+      }
+      if (/COUNT\(\*\) AS total FROM project_progress_items/.test(sql)) {
+        return [[{ total: 0 }]];
+      }
+      if (/FROM project_inspections/.test(sql) && /task_id = \?/.test(sql)) {
+        return [[]];
+      }
+      if (/FROM project_inspection_step_records WHERE/.test(sql)) {
+        return [[]];
+      }
+      if (/DELETE FROM renovation_tasks/.test(sql)) {
+        deleteCalled = true;
+        return [{ affectedRows: 1 }];
+      }
+      if (/SELECT id, project_id, stage_id, task_id, parent_id/.test(sql)) {
+        const refreshError = new Error('derived progress query failed');
+        refreshError.code = 'ER_BAD_FIELD_ERROR';
+        throw refreshError;
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.deleteProjectTask({
+    user: { id: 7 },
+    params: { id: '9', taskId: '3' },
+    body: { project_id: 9 },
+  }, res);
+
+  assert.equal(deleteCalled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.deleted, true);
+  assert.equal(res.payload.data.progress, null);
+});
+
+test('owner task delete does not require an updated_at column', async () => {
+  let deleteCalled = false;
+  const dbMock = {
+    async query(sql) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        return [[{ role: 'owner' }]];
+      }
+      if (/DELETE FROM renovation_tasks/.test(sql)) {
+        deleteCalled = true;
+        return [{ affectedRows: 1 }];
+      }
+      if (/FROM renovation_tasks WHERE id = \? AND project_id = \?/.test(sql)) {
+        assert.equal(/updated_at/.test(sql), false);
+        return [[{
+          id: 3,
+          project_id: 9,
+          stage_id: 3,
+          task_name: '吊顶',
+          status: 0,
+        }]];
+      }
+      if (/COUNT\(\*\) AS total FROM project_progress_items/.test(sql)) {
+        return [[{ total: 0 }]];
+      }
+      if (/FROM project_inspections/.test(sql) && /task_id = \?/.test(sql)) {
+        return [[]];
+      }
+      if (/FROM project_inspection_step_records WHERE/.test(sql)) {
+        return [[]];
+      }
+      if (/SELECT id, project_id, stage_id, task_id, parent_id/.test(sql)) {
+        return [[]];
+      }
+      if (/SELECT id, current_stage, status FROM renovation_projects/.test(sql)) {
+        return [[{ id: 9, current_stage: 3, status: 1 }]];
+      }
+      if (/SELECT stage_id, status FROM renovation_tasks/.test(sql)) {
+        return [[]];
+      }
+      if (/UPDATE renovation_projects/.test(sql)) {
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.deleteProjectTask({
+    user: { id: 7 },
+    params: { id: '9', taskId: '3' },
+    body: { project_id: 9 },
+  }, res);
+
+  assert.equal(deleteCalled, true);
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.deleted, true);
+});
+
+test('project task delete maps legacy foreign-key errors to a conflict response', async () => {
+  const dbMock = {
+    async query(sql) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        return [[{ role: 'owner' }]];
+      }
+      if (/SELECT[\s\S]*FROM renovation_tasks WHERE id = \? AND project_id = \?/.test(sql)) {
+        return [[{
+          id: 3,
+          project_id: 9,
+          stage_id: 3,
+          task_name: '水电施工',
+          updated_at: '2026-08-02 10:00:00',
+        }]];
+      }
+      if (/COUNT\(\*\) AS total FROM project_progress_items/.test(sql)) {
+        return [[{ total: 0 }]];
+      }
+      if (/FROM project_inspections/.test(sql) && /task_id = \?/.test(sql)) {
+        return [[]];
+      }
+      if (/FROM project_inspection_step_records WHERE/.test(sql)) {
+        return [[]];
+      }
+      if (/DELETE FROM renovation_tasks/.test(sql)) {
+        const foreignKeyError = new Error('row is referenced');
+        foreignKeyError.code = 'ER_ROW_IS_REFERENCED';
+        foreignKeyError.errno = 1451;
+        throw foreignKeyError;
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.deleteProjectTask({
+    user: { id: 7 },
+    params: { id: '9', taskId: '3' },
+    body: { project_id: 9 },
+  }, res);
+
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.message, /仍有关联内容/);
+});
+
 test('progress item delete rejects when inspection step records exist', async () => {
   let deleteCalled = false;
   let rollbackCalled = false;

@@ -7682,10 +7682,11 @@ async function deleteProjectTask(req, res) {
   if (!progressChangeRoles.has(memberRole)) {
     return error(res, '只有业主、设计师或项目经理可以删除事项', 403);
   }
+  // Some early production databases were created before renovation_tasks
+  // received its timestamp columns. Deleting an owner task does not require a
+  // specific timestamp column, so read the row without naming optional fields.
   const [existingRows] = await db.query(
-    `SELECT id, project_id, stage_id, task_name, is_key, planned_start,
-            planned_end, actual_start, actual_end, status, remark, updated_at
-     FROM renovation_tasks WHERE id = ? AND project_id = ?`,
+    'SELECT * FROM renovation_tasks WHERE id = ? AND project_id = ?',
     [taskId, projectId]
   );
   if (!existingRows[0]) return error(res, '事项不存在', 404);
@@ -7726,13 +7727,28 @@ async function deleteProjectTask(req, res) {
       [taskId, projectId]
     );
   } catch (deleteError) {
-    if (deleteError?.code === 'ER_ROW_IS_REFERENCED_2') {
+    if (
+      ['ER_ROW_IS_REFERENCED', 'ER_ROW_IS_REFERENCED_2'].includes(deleteError?.code) ||
+      Number(deleteError?.errno) === 1451
+    ) {
       return error(res, '该事项仍有关联内容，不能删除，请先处理关联内容', 409);
     }
     throw deleteError;
   }
   if (!result.affectedRows) return error(res, '事项不存在', 404);
-  const progress = await refreshProjectStageByTaskCompletion(projectId);
+  let progress = null;
+  try {
+    progress = await refreshProjectStageByTaskCompletion(projectId);
+  } catch (progressError) {
+    // The delete has already succeeded. A derived-progress refresh failure must
+    // not turn a completed mutation into a misleading HTTP 500 response.
+    console.error('project task deleted but progress refresh failed', {
+      projectId,
+      taskId,
+      code: progressError?.code,
+      message: progressError?.message,
+    });
+  }
   return success(res, { deleted: true, progress }, '事项已删除');
 }
 
