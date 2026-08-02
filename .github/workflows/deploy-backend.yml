@@ -499,6 +499,21 @@ jobs:
 
             for attempt in $(seq 1 30); do
               if curl -fsS "http://127.0.0.1:${PORT:-3001}/health"; then
+                if [ -d "$backup_dir" ]; then
+                  echo "Backend is healthy; keeping latest backup: $backup_dir"
+                  for candidate in "${APP_DIR}".backup.*; do
+                    [ -d "$candidate" ] || continue
+                    [ "$candidate" = "$backup_dir" ] && continue
+                    case "$candidate" in
+                      "${APP_DIR}.backup."*)
+                        echo "Removing old backend backup: $candidate"
+                        rm -rf -- "$candidate"
+                        ;;
+                    esac
+                  done
+                else
+                  echo "Backend is healthy; no previous deployment was available to back up."
+                fi
                 exit 0
               fi
               echo "Waiting for backend health check... ($attempt/30)"
