@@ -19,10 +19,12 @@ function mockResponse() {
 function loadController(dbMock, storageMock = {}) {
   const dbPath = require.resolve('../config/db');
   const storagePath = require.resolve('../services/storage.service');
+  const projectEventPath = require.resolve('../services/project-event.service');
   const projectContextPath = require.resolve('../utils/project-context');
   const controllerPath = require.resolve('../controllers/renovation.controller');
   delete require.cache[dbPath];
   delete require.cache[storagePath];
+  delete require.cache[projectEventPath];
   delete require.cache[projectContextPath];
   delete require.cache[controllerPath];
   require.cache[dbPath] = {
@@ -244,6 +246,164 @@ test('inspection step record keeps a formal task link without child items', asyn
   assert.match(insertStatement, /task_id, progress_item_id/);
   assert.deepEqual(insertParams.slice(0, 6), [9, 6, 12, null, '墙面', '墙面']);
   assert.equal(res.payload.data.id, 601);
+});
+
+test('ordinary inspection step records append history without completing progress', async () => {
+  let insertCount = 0;
+  let completionMutationCount = 0;
+  const connection = {
+    async beginTransaction() {},
+    async query(sql) {
+      if (/INSERT INTO project_inspection_step_records/.test(sql)) {
+        insertCount += 1;
+        return [{ insertId: 700 + insertCount }];
+      }
+      if (/UPDATE project_progress_items|UPDATE renovation_tasks/.test(sql)) {
+        completionMutationCount += 1;
+      }
+      throw new Error(`unexpected connection query: ${sql}`);
+    },
+    async commit() {},
+    async rollback() {},
+    release() {},
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{
+          id: 9,
+          user_id: 7,
+          lifecycle_status: 'active',
+          role: 'owner',
+        }]];
+      }
+      if (/SELECT id FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ id: 1 }]];
+      }
+      if (/SELECT id, stage_id FROM renovation_tasks/.test(sql)) {
+        assert.deepEqual(params, [12, 9]);
+        return [[{ id: 12, stage_id: 6 }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'owner' }]];
+      }
+      if (/FROM project_inspection_step_records/.test(sql)) {
+        throw new Error('ordinary records must not reuse an existing row');
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() {
+      return connection;
+    },
+  };
+  const controller = loadController(dbMock);
+
+  for (const description of ['第一次现场记录', '第二次现场记录']) {
+    const res = mockResponse();
+    await controller.createProjectInspectionStepRecord({
+      user: { id: 7, role: 'owner' },
+      params: { id: '9' },
+      body: {
+        project_id: 9,
+        stage_id: 6,
+        task_id: 12,
+        step_key: '墙面',
+        step_title: '墙面',
+        record_type: 'self_checked',
+        description,
+      },
+      files: [],
+    }, res);
+    assert.equal(res.statusCode, 200, res.payload?.message);
+  }
+
+  assert.equal(insertCount, 2);
+  assert.equal(completionMutationCount, 0);
+});
+
+test('member check response updates its active request record', async () => {
+  let updatedRecord = false;
+  let insertedRecord = false;
+  const connection = {
+    async beginTransaction() {},
+    async query(sql, params) {
+      if (/UPDATE project_inspection_step_records/.test(sql)) {
+        assert.match(sql, /record_type = 'member_check_response'/);
+        assert.match(sql, /response_description = \?/);
+        assert.deepEqual(params, ['现场复核正常', 8, 733]);
+        updatedRecord = true;
+        return [{ affectedRows: 1 }];
+      }
+      if (/INSERT INTO project_inspection_step_records/.test(sql)) {
+        insertedRecord = true;
+      }
+      throw new Error(`unexpected connection query: ${sql}`);
+    },
+    async commit() {},
+    async rollback() {},
+    release() {},
+  };
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{
+          id: 9,
+          user_id: 7,
+          lifecycle_status: 'active',
+          role: 'designer',
+        }]];
+      }
+      if (/SELECT id FROM project_members/.test(sql)) {
+        return [[{ id: 2 }]];
+      }
+      if (/SELECT id, stage_id FROM renovation_tasks/.test(sql)) {
+        return [[{ id: 12, stage_id: 6 }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        return [[{ role: 'designer' }]];
+      }
+      if (/SELECT id FROM project_inspection_step_records/.test(sql)) {
+        assert.match(sql, /target_user_id = \?/);
+        assert.match(sql, /status = 'pending_member_check'/);
+        assert.equal(params.at(-1), 8);
+        return [[{ id: 733 }]];
+      }
+      if (/SELECT DISTINCT user_id/.test(sql)) {
+        return [[{ user_id: 7 }]];
+      }
+      if (/INSERT INTO project_action_notifications/.test(sql)) {
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+    async getConnection() {
+      return connection;
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.createProjectInspectionStepRecord({
+    user: { id: 8, role: 'designer' },
+    params: { id: '9' },
+    body: {
+      project_id: 9,
+      stage_id: 6,
+      task_id: 12,
+      step_key: '墙面',
+      step_title: '墙面',
+      record_type: 'member_checked',
+      description: '现场复核正常',
+    },
+    files: [],
+  }, res);
+
+  assert.equal(res.statusCode, 200, res.payload?.message);
+  assert.equal(updatedRecord, true);
+  assert.equal(insertedRecord, false);
+  assert.equal(res.payload.data.id, 733);
 });
 
 test('inspection workspace returns one main inspection with nested check items', async () => {
@@ -675,6 +835,73 @@ test('project task delete rejects when inspection records exist', async () => {
 
   assert.equal(res.statusCode, 409);
   assert.match(res.payload.message, /已有验收记录/);
+  assert.equal(deleteCalled, false);
+});
+
+test('project task delete checks legacy step records without task link column', async () => {
+  let deleteCalled = false;
+  let fallbackChecked = false;
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'owner' }]];
+      }
+      if (/FROM renovation_tasks WHERE id = \? AND project_id = \?/.test(sql)) {
+        assert.deepEqual(params, [3, 9]);
+        return [[{
+          id: 3,
+          project_id: 9,
+          stage_id: 3,
+          task_name: '水电施工',
+          is_key: 1,
+          planned_start: '2026-08-01',
+          planned_end: '2026-08-03',
+          status: 1,
+          remark: null,
+          updated_at: '2026-08-02 10:00:00',
+        }]];
+      }
+      if (/COUNT\(\*\) AS total FROM project_progress_items/.test(sql)) {
+        assert.deepEqual(params, [9, 3]);
+        return [[{ total: 0 }]];
+      }
+      if (/FROM project_inspections/.test(sql) && /task_id = \?/.test(sql)) {
+        assert.deepEqual(params, [9, 3]);
+        return [[]];
+      }
+      if (/FROM project_inspection_step_records WHERE/.test(sql)) {
+        const error = new Error("Unknown column 'task_id' in 'where clause'");
+        error.code = 'ER_BAD_FIELD_ERROR';
+        throw error;
+      }
+      if (/FROM project_inspection_step_records record/.test(sql)) {
+        assert.deepEqual(params, [9, 3]);
+        fallbackChecked = true;
+        return [[{ id: 88 }]];
+      }
+      if (/DELETE FROM renovation_tasks/.test(sql)) {
+        deleteCalled = true;
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.deleteProjectTask({
+    user: { id: 7 },
+    params: { id: '9', taskId: '3' },
+    body: { project_id: 9 },
+  }, res);
+
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.message, /已有现场记录/);
+  assert.equal(fallbackChecked, true);
   assert.equal(deleteCalled, false);
 });
 

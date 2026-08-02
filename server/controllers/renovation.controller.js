@@ -6466,7 +6466,7 @@ async function applyTaskProgressChange(connection, request, before, payload) {
     return { conflict: '原事项已发生变化，请重新提交' };
   }
   if (request.action === 'delete') {
-    const [[children], [inspections], [stepRecords]] = await Promise.all([
+    const [childrenResult, inspectionsResult, stepRecord] = await Promise.all([
       connection.query(
         'SELECT COUNT(*) AS total FROM project_progress_items WHERE project_id = ? AND task_id = ?',
         [projectId, request.target_id]
@@ -6475,12 +6475,15 @@ async function applyTaskProgressChange(connection, request, before, payload) {
         'SELECT id FROM project_inspections WHERE project_id = ? AND task_id = ? LIMIT 1',
         [projectId, request.target_id]
       ),
-      connection.query(
-        'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND task_id = ? LIMIT 1',
-        [projectId, request.target_id]
+      findProjectInspectionStepRecordForTask(
+        connection,
+        projectId,
+        request.target_id
       ),
     ]);
-    if (Number(children[0]?.total || 0) > 0 || inspections[0] || stepRecords[0]) {
+    const [children] = childrenResult;
+    const [inspections] = inspectionsResult;
+    if (Number(children[0]?.total || 0) > 0 || inspections[0] || stepRecord) {
       return { conflict: '事项已有下级内容或现场记录，不能删除' };
     }
     await connection.query(
@@ -7627,6 +7630,48 @@ async function createProjectTask(req, res) {
   return success(res, { id: result.insertId, progress }, '任务已新增');
 }
 
+async function findProjectInspectionStepRecordForTask(executor, projectId, taskId) {
+  try {
+    const [rows] = await executor.query(
+      'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND task_id = ? LIMIT 1',
+      [projectId, taskId]
+    );
+    return rows[0] || null;
+  } catch (queryError) {
+    if (queryError?.code === 'ER_NO_SUCH_TABLE') {
+      console.error('inspection step record table unavailable during task delete', {
+        projectId,
+        taskId,
+        code: queryError.code,
+        message: queryError.message,
+      });
+      return null;
+    }
+    const missingTaskLink =
+      queryError?.code === 'ER_BAD_FIELD_ERROR' &&
+      String(queryError.message || '').includes('task_id');
+    if (!missingTaskLink) throw queryError;
+
+    console.error('inspection step record task link fell back', {
+      projectId,
+      taskId,
+      code: queryError.code,
+      message: queryError.message,
+    });
+    const [rows] = await executor.query(
+      `SELECT record.id
+       FROM project_inspection_step_records record
+       JOIN project_progress_items item
+         ON item.id = record.progress_item_id
+        AND item.project_id = record.project_id
+       WHERE record.project_id = ? AND item.task_id = ?
+       LIMIT 1`,
+      [projectId, taskId]
+    );
+    return rows[0] || null;
+  }
+}
+
 async function deleteProjectTask(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
@@ -7658,11 +7703,8 @@ async function deleteProjectTask(req, res) {
   if (inspections[0]) {
     return error(res, '该事项已有验收记录，不能删除，可调整名称或状态', 409);
   }
-  const [stepRecords] = await db.query(
-    'SELECT id FROM project_inspection_step_records WHERE project_id = ? AND task_id = ? LIMIT 1',
-    [projectId, taskId]
-  );
-  if (stepRecords[0]) {
+  const stepRecord = await findProjectInspectionStepRecordForTask(db, projectId, taskId);
+  if (stepRecord) {
     return error(res, '该事项已有现场记录，不能删除，可调整名称或状态', 409);
   }
   if (memberRole !== 'owner') {
@@ -7677,10 +7719,18 @@ async function deleteProjectTask(req, res) {
     });
     return progressChangeResponse(res, requestId);
   }
-  const [result] = await db.query(
-    'DELETE FROM renovation_tasks WHERE id = ? AND project_id = ?',
-    [taskId, projectId]
-  );
+  let result;
+  try {
+    [result] = await db.query(
+      'DELETE FROM renovation_tasks WHERE id = ? AND project_id = ?',
+      [taskId, projectId]
+    );
+  } catch (deleteError) {
+    if (deleteError?.code === 'ER_ROW_IS_REFERENCED_2') {
+      return error(res, '该事项仍有关联内容，不能删除，请先处理关联内容', 409);
+    }
+    throw deleteError;
+  }
   if (!result.affectedRows) return error(res, '事项不存在', 404);
   const progress = await refreshProjectStageByTaskCompletion(projectId);
   return success(res, { deleted: true, progress }, '事项已删除');
@@ -9737,6 +9787,8 @@ async function createProjectInspectionStepRecord(req, res) {
     (await getProjectMemberRole(projectId, req.user.id)) || req.user.role || 'owner';
   const ownerSide = isOwnerSideRole(memberRole);
   const isReworkRequest = requestedType === 'rework_request';
+  const isMemberCheckRequest = requestedType === 'member_requested';
+  const isMemberCheckResponse = requestedType === 'member_checked' && !ownerSide;
   if (isReworkRequest && !ownerSide) {
     await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, '只有业主方可以发起整改', 403);
@@ -9760,56 +9812,95 @@ async function createProjectInspectionStepRecord(req, res) {
     return error(res, `现场照片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
   }
 
-  const [existingRows] = await db.query(
-    `SELECT id FROM project_inspection_step_records
-     WHERE project_id = ?
-       AND stage_id = ?
-       AND ((task_id IS NULL AND ? IS NULL) OR task_id = ?)
-       AND ((progress_item_id IS NULL AND ? IS NULL) OR progress_item_id = ?)
-       AND step_key = ?
-       AND created_by = ?
-       AND ((target_user_id IS NULL AND ? IS NULL) OR target_user_id = ?)
-     ORDER BY id DESC
-     LIMIT 1`,
-    [
-      projectId,
-      stageId,
-      taskId,
-      taskId,
-      progressItemId,
-      progressItemId,
-      stepKey,
-      req.user.id,
-      targetUserId,
-      targetUserId,
-    ]
-  );
+  let existingRows = [];
+  if (isMemberCheckResponse) {
+    [existingRows] = await db.query(
+      `SELECT id FROM project_inspection_step_records
+       WHERE project_id = ?
+         AND stage_id = ?
+         AND ((task_id IS NULL AND ? IS NULL) OR task_id = ?)
+         AND ((progress_item_id IS NULL AND ? IS NULL) OR progress_item_id = ?)
+         AND step_key = ?
+         AND target_user_id = ?
+         AND status = 'pending_member_check'
+       ORDER BY id DESC
+       LIMIT 1`,
+      [
+        projectId,
+        stageId,
+        taskId,
+        taskId,
+        progressItemId,
+        progressItemId,
+        stepKey,
+        req.user.id,
+      ]
+    );
+  } else if (isReworkRequest || isMemberCheckRequest) {
+    [existingRows] = await db.query(
+      `SELECT id FROM project_inspection_step_records
+       WHERE project_id = ?
+         AND stage_id = ?
+         AND ((task_id IS NULL AND ? IS NULL) OR task_id = ?)
+         AND ((progress_item_id IS NULL AND ? IS NULL) OR progress_item_id = ?)
+         AND step_key = ?
+         AND created_by = ?
+         AND target_user_id = ?
+         AND status = ?
+       ORDER BY id DESC
+       LIMIT 1`,
+      [
+        projectId,
+        stageId,
+        taskId,
+        taskId,
+        progressItemId,
+        progressItemId,
+        stepKey,
+        req.user.id,
+        targetUserId,
+        isReworkRequest ? 'rework' : 'pending_member_check',
+      ]
+    );
+  }
 
   if (existingRows[0]) {
     const connection = await db.getConnection();
     try {
       await connection.beginTransaction();
-      await connection.query(
-        `UPDATE project_inspection_step_records
-         SET step_title = ?, step_action = ?, record_type = ?, status = ?,
-             description = ?, review_remark = ?, reviewed_by = ?,
-             reviewed_at = CASE WHEN ? THEN NOW() ELSE reviewed_at END,
-             member_role = ?, target_user_id = ?
-         WHERE id = ?`,
-        [
-          stepTitle,
-          stepAction,
-          recordType,
-          status,
-          description,
-          isReworkRequest ? description : null,
-          isReworkRequest ? req.user.id : null,
-          isReworkRequest ? 1 : 0,
-          memberRole,
-          targetUserId,
-          existingRows[0].id,
-        ]
-      );
+      if (isMemberCheckResponse) {
+        await connection.query(
+          `UPDATE project_inspection_step_records
+           SET record_type = 'member_check_response',
+               status = 'pending_owner_view',
+               response_description = ?, response_by = ?, response_at = NOW()
+           WHERE id = ?`,
+          [description, req.user.id, existingRows[0].id]
+        );
+      } else {
+        await connection.query(
+          `UPDATE project_inspection_step_records
+           SET step_title = ?, step_action = ?, record_type = ?, status = ?,
+               description = ?, review_remark = ?, reviewed_by = ?,
+               reviewed_at = CASE WHEN ? THEN NOW() ELSE reviewed_at END,
+               response_description = NULL, response_by = NULL, response_at = NULL,
+               member_role = ?, target_user_id = ?
+           WHERE id = ?`,
+          [
+            stepTitle,
+            stepAction,
+            recordType,
+            status,
+            description,
+            isReworkRequest ? description : null,
+            isReworkRequest ? req.user.id : null,
+            isReworkRequest ? 1 : 0,
+            memberRole,
+            targetUserId,
+            existingRows[0].id,
+          ]
+        );
+      }
       if (files.length) {
         const host = `${req.protocol}://${req.get('host')}`;
         await connection.query(
