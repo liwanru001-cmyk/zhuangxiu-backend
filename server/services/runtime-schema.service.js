@@ -5,7 +5,30 @@ const requiredColumns = Object.freeze({
   project_inspection_step_records: [
     'task_id',
     'progress_item_id',
+    'inspection_id',
     'member_role',
+  ],
+  project_inspections: [
+    'title',
+    'template_code',
+    'client_request_id',
+    'algorithm_version',
+    'calculation_summary',
+    'row_version',
+    'calculated_at',
+  ],
+  project_inspection_items: [
+    'id',
+    'inspection_id',
+    'project_id',
+    'item_key',
+    'result',
+  ],
+  project_inspection_item_images: [
+    'id',
+    'inspection_item_id',
+    'image_url',
+    'uploaded_by',
   ],
   project_progress_change_requests: [
     'id',

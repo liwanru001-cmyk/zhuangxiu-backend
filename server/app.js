@@ -4053,7 +4053,14 @@ app.use((req, res) => {
 
 // 错误处理
 app.use((err, req, res, next) => {
-  console.error('❌ Error:', err.message);
+  console.error('❌ Request failed', {
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.user?.id,
+    code: err.code,
+    message: err.message,
+    stack: err.stack,
+  });
   res.status(500).json({ code: 500, message: '服务器内部错误' });
 });
 
