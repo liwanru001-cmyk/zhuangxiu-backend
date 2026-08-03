@@ -7665,7 +7665,7 @@ async function planProjectTask(req, res) {
   if (memberRole !== 'owner') {
     const [existingRows] = await db.query(
       `SELECT id, project_id, stage_id, task_name, is_key, planned_start,
-              planned_end, actual_start, actual_end, status, remark, updated_at
+              planned_end, actual_start, actual_end, status, remark
        FROM renovation_tasks WHERE id = ? AND project_id = ?`,
       [taskId, projectId]
     );

@@ -111,6 +111,61 @@ test('non-owner project task creation becomes a pending owner confirmation', asy
   });
 });
 
+test('non-owner task planning supports legacy task tables without updated_at', async () => {
+  let taskSnapshotQueryChecked = false;
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{
+          id: 9,
+          user_id: 7,
+          lifecycle_status: 'active',
+          role: 'designer',
+        }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        return [[{ role: 'designer' }]];
+      }
+      if (/FROM renovation_tasks WHERE id = \? AND project_id = \?/.test(sql)) {
+        assert.doesNotMatch(sql, /updated_at/);
+        assert.deepEqual(params, [242, 9]);
+        taskSnapshotQueryChecked = true;
+        return [[{
+          id: 242,
+          project_id: 9,
+          stage_id: 4,
+          task_name: '木工',
+          is_key: 0,
+          planned_start: new Date('2026-08-01'),
+          planned_end: new Date('2026-08-03'),
+          actual_start: null,
+          actual_end: null,
+          status: 0,
+          remark: null,
+        }]];
+      }
+      if (/INSERT INTO project_progress_change_requests/.test(sql)) {
+        return [{ insertId: 82 }];
+      }
+      if (/SELECT DISTINCT user_id/.test(sql)) return [[]];
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.planProjectTask({
+    user: { id: 12 },
+    params: { id: '9', taskId: '242' },
+    originalUrl: '/renovation/projects/9/tasks/242/plan',
+    body: { planned_end: '2026-08-10' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.pending_confirmation, true);
+  assert.equal(taskSnapshotQueryChecked, true);
+});
+
 test('owner pending list includes project members submissions and review permission', async () => {
   const dbMock = {
     async query(sql, params) {
