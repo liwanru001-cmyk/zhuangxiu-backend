@@ -10,6 +10,7 @@ const {
 } = require('../utils/upload-permissions');
 const multer = require('multer');
 const path = require('path');
+const persistUploadedFiles = require('../middleware/persist-uploaded-files');
 
 const noteMediaDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'notes')
@@ -67,6 +68,7 @@ router.post(
     });
   },
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/notes'),
   asyncHandler(noteController.uploadMedia)
 );
 router.post('/', asyncHandler(auth), asyncHandler(noteController.create));

@@ -4,6 +4,7 @@ const bcrypt = require('bcryptjs');
 const fs = require('fs/promises');
 const path = require('path');
 const jwt = require('jsonwebtoken');
+const storageService = require('../services/storage.service');
 const {
   activeVerifiedMerchantExistsSql,
   activeVerifiedMerchantStateSql,
@@ -1922,7 +1923,11 @@ async function updateRole(req, res) {
 
 async function uploadAvatar(req, res) {
   if (!req.file) return error(res, '请选择头像图片');
-  const avatarUrl = `${req.protocol}://${req.get('host')}/uploads/avatars/${req.file.filename}`;
+  const avatarUrl = storageService.uploadedFileUrl(
+    req,
+    req.file,
+    `/uploads/avatars/${req.file.filename}`
+  );
   const avatarCheck = await ensureAvatarCanChange(req.user.id, avatarUrl);
   if (!avatarCheck.allowed) {
     await fs.unlink(req.file.path).catch(() => {});
@@ -1950,7 +1955,11 @@ async function uploadMerchantProfileImage(req, res) {
   if (!(await hasMerchantIdentity(req.user.id, req.user.role))) {
     return error(res, '只有商家身份可以上传商家图片', 403);
   }
-  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-profiles/${req.file.filename}`;
+  const imageUrl = storageService.uploadedFileUrl(
+    req,
+    req.file,
+    `/api/uploads/merchant-profiles/${req.file.filename}`
+  );
   return success(res, { url: imageUrl }, '图片上传成功');
 }
 

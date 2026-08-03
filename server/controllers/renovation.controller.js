@@ -654,7 +654,11 @@ async function uploadFloorPlan(req, res) {
   if (!projectContext.ok) return projectContext.response;
 
   if (!req.file) return error(res, '请选择户型图片');
-  const imageUrl = `${req.protocol}://${req.get('host')}/uploads/floor-plans/${req.file.filename}`;
+  const imageUrl = storageService.uploadedFileUrl(
+    req,
+    req.file,
+    `/uploads/floor-plans/${req.file.filename}`
+  );
   return success(res, { url: imageUrl }, '上传成功');
 }
 
@@ -2106,8 +2110,12 @@ async function uploadProjectSpaceImages(req, res) {
   }
 
   const host = `${req.protocol}://${req.get('host')}`;
-  const imageUrls = req.files.map(
-    (file) => `${host}/uploads/project-spaces/${file.filename}`
+  const imageUrls = req.files.map((file) =>
+    storageService.uploadedFileUrl(
+      req,
+      file,
+      `/uploads/project-spaces/${file.filename}`
+    )
   );
   if (!(await requireProjectOwner(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'upload_images', {
@@ -3564,7 +3572,7 @@ async function createProjectCheckIn(req, res) {
         files.flatMap((file) => [
           result.insertId,
           file.mimetype.startsWith('video/') ? 'video' : 'image',
-          `${host}/api/uploads/check-ins/${file.filename}`,
+          file.storageUrl || `${host}/api/uploads/check-ins/${file.filename}`,
         ])
       );
     }
@@ -4246,7 +4254,7 @@ async function createProjectExpense(req, res) {
         files.flatMap((file) => [
           result.insertId,
           file.mimetype.startsWith('video/') ? 'video' : 'image',
-          `${host}/uploads/expenses/${file.filename}`,
+          file.storageUrl || `${host}/uploads/expenses/${file.filename}`,
         ])
       );
     }
@@ -5056,7 +5064,7 @@ async function createProjectHandoverNote(req, res) {
         files.flatMap((file) => [
           result.insertId,
           'image',
-          `${host}/uploads/handover-notes/${file.filename}`,
+          file.storageUrl || `${host}/uploads/handover-notes/${file.filename}`,
           req.user.id,
         ])
       );
@@ -5263,7 +5271,7 @@ async function createProjectHandover(req, res) {
       const host = `${req.protocol}://${req.get('host')}`;
       const mediaRows = files.map((file) => ({
         type: file.mimetype.startsWith('image/') ? 'image' : 'file',
-        url: `${host}/uploads/handovers/${file.filename}`,
+        url: file.storageUrl || `${host}/uploads/handovers/${file.filename}`,
       }));
       if (linkUrl) mediaRows.push({ type: 'link', url: linkUrl });
       await connection.query(
@@ -5519,7 +5527,7 @@ async function createProjectMaterialNote(req, res) {
         files.flatMap((file) => [
           result.insertId,
           'image',
-          `${host}/uploads/material-notes/${file.filename}`,
+          file.storageUrl || `${host}/uploads/material-notes/${file.filename}`,
           req.user.id,
         ])
       );
@@ -5563,7 +5571,7 @@ async function createProjectMaterialSupplement(req, res) {
   const host = `${req.protocol}://${req.get('host')}`;
   const rows = files.map((file) => ({
     type: file.mimetype.startsWith('image/') ? 'image' : 'file',
-    url: `${host}/uploads/materials/${file.filename}`,
+    url: file.storageUrl || `${host}/uploads/materials/${file.filename}`,
   }));
   if (linkUrl) rows.push({ type: 'link', url: linkUrl });
   await db.query(
@@ -5683,7 +5691,7 @@ async function createProjectMaterial(req, res) {
       const host = `${req.protocol}://${req.get('host')}`;
       const mediaRows = files.map((file) => ({
         type: file.mimetype.startsWith('image/') ? 'image' : 'file',
-        url: `${host}/uploads/materials/${file.filename}`,
+        url: file.storageUrl || `${host}/uploads/materials/${file.filename}`,
       }));
       if (linkUrl) mediaRows.push({ type: 'link', url: linkUrl });
       await connection.query(
@@ -6005,7 +6013,7 @@ async function createProjectActionItem(req, res) {
         files.flatMap((file) => [
           result.insertId,
           file.mimetype.startsWith('video/') ? 'video' : 'image',
-          `${host}/uploads/action-items/${file.filename}`,
+          file.storageUrl || `${host}/uploads/action-items/${file.filename}`,
           req.user.id,
         ])
       );
@@ -6106,7 +6114,7 @@ async function submitProjectActionItemFeedback(req, res) {
           itemId,
           feedback.insertId,
           file.mimetype.startsWith('video/') ? 'video' : 'image',
-          `${host}/uploads/action-items/${file.filename}`,
+          file.storageUrl || `${host}/uploads/action-items/${file.filename}`,
           req.user.id,
         ])
       );
@@ -9376,7 +9384,7 @@ async function createProjectInspection(req, res) {
        VALUES ${files.map(() => '(?, ?, 1, ?)').join(', ')}`,
       files.flatMap((file) => [
         result.insertId,
-        `${host}/uploads/inspections/${file.filename}`,
+        file.storageUrl || `${host}/uploads/inspections/${file.filename}`,
         req.user.id,
       ])
     );
@@ -9925,7 +9933,7 @@ async function createProjectInspectionStepRecord(req, res) {
            VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
           files.flatMap((file) => [
             existingRows[0].id,
-            `${host}/uploads/inspections/${file.filename}`,
+            file.storageUrl || `${host}/uploads/inspections/${file.filename}`,
             req.user.id,
           ])
         );
@@ -10020,7 +10028,7 @@ async function createProjectInspectionStepRecord(req, res) {
          VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
         files.flatMap((file) => [
           recordId,
-          `${host}/uploads/inspections/${file.filename}`,
+          file.storageUrl || `${host}/uploads/inspections/${file.filename}`,
           req.user.id,
         ])
       );
@@ -10217,7 +10225,7 @@ async function submitProjectInspectionStepRework(req, res) {
          VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
         files.flatMap((file) => [
           recordId,
-          `${host}/uploads/inspections/${file.filename}`,
+          file.storageUrl || `${host}/uploads/inspections/${file.filename}`,
           req.user.id,
         ])
       );
@@ -10304,7 +10312,7 @@ async function resubmitProjectInspection(req, res) {
        VALUES ${files.map(() => '(?, ?, ?, ?)').join(', ')}`,
       files.flatMap((file) => [
         inspectionId,
-        `${host}/uploads/inspections/${file.filename}`,
+        file.storageUrl || `${host}/uploads/inspections/${file.filename}`,
         round,
         req.user.id,
       ])

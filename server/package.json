@@ -7,11 +7,15 @@
     "start": "node app.js",
     "dev": "nodemon app.js",
     "test": "node --test test/*.test.js",
+    "check:storage": "node scripts/check-storage.js",
+    "migrate:oss": "node scripts/migrate-local-files-to-oss.js",
+    "rollback:oss": "node scripts/rollback-oss-migration.js",
     "fix:uploads": "node scripts/fix-upload-permissions.js"
   },
   "dependencies": {
     "@alicloud/dysmsapi20170525": "^4.6.0",
     "@alicloud/openapi-client": "^0.4.15",
+    "ali-oss": "^6.23.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
     "dotenv": "^16.4.5",

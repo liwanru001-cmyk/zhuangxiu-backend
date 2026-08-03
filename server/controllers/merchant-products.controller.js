@@ -3,6 +3,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
 const { success, error } = require('../utils/response');
+const storageService = require('../services/storage.service');
 const {
   hasActiveVerifiedMerchant,
   activeVerifiedMerchantExistsSql,
@@ -621,7 +622,15 @@ async function uploadProductImage(req, res) {
       metadata = await sharp(outputPath).metadata();
     }
     await fs.rm(sourcePath, { force: true });
-    const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/merchant-products/${path.basename(outputPath)}`;
+    const imageUrl = storageService.useOss()
+      ? (await storageService.putFile({
+          sourcePath: outputPath,
+          key: `uploads/merchant-products/${path.basename(outputPath)}`,
+          req,
+          contentType: isGif ? 'image/gif' : 'image/webp',
+        })).url
+      : `${req.protocol}://${req.get('host')}/api/uploads/merchant-products/${path.basename(outputPath)}`;
+    if (storageService.useOss()) await fs.rm(outputPath, { force: true });
     return success(res, {
       url: imageUrl,
       width: Number(metadata.width || 0),

@@ -10,6 +10,7 @@ const {
 } = require('../utils/upload-permissions');
 const multer = require('multer');
 const path = require('path');
+const persistUploadedFiles = require('../middleware/persist-uploaded-files');
 
 const router = express.Router();
 
@@ -64,6 +65,7 @@ router.post(
   asyncHandler(auth),
   companyImageUpload.single('image'),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/company-profiles'),
   asyncHandler(controller.uploadCompanyImage)
 );
 router.post('/companies', asyncHandler(auth), asyncHandler(controller.createCompany));

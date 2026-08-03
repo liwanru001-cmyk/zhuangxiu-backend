@@ -14,6 +14,7 @@ const {
 const multer = require('multer');
 const path = require('path');
 const { randomUUID } = require('crypto');
+const persistUploadedFiles = require('../middleware/persist-uploaded-files');
 
 const avatarDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'avatars')
@@ -183,6 +184,7 @@ router.post(
   asyncHandler(auth),
   merchantProfileImageUpload.single('image'),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/merchant-profiles'),
   asyncHandler(userController.uploadMerchantProfileImage)
 );
 router.get('/merchant-product-categories', asyncHandler(auth), asyncHandler(merchantProductsController.listMyCategories));
@@ -243,6 +245,7 @@ router.post(
   asyncHandler(auth),
   avatarUpload.single('avatar'),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/avatars'),
   asyncHandler(userController.uploadAvatar)
 );
 router.put('/security/password', asyncHandler(auth), asyncHandler(userController.changePassword));

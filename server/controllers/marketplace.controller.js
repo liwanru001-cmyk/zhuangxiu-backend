@@ -2,6 +2,7 @@ const db = require('../config/db');
 const { success, error } = require('../utils/response');
 const { requireProjectContext } = require('../utils/project-context');
 const { activeCompanyVisibleExistsSql } = require('../utils/billing-entitlement');
+const storageService = require('../services/storage.service');
 
 function parseJsonArray(value) {
   if (Array.isArray(value)) return value;
@@ -1219,7 +1220,11 @@ async function updateCompany(req, res) {
 
 async function uploadCompanyImage(req, res) {
   if (!req.file) return error(res, '请选择公司图片');
-  const imageUrl = `${req.protocol}://${req.get('host')}/api/uploads/company-profiles/${req.file.filename}`;
+  const imageUrl = storageService.uploadedFileUrl(
+    req,
+    req.file,
+    `/api/uploads/company-profiles/${req.file.filename}`
+  );
   return success(res, { url: imageUrl }, '图片上传成功');
 }
 

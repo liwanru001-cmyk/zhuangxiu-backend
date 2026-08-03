@@ -10,6 +10,7 @@ const {
 } = require('../utils/upload-permissions');
 const multer = require('multer');
 const path = require('path');
+const persistUploadedFiles = require('../middleware/persist-uploaded-files');
 
 const router = express.Router();
 const inspectionKbEnabled = process.env.FEATURE_INSPECTION_KB === 'true';
@@ -367,6 +368,7 @@ router.post(
   ...protectedRoute,
   actionItemMediaUpload.array('media', 9),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/action-items'),
   asyncHandler(controller.createProjectActionItem)
 );
 router.post(
@@ -374,6 +376,7 @@ router.post(
   ...protectedRoute,
   actionItemMediaUpload.array('media', 9),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/action-items'),
   asyncHandler(controller.submitProjectActionItemFeedback)
 );
 router.get('/projects/:id/progress', ...protectedRoute, asyncHandler(controller.getProjectProgress));
@@ -527,6 +530,7 @@ router.post(
   ...protectedRoute,
   inspectionImageUpload.array('images', 3),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/inspections'),
   asyncHandler(controller.createProjectInspectionStepRecord)
 );
 router.put(
@@ -539,6 +543,7 @@ router.post(
   ...protectedRoute,
   inspectionImageUpload.array('images', 3),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/inspections'),
   asyncHandler(controller.submitProjectInspectionStepRework)
 );
 router.get(
@@ -558,6 +563,7 @@ router.post(
   ...protectedRoute,
   inspectionImageUpload.array('images', 3),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/inspections'),
   asyncHandler(controller.createProjectInspection)
 );
 router.put(
@@ -575,6 +581,7 @@ router.post(
   ...protectedRoute,
   inspectionImageUpload.array('images', 3),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/inspections'),
   asyncHandler(controller.resubmitProjectInspection)
 );
 router.get('/projects/:id/members', ...protectedRoute, asyncHandler(controller.getProjectMembers));
@@ -603,6 +610,7 @@ router.post(
   ...protectedRoute,
   checkInMediaUpload.array('media', 10),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/check-ins'),
   asyncHandler(controller.createProjectCheckIn)
 );
 router.put(
@@ -644,6 +652,7 @@ router.post(
   ...protectedRoute,
   expenseMediaUpload.array('receipts', 3),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/expenses'),
   asyncHandler(controller.createProjectExpense)
 );
 router.put(
@@ -698,6 +707,7 @@ router.post(
   ...protectedRoute,
   handoverMediaUpload.array('images', 6),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/handovers'),
   asyncHandler(controller.createProjectHandover)
 );
 router.put(
@@ -710,6 +720,7 @@ router.post(
   ...protectedRoute,
   handoverNoteMediaUpload.array('images', 6),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/handover-notes'),
   asyncHandler(controller.createProjectHandoverNote)
 );
 router.get(
@@ -722,6 +733,7 @@ router.post(
   ...protectedRoute,
   materialMediaUpload.array('images', 6),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/materials'),
   asyncHandler(controller.createProjectMaterial)
 );
 router.post(
@@ -729,6 +741,7 @@ router.post(
   ...protectedRoute,
   materialNoteMediaUpload.array('images', 6),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/material-notes'),
   asyncHandler(controller.createProjectMaterialNote)
 );
 router.post(
@@ -736,6 +749,7 @@ router.post(
   ...protectedRoute,
   materialMediaUpload.array('files', 6),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/materials'),
   asyncHandler(controller.createProjectMaterialSupplement)
 );
 router.put(
@@ -768,6 +782,7 @@ router.post(
   ...protectedRoute,
   projectImageUpload.array('images', 12),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/project-spaces'),
   asyncHandler(controller.uploadProjectSpaceImages)
 );
 router.put(
@@ -842,6 +857,7 @@ router.post(
   asyncHandler(projectContextGate),
   floorPlanUpload.single('floor_plan'),
   setUploadedFilePermissions,
+  persistUploadedFiles('uploads/floor-plans'),
   asyncHandler(controller.uploadFloorPlan)
 );
 router.get('/calendar', ...protectedRoute, asyncHandler(controller.getCalendar));

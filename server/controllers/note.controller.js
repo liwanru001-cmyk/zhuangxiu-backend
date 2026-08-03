@@ -1,5 +1,6 @@
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
+const storageService = require('../services/storage.service');
 
 const ALLOWED_SOURCE_TYPES = new Set([
   'site_photos',
@@ -321,7 +322,11 @@ async function uploadMedia(req, res) {
     totalBytes += file.size || 0;
     const extension = path.extname(file.originalname).toLowerCase();
     const media = {
-      url: `${req.protocol}://${req.get('host')}/api/uploads/notes/${file.filename}`,
+      url: storageService.uploadedFileUrl(
+        req,
+        file,
+        `/api/uploads/notes/${file.filename}`
+      ),
       original_name: file.originalname,
       size: file.size || 0,
     };

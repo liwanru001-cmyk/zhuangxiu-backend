@@ -27,6 +27,7 @@ const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const { success, error } = require('./utils/response');
 const INSPECTION_KB_ENABLED = process.env.FEATURE_INSPECTION_KB === 'true';
+const storageService = require('./services/storage.service');
 
 // 信任 Nginx 反向代理
 app.set('trust proxy', 1);
@@ -45,6 +46,13 @@ app.use(helmet({
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+// Database records keep stable oss:// object identifiers. Only API responses
+// receive short-lived signed URLs, so a leaked response does not expose files forever.
+app.use((req, res, next) => {
+  const originalJson = res.json.bind(res);
+  res.json = (body) => originalJson(storageService.signStorageUrisDeep(body));
+  next();
+});
 const allowCrossOriginStaticResource = (req, res, next) => {
   res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
   next();
