@@ -31,6 +31,7 @@ function requiredOssConfig() {
     accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
     endpoint: process.env.OSS_ENDPOINT || undefined,
     secure: true,
+    timeout: Number(process.env.OSS_REQUEST_TIMEOUT_MS || 300000),
   };
   const missing = ['region', 'bucket', 'accessKeyId', 'accessKeySecret'].filter(
     (key) => !config[key]
@@ -122,12 +123,21 @@ async function putLocalFile({ sourcePath, key, req }) {
 
 async function putFile({ sourcePath, key, req, contentType }) {
   if (!useOss()) return putLocalFile({ sourcePath, key, req });
-  await getOssClient().put(key, sourcePath, {
-    headers: {
-      ...(contentType ? { 'Content-Type': contentType } : {}),
-      'Cache-Control': process.env.OSS_CACHE_CONTROL || 'private, max-age=1800',
-    },
-  });
+  const headers = {
+    ...(contentType ? { 'Content-Type': contentType } : {}),
+    'Cache-Control': process.env.OSS_CACHE_CONTROL || 'private, max-age=1800',
+  };
+  const { size } = await fs.stat(sourcePath);
+  const multipartThreshold = Number(process.env.OSS_MULTIPART_THRESHOLD || 5 * 1024 * 1024);
+  if (size >= multipartThreshold) {
+    await getOssClient().multipartUpload(key, sourcePath, {
+      parallel: Number(process.env.OSS_MULTIPART_PARALLEL || 1),
+      partSize: Number(process.env.OSS_MULTIPART_PART_SIZE || 1024 * 1024),
+      headers,
+    });
+  } else {
+    await getOssClient().put(key, sourcePath, { headers });
+  }
   return { key, url: ossStorageUri(key), path: null };
 }
 

@@ -56,7 +56,8 @@ async function uploadFiles(files) {
       console.log(`uploaded ${key}`);
     }
   }
-  await Promise.all(Array.from({ length: Math.min(4, files.length) }, worker));
+  const concurrency = Math.max(1, Number(process.env.OSS_MIGRATION_CONCURRENCY || 1));
+  await Promise.all(Array.from({ length: Math.min(concurrency, files.length) }, worker));
 }
 
 async function migrateDatabase(connection, bucket) {
