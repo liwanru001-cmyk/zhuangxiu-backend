@@ -4455,9 +4455,18 @@ async function getProjectDesignDocuments(req, res) {
       is_current: Boolean(row.is_current),
       status: row.status,
       title: row.title,
-      file_url: normalizeDesignStorageUrl(row.file_url, req),
-      preview_url: normalizeDesignStorageUrl(row.preview_url, req),
-      thumbnail_url: normalizeDesignStorageUrl(row.thumbnail_url, req),
+      file_url: normalizeDesignStorageUrl(
+        canonicalizeDesignStorageUrl(row.file_url, row.storage_key),
+        req
+      ),
+      preview_url: normalizeDesignStorageUrl(
+        canonicalizeDesignStorageUrl(row.preview_url),
+        req
+      ),
+      thumbnail_url: normalizeDesignStorageUrl(
+        canonicalizeDesignStorageUrl(row.thumbnail_url),
+        req
+      ),
       preview_status: row.preview_status,
       preview_type: row.preview_type,
       created_at: row.created_at,
@@ -4474,9 +4483,18 @@ async function getProjectDesignDocuments(req, res) {
       return {
         ...row,
         original_name: normalizeUploadedOriginalName(row.original_name),
-        file_url: normalizeDesignStorageUrl(row.file_url, req),
-        preview_url: normalizeDesignStorageUrl(row.preview_url, req),
-        thumbnail_url: normalizeDesignStorageUrl(row.thumbnail_url, req),
+        file_url: normalizeDesignStorageUrl(
+          canonicalizeDesignStorageUrl(row.file_url, row.storage_key),
+          req
+        ),
+        preview_url: normalizeDesignStorageUrl(
+          canonicalizeDesignStorageUrl(row.preview_url),
+          req
+        ),
+        thumbnail_url: normalizeDesignStorageUrl(
+          canonicalizeDesignStorageUrl(row.thumbnail_url),
+          req
+        ),
         version_group_id: groupId,
         is_current: row.is_current === null || row.is_current === undefined
           ? true
@@ -4514,10 +4532,19 @@ async function getProjectDesignDocumentAccessUrl(req, res) {
     id: document.id,
     project_id: document.project_id,
     file_type: document.file_type,
-    file_url: normalizeDesignStorageUrl(document.file_url, req),
+    file_url: normalizeDesignStorageUrl(
+      canonicalizeDesignStorageUrl(document.file_url, document.storage_key),
+      req
+    ),
     storage_key: document.storage_key,
-    preview_url: normalizeDesignStorageUrl(document.preview_url, req),
-    thumbnail_url: normalizeDesignStorageUrl(document.thumbnail_url, req),
+    preview_url: normalizeDesignStorageUrl(
+      canonicalizeDesignStorageUrl(document.preview_url),
+      req
+    ),
+    thumbnail_url: normalizeDesignStorageUrl(
+      canonicalizeDesignStorageUrl(document.thumbnail_url),
+      req
+    ),
   });
 }
 
@@ -4555,6 +4582,28 @@ function normalizeDesignStorageUrl(value, req) {
     return `${req.protocol}://${req.get('host')}/api${pathname}`;
   }
   return value;
+}
+
+function canonicalizeDesignStorageUrl(value, storageKey = '') {
+  const bucket = String(process.env.OSS_BUCKET || '').trim();
+  const explicitKey = String(storageKey || '').trim().replace(/^\/+/, '');
+  if (bucket && explicitKey) return `oss://${bucket}/${explicitKey}`;
+
+  const raw = String(value || '').trim();
+  if (!raw || raw.startsWith('oss://') || !bucket) return value;
+  try {
+    const parsed = new URL(raw);
+    const isBucketHost = parsed.hostname === `${bucket}.oss-rg-china-mainland.aliyuncs.com`
+      || parsed.hostname.startsWith(`${bucket}.oss-`);
+    if (!isBucketHost || !parsed.pathname || parsed.pathname === '/') return value;
+    let key = parsed.pathname.replace(/^\/+/, '');
+    try {
+      key = decodeURIComponent(key);
+    } catch (_) {}
+    return `oss://${bucket}/${key}`;
+  } catch (_) {
+    return value;
+  }
 }
 
 async function getProjectDesignDocumentQuotaError(projectId) {
@@ -4632,10 +4681,10 @@ async function createProjectDesignDocument(req, res) {
   const title = String(req.body.title || '').trim().slice(0, 120);
   const uploadBatchId = String(req.body.upload_batch_id || '').trim().slice(0, 80);
   const uploadBatchTitle = String(req.body.upload_batch_title || '').trim().slice(0, 120);
-  const fileUrl = String(req.body.file_url || '').trim();
+  const requestedFileUrl = String(req.body.file_url || '').trim();
   const storageKey = String(req.body.storage_key || '').trim().slice(0, 500);
-  const previewUrl = String(req.body.preview_url || '').trim().slice(0, 500);
-  const thumbnailUrl = String(req.body.thumbnail_url || '').trim().slice(0, 500);
+  const requestedPreviewUrl = String(req.body.preview_url || '').trim().slice(0, 500);
+  const requestedThumbnailUrl = String(req.body.thumbnail_url || '').trim().slice(0, 500);
   const requestedPreviewStatus = String(req.body.preview_status || '').trim();
   const requestedPreviewType = String(req.body.preview_type || '').trim();
   const fileType = String(req.body.file_type || 'image').trim().slice(0, 32);
@@ -4643,6 +4692,9 @@ async function createProjectDesignDocument(req, res) {
   const fileSize = Math.max(0, Number(req.body.file_size || 0));
   const originalName = String(req.body.original_name || '').trim().slice(0, 255);
   const versionNote = String(req.body.version_note || '').trim().slice(0, 500);
+  const fileUrl = canonicalizeDesignStorageUrl(requestedFileUrl, storageKey);
+  const previewUrl = canonicalizeDesignStorageUrl(requestedPreviewUrl);
+  const thumbnailUrl = canonicalizeDesignStorageUrl(requestedThumbnailUrl);
   const requestedVersionGroupId = req.body.version_group_id
     ? Number(req.body.version_group_id)
     : null;
