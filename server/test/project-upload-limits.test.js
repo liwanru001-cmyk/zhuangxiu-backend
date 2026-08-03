@@ -783,6 +783,43 @@ test('design document upload enforces project total quota', async () => {
   assert.match(res.payload.message, /最多保存 30 份设计文档/);
 });
 
+test('design document upload rejects a non-image file over 30MB', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'designer' }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) {
+        assert.deepEqual(params, [9, 7]);
+        return [[{ role: 'designer' }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock, {
+    async storeDesignDocument() {
+      throw new Error('oversized file must not reach storage');
+    },
+  });
+  const res = mockResponse();
+
+  await controller.uploadProjectDesignDocument({
+    user: { id: 7 },
+    params: { id: '9' },
+    body: { project_id: 9 },
+    file: {
+      path: '/tmp/no-oversized-design.pdf',
+      originalname: 'design.pdf',
+      mimetype: 'application/pdf',
+      size: 30 * 1024 * 1024 + 1,
+    },
+  }, res);
+
+  assert.equal(res.statusCode, 400);
+  assert.match(res.payload.message, /不能超过30MB/);
+});
+
 test('project task delete rejects when inspection records exist', async () => {
   let deleteCalled = false;
   const dbMock = {

@@ -782,6 +782,8 @@ async function ensureProjectDesignDocumentTables() {
     `);
   }
   const optionalColumns = [
+    ['upload_batch_id', "VARCHAR(80) DEFAULT NULL AFTER project_id"],
+    ['upload_batch_title', "VARCHAR(120) DEFAULT NULL AFTER upload_batch_id"],
     ['mime_type', "VARCHAR(120) DEFAULT NULL AFTER file_type"],
     ['file_size', "BIGINT UNSIGNED NOT NULL DEFAULT 0 AFTER mime_type"],
     ['original_name', "VARCHAR(255) DEFAULT NULL AFTER file_size"],

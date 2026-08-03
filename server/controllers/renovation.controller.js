@@ -93,7 +93,6 @@ const PROJECT_UPLOAD_QUOTAS = {
   spaceImagesPerSpaceLimit: 30,
   spaceImagesDailyLimit: 20,
   designDocumentsPerProjectLimit: 30,
-  designDocumentsDailyLimit: 5,
   handoverImageLimit: 6,
   handoverImagesDailyLimit: 20,
   materialImageLimit: 6,
@@ -4370,7 +4369,8 @@ async function getProjectDesignDocuments(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   const [rows] = await db.query(
-    `SELECT doc.id, doc.project_id, doc.version_group_id, doc.version_no,
+    `SELECT doc.id, doc.project_id, doc.upload_batch_id, doc.upload_batch_title,
+            doc.version_group_id, doc.version_no,
             doc.is_current, doc.superseded_by,
             doc.category, doc.space_key, doc.title, doc.file_url,
             doc.storage_key, doc.preview_url, doc.thumbnail_url,
@@ -4528,21 +4528,13 @@ function normalizeDesignStorageUrl(value, req) {
   return value;
 }
 
-async function getProjectDesignDocumentQuotaError(projectId, userId) {
+async function getProjectDesignDocumentQuotaError(projectId) {
   const totalDocuments = await countRows(
     'SELECT COUNT(*) AS total FROM project_design_documents WHERE project_id = ?',
     [projectId]
   );
   if (totalDocuments >= PROJECT_UPLOAD_QUOTAS.designDocumentsPerProjectLimit) {
     return `同一项目最多保存 ${PROJECT_UPLOAD_QUOTAS.designDocumentsPerProjectLimit} 份设计文档，请先删除或归档不需要的资料`;
-  }
-  const todayDocuments = await countRows(
-    `SELECT COUNT(*) AS total FROM project_design_documents
-     WHERE project_id = ? AND uploaded_by = ? AND created_at >= CURDATE()`,
-    [projectId, userId]
-  );
-  if (todayDocuments >= PROJECT_UPLOAD_QUOTAS.designDocumentsDailyLimit) {
-    return `同一项目每天最多新增 ${PROJECT_UPLOAD_QUOTAS.designDocumentsDailyLimit} 份设计文档，请明天再试`;
   }
   return '';
 }
@@ -4558,6 +4550,10 @@ async function uploadProjectDesignDocument(req, res) {
     return error(res, '项目不存在或无上传权限', 404);
   }
   if (!req.file) return error(res, '请选择要上传的设计资料');
+  if (!req.file.mimetype.startsWith('image/') && req.file.size > 30 * 1024 * 1024) {
+    await removeUploadedFiles([req.file]);
+    return error(res, '普通文件单个不能超过30MB');
+  }
   const designDocumentQuotaError = await getProjectDesignDocumentQuotaError(
     projectId,
     req.user.id
@@ -4605,6 +4601,8 @@ async function createProjectDesignDocument(req, res) {
   const category = String(req.body.category || 'other');
   const spaceKey = String(req.body.space_key || 'whole_house').trim().slice(0, 32);
   const title = String(req.body.title || '').trim().slice(0, 120);
+  const uploadBatchId = String(req.body.upload_batch_id || '').trim().slice(0, 80);
+  const uploadBatchTitle = String(req.body.upload_batch_title || '').trim().slice(0, 120);
   const fileUrl = String(req.body.file_url || '').trim();
   const storageKey = String(req.body.storage_key || '').trim().slice(0, 500);
   const previewUrl = String(req.body.preview_url || '').trim().slice(0, 500);
@@ -4651,9 +4649,6 @@ async function createProjectDesignDocument(req, res) {
     if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
       return error(res, '链接地址只支持 http 或 https');
     }
-    if (category !== 'rendering') {
-      return error(res, '链接资料仅支持添加到效果图');
-    }
   }
   const connection = await db.getConnection();
   try {
@@ -4693,13 +4688,16 @@ async function createProjectDesignDocument(req, res) {
     }
     const [result] = await connection.query(
       `INSERT INTO project_design_documents
-       (project_id, version_group_id, version_no, is_current, category,
+       (project_id, upload_batch_id, upload_batch_title,
+        version_group_id, version_no, is_current, category,
         space_key, title, file_url, storage_key, preview_url, thumbnail_url,
         preview_status, preview_type, file_type, mime_type, file_size,
         original_name, version_note, status, uploaded_by)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+       VALUES (?, ?, ?, ?, ?, 1, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
       [
         projectId,
+        uploadBatchId || null,
+        uploadBatchTitle || title,
         versionGroupId,
         versionNo,
         category,
@@ -4779,6 +4777,78 @@ async function canDeleteDesignDocument(documentId, connection = db) {
   return { canDelete: true, reason: null };
 }
 
+async function deleteProjectDesignDocument(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const documentId = Number(req.params.documentId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
+    return error(res, '项目不存在或无删除权限', 404);
+  }
+  const [documents] = await db.query(
+    `SELECT id, upload_batch_id, status, uploaded_by
+     FROM project_design_documents
+     WHERE id = ? AND project_id = ?`,
+    [documentId, projectId]
+  );
+  const document = documents[0];
+  if (!document) return error(res, '设计资料不存在', 404);
+  const ownerSide = await isOwnerSide(projectId, req.user.id);
+  if (!ownerSide && Number(document.uploaded_by) !== Number(req.user.id)) {
+    return error(res, '只能删除自己上传且业主未确认的资料', 403);
+  }
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [batchDocuments] = document.upload_batch_id
+      ? await connection.query(
+          `SELECT id, status FROM project_design_documents
+           WHERE project_id = ? AND upload_batch_id = ? FOR UPDATE`,
+          [projectId, document.upload_batch_id]
+        )
+      : await connection.query(
+          `SELECT id, status FROM project_design_documents
+           WHERE project_id = ? AND id = ? FOR UPDATE`,
+          [projectId, documentId]
+        );
+    if (batchDocuments.some((item) => item.status === 'confirmed')) {
+      await connection.rollback();
+      return error(res, '业主已确认的资料不能删除', 409);
+    }
+    for (const item of batchDocuments) {
+      const guard = await canDeleteDesignDocument(item.id, connection);
+      if (!guard.canDelete) {
+        await connection.rollback();
+        return error(res, guard.reason, 409);
+      }
+    }
+    const ids = batchDocuments.map((item) => item.id);
+    if (ids.length) {
+      const placeholders = ids.map(() => '?').join(', ');
+      await connection.query(
+        `DELETE FROM project_design_document_revision_requests
+         WHERE design_document_version_id IN (${placeholders})
+            OR design_document_id IN (${placeholders})`,
+        [...ids, ...ids]
+      );
+      await connection.query(
+        `DELETE FROM project_design_documents WHERE project_id = ? AND id IN (${placeholders})`,
+        [projectId, ...ids]
+      );
+    }
+    await connection.commit();
+    return success(res, { deleted: ids.length }, '设计资料已删除');
+  } catch (deleteError) {
+    await connection.rollback();
+    throw deleteError;
+  } finally {
+    connection.release();
+  }
+}
+
 async function updateProjectDesignDocument(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
@@ -4805,9 +4875,6 @@ async function updateProjectDesignDocument(req, res) {
   );
   const document = documents[0];
   if (!document) return error(res, '设计资料不存在', 404);
-  if (document.file_type === 'webview_link' && category !== 'rendering') {
-    return error(res, '链接资料仅支持添加到效果图');
-  }
   await db.query(
     `UPDATE project_design_documents
      SET category = ?, space_key = ?, title = ?, version_note = ?
@@ -10469,6 +10536,7 @@ module.exports = {
   uploadProjectDesignDocument,
   createProjectDesignDocument,
   canDeleteDesignDocument,
+  deleteProjectDesignDocument,
   updateProjectDesignDocument,
   updateProjectDesignDocumentStatus,
   getProjectHandovers,

@@ -687,6 +687,11 @@ router.put(
   ...protectedRoute,
   asyncHandler(controller.updateProjectDesignDocument)
 );
+router.delete(
+  '/projects/:id/design-documents/:documentId',
+  ...protectedRoute,
+  asyncHandler(controller.deleteProjectDesignDocument)
+);
 router.put(
   '/projects/:id/design-documents/:documentId/status',
   ...protectedRoute,
