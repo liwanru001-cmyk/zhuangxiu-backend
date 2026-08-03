@@ -8559,35 +8559,10 @@ async function getProjectInspections(req, res) {
                    AND i.responsible_user_id IS NULL THEN 'passed'
               ELSE i.status
             END`;
-  const requesterRole = await getProjectMemberRole(projectId, req.user.id);
-  const requesterOwnerSide = isOwnerSideRole(requesterRole);
-  const requesterCompanyAdminReadOnly = requesterRole === companyAdminViewerRole;
   const filters = ['i.project_id = ?'];
   const params = [projectId];
-  if (!requesterOwnerSide && !requesterCompanyAdminReadOnly) {
-    filters.push(`
-      (
-        (i.status = 'pending'
-          AND ${memberRoleExpression} NOT IN (${ownerRoleSql})
-          AND i.submitted_by = ?)
-        OR (i.status = 'rework'
-          AND (i.responsible_user_id = ? OR i.submitted_by = ?))
-        OR (i.status = 'passed'
-          AND (i.responsible_user_id = ? OR i.submitted_by = ?))
-        OR (i.status = 'pending'
-          AND ${memberRoleExpression} IN (${ownerRoleSql})
-          AND i.responsible_user_id = ?)
-      )
-    `);
-    params.push(
-      req.user.id,
-      req.user.id,
-      req.user.id,
-      req.user.id,
-      req.user.id,
-      req.user.id
-    );
-  }
+  // Inspection records are shared project data. All active project members
+  // can read them; only write operations are role-restricted.
   const [rows] = await db.query(
     `SELECT i.id, i.project_id, i.task_id, i.progress_item_id,
             i.stage_id, i.responsible_user_id,
@@ -9820,14 +9795,9 @@ async function getProjectInspectionStepRecords(req, res) {
   if (req.query.include_migrated !== '1' && req.query.include_migrated !== 'true') {
     filters.push('record.inspection_id IS NULL');
   }
-  const requesterRole = await getProjectMemberRole(projectId, req.user.id);
-  const requesterCompanyAdminReadOnly = requesterRole === companyAdminViewerRole;
-  if (!isOwnerSideRole(requesterRole) && !requesterCompanyAdminReadOnly) {
-    filters.push(
-      '(record.created_by = ? OR record.target_user_id = ? OR record.response_by = ?)'
-    );
-    params.push(req.user.id, req.user.id, req.user.id);
-  }
+  // This is the shared project inspection ledger. Project access was checked
+  // above, so every active member receives the same history. Role checks stay
+  // on the review/rework mutation endpoints.
   if (stageId) {
     filters.push('record.stage_id = ?');
     params.push(stageId);
