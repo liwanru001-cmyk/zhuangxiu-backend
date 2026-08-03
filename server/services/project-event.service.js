@@ -49,15 +49,27 @@ async function emitProjectEvent(eventType, payload, executor = db) {
     detailData: payload.detailData || null,
   };
 
-  await executor.query(
-    `INSERT INTO project_action_notifications
-       (item_id, recipient_id, event_type, delivery_status, payload)
-     VALUES ${recipients.map(() => "(NULL, ?, 'project_event', 'pending', ?)").join(', ')}`,
-    recipients.flatMap((recipientId) => [
-      recipientId,
-      JSON.stringify(notificationPayload),
-    ])
-  );
+  try {
+    await executor.query(
+      `INSERT INTO project_action_notifications
+         (item_id, recipient_id, event_type, delivery_status, payload)
+       VALUES ${recipients.map(() => "(NULL, ?, 'project_event', 'pending', ?)").join(', ')}`,
+      recipients.flatMap((recipientId) => [
+        recipientId,
+        JSON.stringify(notificationPayload),
+      ])
+    );
+  } catch (error) {
+    console.error('project event notification failed', {
+      eventType,
+      projectId,
+      actorId,
+      recipientCount: recipients.length,
+      code: error.code,
+      message: error.message,
+    });
+    return { inserted: 0, failed: true };
+  }
 
   return { inserted: recipients.length };
 }

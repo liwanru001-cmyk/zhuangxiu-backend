@@ -28,6 +28,7 @@ const crypto = require('crypto');
 const { success, error } = require('./utils/response');
 const INSPECTION_KB_ENABLED = process.env.FEATURE_INSPECTION_KB === 'true';
 const storageService = require('./services/storage.service');
+const { checkRuntimeSchema } = require('./services/runtime-schema.service');
 
 // 信任 Nginx 反向代理
 app.set('trust proxy', 1);
@@ -4012,11 +4013,37 @@ app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // 健康检查
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+app.get('/health', async (req, res) => {
+  try {
+    const schema = await checkRuntimeSchema();
+    return res.status(schema.ok ? 200 : 503).json({
+      status: schema.ok ? 'ok' : 'degraded',
+      schema,
+      time: new Date().toISOString(),
+    });
+  } catch (error) {
+    return res.status(503).json({
+      status: 'degraded',
+      schema: { ok: false, missing: [], error: error.message },
+      time: new Date().toISOString(),
+    });
+  }
 });
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+app.get('/api/health', async (req, res) => {
+  try {
+    const schema = await checkRuntimeSchema();
+    return res.status(schema.ok ? 200 : 503).json({
+      status: schema.ok ? 'ok' : 'degraded',
+      schema,
+      time: new Date().toISOString(),
+    });
+  } catch (error) {
+    return res.status(503).json({
+      status: 'degraded',
+      schema: { ok: false, missing: [], error: error.message },
+      time: new Date().toISOString(),
+    });
+  }
 });
 
 // 404

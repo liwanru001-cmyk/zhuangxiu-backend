@@ -394,11 +394,8 @@ jobs:
               "$DB_NAME" | gzip -c > "$db_backup_file"
             test -s "$db_backup_file"
 
-            echo "Applying unified inspection schema before smoke test."
-            node scripts/run-migration.js migrations/20260619_inspection_templates.sql
-            node scripts/run-migration.js migrations/20260730_unified_project_inspections.sql
-            node scripts/run-migration.js migrations/20260801_inspection_step_record_task_link.sql
-            node scripts/run-migration.js migrations/20260802_project_progress_change_requests.sql
+            echo "Applying recorded pending migrations before smoke test."
+            node scripts/run-pending-migrations.js
 
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
@@ -449,48 +446,8 @@ jobs:
             . ./.env
             set +a
 
-            # Keep backend business migrations explicit and ordered.
-            node scripts/run-migration.js migrations/20260619_inspection_templates.sql
-            node scripts/run-migration.js migrations/20260630_merchant_product_showcase.sql
-            node scripts/run-migration.js migrations/20260630_merchant_profile_offline_fields.sql
-            node scripts/run-migration.js migrations/20260702_merchant_permission_review.sql
-            node scripts/run-migration.js migrations/20260702_verified_merchant_status.sql
-            node scripts/run-migration.js migrations/20260702_verified_merchant_application.sql
-            node scripts/run-migration.js migrations/20260703_merchant_product_favorites.sql
-            node scripts/run-migration.js migrations/20260703_consultation_notifications.sql
-            node scripts/run-migration.js migrations/20260703_upload_business_limits.sql
-            node scripts/run-migration.js migrations/20260703_project_internal_upload_limits.sql
-            node scripts/run-migration.js migrations/20260704_company_reviews.sql
-            node scripts/run-migration.js migrations/20260705_company_evaluation_system.sql
-            node scripts/run-migration.js migrations/20260705_project_showcases.sql
-            node scripts/run-migration.js migrations/20260706_merchant_cases.sql
-            node scripts/run-migration.js migrations/20260706_billing_merchant_mvp.sql
-            node scripts/run-migration.js migrations/20260706_billing_merchant_appeals.sql
-            node scripts/run-migration.js migrations/20260707_public_profile_display_settings.sql
-            node scripts/run-migration.js migrations/20260708_company_display_billing.sql
-            node scripts/run-migration.js migrations/20260708_identity_onboarding.sql
-            node scripts/run-migration.js migrations/20260713_public_profile_featured_projects.sql
-            node scripts/run-migration.js migrations/20260713_revert_tianditu_location_fields.sql
-            node scripts/run-migration.js migrations/20260713_location_fields_for_android_picker.sql
-            node scripts/run-migration.js migrations/20260713_project_checkin_member_shares.sql
-            node scripts/run-migration.js migrations/20260714_wechat_miniprogram_identities.sql
-            node scripts/run-migration.js migrations/20260714_wechat_binding_appeals.sql
-            node scripts/run-migration.js migrations/20260716_project_handover_notes.sql
-            node scripts/run-migration.js migrations/20260716_project_material_notes.sql
-            node scripts/run-migration.js migrations/20260718_merchant_case_content_delta.sql
-            node scripts/run-migration.js migrations/20260718_merchant_case_link.sql
-            node scripts/run-migration.js migrations/20260719_merchant_product_content_delta.sql
-            node scripts/run-migration.js migrations/20260724_consultation_product_link.sql
-            node scripts/run-migration.js migrations/20260727_entity_favorites.sql
-            node scripts/run-migration.js migrations/20260727_project_content_shares.sql
-            node scripts/run-migration.js migrations/20260728_project_content_share_entities.sql
-            node scripts/run-migration.js migrations/20260729_project_content_shares_optional_project.sql
-            node scripts/run-migration.js migrations/20260730_merchant_product_case_link.sql
-            node scripts/run-migration.js migrations/20260730_migrate_company_reviews_to_dimensions.sql
-            node scripts/run-migration.js migrations/20260730_company_evaluation_daily_snapshots.sql
-            node scripts/run-migration.js migrations/20260730_unified_project_inspections.sql
-            node scripts/run-migration.js migrations/20260801_inspection_step_record_task_link.sql
-            node scripts/run-migration.js migrations/20260802_project_progress_change_requests.sql
+            # Migrations are recorded once and applied in filename order.
+            node scripts/run-pending-migrations.js
 
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true
