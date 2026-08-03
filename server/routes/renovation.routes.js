@@ -670,6 +670,11 @@ router.get(
   ...protectedRoute,
   asyncHandler(controller.getProjectDesignDocuments)
 );
+router.get(
+  '/projects/:id/design-documents/:documentId/access-url',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectDesignDocumentAccessUrl)
+);
 router.post(
   '/projects/:id/design-documents/upload',
   ...protectedRoute,

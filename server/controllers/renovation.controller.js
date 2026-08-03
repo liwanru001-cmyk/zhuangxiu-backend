@@ -4492,6 +4492,35 @@ async function getProjectDesignDocuments(req, res) {
   );
 }
 
+async function getProjectDesignDocumentAccessUrl(req, res) {
+  const projectId = Number(req.params.id);
+  const documentId = Number(req.params.documentId);
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const [rows] = await db.query(
+    `SELECT id, project_id, file_type, file_url, storage_key,
+            preview_url, thumbnail_url
+     FROM project_design_documents
+     WHERE id = ? AND project_id = ?
+     LIMIT 1`,
+    [documentId, projectId]
+  );
+  const document = rows[0];
+  if (!document) return error(res, '设计资料不存在或已删除', 404);
+
+  res.setHeader('Cache-Control', 'private, no-store, max-age=0');
+  return success(res, {
+    id: document.id,
+    project_id: document.project_id,
+    file_type: document.file_type,
+    file_url: normalizeDesignStorageUrl(document.file_url, req),
+    storage_key: document.storage_key,
+    preview_url: normalizeDesignStorageUrl(document.preview_url, req),
+    thumbnail_url: normalizeDesignStorageUrl(document.thumbnail_url, req),
+  });
+}
+
 function getDesignDocumentFileType(file) {
   const extension = path.extname(file.originalname || '').toLowerCase();
   if (file.mimetype.startsWith('image/')) return 'image';
@@ -10533,6 +10562,7 @@ module.exports = {
   updateProjectExpense,
   deleteProjectExpense,
   getProjectDesignDocuments,
+  getProjectDesignDocumentAccessUrl,
   uploadProjectDesignDocument,
   createProjectDesignDocument,
   canDeleteDesignDocument,
