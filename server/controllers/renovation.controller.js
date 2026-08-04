@@ -4384,15 +4384,7 @@ async function getProjectDesignDocuments(req, res) {
             doc.reviewed_at, doc.confirmed_at, doc.voided_at,
             doc.created_at, doc.updated_at,
             uploader.nickname AS uploader_name, uploader.avatar AS uploader_avatar,
-            reviewer.nickname AS reviewer_name,
-            EXISTS (
-              SELECT 1
-              FROM project_members uploader_member
-              WHERE uploader_member.project_id = doc.project_id
-                AND uploader_member.user_id = doc.uploaded_by
-                AND uploader_member.status = 1
-                AND uploader_member.role IN ('owner', 'owner_member')
-            ) AS uploaded_by_owner_side
+            reviewer.nickname AS reviewer_name
      FROM project_design_documents doc
      JOIN users uploader ON uploader.id = doc.uploaded_by
      LEFT JOIN users reviewer ON reviewer.id = doc.reviewed_by
@@ -4515,7 +4507,7 @@ async function getProjectDesignDocuments(req, res) {
         ...row,
         uploaded_by_me: Number(row.uploaded_by) === Number(req.user.id),
         delete_mode: ownerSide
-          ? Boolean(row.uploaded_by_owner_side)
+          ? Number(row.uploaded_by) === Number(req.user.id)
             ? 'direct'
             : 'owner_review'
           : Number(row.uploaded_by) === Number(req.user.id)
@@ -5048,17 +5040,9 @@ async function deleteProjectDesignDocument(req, res) {
     return error(res, '项目不存在或无删除权限', 404);
   }
   const [documents] = await db.query(
-    `SELECT doc.id, doc.upload_batch_id, doc.status, doc.uploaded_by,
-            EXISTS (
-              SELECT 1
-              FROM project_members uploader_member
-              WHERE uploader_member.project_id = doc.project_id
-                AND uploader_member.user_id = doc.uploaded_by
-                AND uploader_member.status = 1
-                AND uploader_member.role IN ('owner', 'owner_member')
-            ) AS uploaded_by_owner_side
-     FROM project_design_documents doc
-     WHERE doc.id = ? AND doc.project_id = ?`,
+    `SELECT id, upload_batch_id, status, uploaded_by
+     FROM project_design_documents
+     WHERE id = ? AND project_id = ?`,
     [documentId, projectId]
   );
   const document = documents[0];
@@ -5067,7 +5051,9 @@ async function deleteProjectDesignDocument(req, res) {
   if (!ownerSide) {
     return error(res, '请先提交删除申请，等待业主复核确认', 403);
   }
-  if (!Boolean(document.uploaded_by_owner_side)) {
+  const uploadedByCurrentOwner =
+    Number(document.uploaded_by) === Number(req.user.id);
+  if (!uploadedByCurrentOwner) {
     return error(res, '请由资料上传者先提交删除申请，再由业主复核', 409);
   }
 
