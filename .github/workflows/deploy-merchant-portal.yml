@@ -7,6 +7,7 @@ on:
     paths:
       - 'server/public/index.html'
       - 'server/public/merchant/**'
+      - 'server/public/assets/app_icon.png'
       - 'server/public/assets/screens/**'
       - '.github/workflows/deploy-merchant-portal.yml'
   workflow_dispatch:
@@ -25,6 +26,7 @@ jobs:
           set -euo pipefail
           test -f server/public/index.html
           test -f server/public/merchant/index.html
+          test -f server/public/assets/app_icon.png
           test "$(find server/public/assets/screens -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')" = "6"
           test ! -f server/public/index.html.tmp
 
@@ -91,11 +93,13 @@ jobs:
           remote="${SSH_USER}@${SSH_HOST}"
           remote_home_tmp="/tmp/yinnkhome-home-index-${GITHUB_RUN_ID}.html"
           remote_merchant_tmp="/tmp/yinnkhome-merchant-index-${GITHUB_RUN_ID}.html"
+          remote_app_icon_tmp="/tmp/yinnkhome-app-icon-${GITHUB_RUN_ID}.png"
           remote_screens_tmp="/tmp/yinnkhome-screens-${GITHUB_RUN_ID}.tar.gz"
 
           tar -C server/public/assets/screens -czf /tmp/yinnkhome-screens.tar.gz .
           scp "${scp_opts[@]}" server/public/index.html "$remote:$remote_home_tmp"
           scp "${scp_opts[@]}" server/public/merchant/index.html "$remote:$remote_merchant_tmp"
+          scp "${scp_opts[@]}" server/public/assets/app_icon.png "$remote:$remote_app_icon_tmp"
           scp "${scp_opts[@]}" /tmp/yinnkhome-screens.tar.gz "$remote:$remote_screens_tmp"
           ssh "${ssh_opts[@]}" "$remote" \
             "set -euo pipefail
@@ -120,15 +124,18 @@ jobs:
              \$runner cp /tmp/yinnkhome-merchant-index-ready.html '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp'
              \$runner mv '$MERCHANT_PUBLIC_DIR/index.html.tmp' '$MERCHANT_PUBLIC_DIR/index.html'
              \$runner mv '$MERCHANT_PUBLIC_DIR/merchant/index.html.tmp' '$MERCHANT_PUBLIC_DIR/merchant/index.html'
+             \$runner cp '$remote_app_icon_tmp' '$MERCHANT_PUBLIC_DIR/assets/app_icon.png'
              \$runner cp -a \"\$screens_ready/.\" '$MERCHANT_PUBLIC_DIR/assets/screens/'
              rm -f '$remote_home_tmp'
              rm -f '$remote_merchant_tmp'
+             rm -f '$remote_app_icon_tmp'
              rm -f '$remote_screens_tmp'
              rm -rf \"\$screens_ready\"
              rm -f /tmp/yinnkhome-home-index-ready.html
              rm -f /tmp/yinnkhome-merchant-index-ready.html
              test -f '$MERCHANT_PUBLIC_DIR/index.html'
              test -f '$MERCHANT_PUBLIC_DIR/merchant/index.html'
+             test -f '$MERCHANT_PUBLIC_DIR/assets/app_icon.png'
              test \"\$(find '$MERCHANT_PUBLIC_DIR/assets/screens' -maxdepth 1 -type f -name '*.jpg' | wc -l | tr -d ' ')\" = '6'"
 
       - name: Verify public static URLs
@@ -140,4 +147,5 @@ jobs:
           curl -fsS https://yinnkhome.com/merchant/ -o "$merchant_file"
           ! grep -q 'href="/merchant/"' "$home_file"
           grep -q '商家中心 - 装修不凡' "$merchant_file"
+          curl -fsS https://yinnkhome.com/assets/app_icon.png -o /dev/null
           curl -fsS https://yinnkhome.com/assets/screens/project-overview.jpg -o /dev/null

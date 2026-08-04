@@ -108,7 +108,7 @@
       position: relative;
       z-index: 2;
     }
-    .hero-copy-wrap { width: min(630px, 58%); position: relative; z-index: 3; }
+    .hero-copy-wrap { width: min(720px, 100%); position: relative; z-index: 3; }
     .eyebrow { color: var(--clay-dark); font-size: 14px; font-weight: 850; }
     h1 {
       margin: 20px 0 18px;
@@ -119,52 +119,6 @@
     }
     .hero-copy { max-width: 600px; margin: 0; color: #5f564f; font-size: 18px; line-height: 1.8; font-weight: 600; }
     .hero-actions { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 32px; }
-
-    .hero-product {
-      position: absolute;
-      width: 430px;
-      right: 0;
-      top: 50%;
-      transform: translateY(-50%);
-    }
-    .phone {
-      width: 340px;
-      height: 640px;
-      margin: 0 auto;
-      padding: 9px;
-      border-radius: 38px;
-      background: #24211f;
-      box-shadow: var(--shadow), inset 0 0 0 1px rgba(255,255,255,.14);
-    }
-    .phone-screen { height: 100%; overflow: hidden; border-radius: 30px; background: #f7f3ed; position: relative; }
-    .product-screen { width: 100%; height: 100%; display: none; object-fit: cover; object-position: top center; }
-    .product-screen.is-active { display: block; }
-    .gallery-arrows { position: absolute; inset: 0; display: flex; align-items: center; justify-content: space-between; pointer-events: none; }
-    .gallery-arrow {
-      width: 38px;
-      height: 38px;
-      padding: 0;
-      display: grid;
-      place-items: center;
-      border: 1px solid var(--line);
-      border-radius: 50%;
-      color: var(--ink);
-      background: rgba(255,255,255,.94);
-      box-shadow: 0 8px 20px rgba(48,42,37,.14);
-      cursor: pointer;
-      pointer-events: auto;
-      font-size: 24px;
-      line-height: 1;
-    }
-    .gallery-arrow:hover { background: #fff; border-color: #c9bcb0; }
-    .gallery-arrow:first-child { transform: translateX(-10px); }
-    .gallery-arrow:last-child { transform: translateX(10px); }
-    .gallery-meta { margin-top: 16px; text-align: center; }
-    .gallery-title { font-size: 14px; font-weight: 900; }
-    .gallery-count { margin-left: 7px; color: var(--soft); font-size: 12px; }
-    .gallery-dots { display: flex; justify-content: center; gap: 7px; margin-top: 10px; }
-    .gallery-dot { width: 24px; height: 4px; padding: 0; border: 0; border-radius: 3px; background: #cfc5bb; cursor: pointer; }
-    .gallery-dot[aria-selected="true"] { background: var(--clay); }
 
     .trust-strip { background: #fff; border-bottom: 1px solid var(--line); }
     .trust-inner { width: min(1180px, calc(100% - 40px)); min-height: 84px; margin: 0 auto; display: grid; grid-template-columns: repeat(4, 1fr); align-items: center; }
@@ -283,10 +237,6 @@
 
     @media (max-width: 940px) {
       .nav-links a:not(.nav-login) { display: none; }
-      .hero-inner { min-height: 740px; align-items: flex-start; padding-top: 60px; }
-      .hero-copy-wrap { width: 70%; }
-      .hero-product { width: 340px; right: -70px; top: 58%; }
-      .phone { width: 282px; height: 532px; }
       .role-panel, .feature-row, .business-grid { grid-template-columns: 1fr; gap: 34px; }
       .feature-row:nth-child(even) .feature-copy, .feature-row:nth-child(even) .feature-visual { order: initial; }
       .flow-track { grid-template-columns: repeat(3, 1fr); }
@@ -299,18 +249,12 @@
       .brand { font-size: 16px; }
       .brand img { width: 32px; height: 32px; }
       .nav-login { padding: 0 12px; font-size: 12px; }
-      .hero { min-height: 760px; }
-      .hero-inner { min-height: 760px; padding-top: 48px; align-items: flex-start; }
+      .hero-inner { padding-top: 48px; }
       .hero-copy-wrap { width: 100%; }
       h1 { margin-top: 15px; font-size: 42px; }
       .hero-copy { max-width: 92%; font-size: 15px; line-height: 1.7; }
       .hero-actions { margin-top: 24px; }
       .button { min-height: 42px; padding: 0 13px; font-size: 13px; }
-      .hero-product { width: 252px; right: -35px; top: auto; bottom: -235px; transform: none; }
-      .phone { width: 220px; height: 416px; border-radius: 29px; }
-      .phone-screen { border-radius: 23px; }
-      .gallery-arrow { width: 32px; height: 32px; font-size: 20px; }
-      .gallery-meta { margin-top: 10px; }
       .trust-inner { padding: 16px 0; grid-template-columns: repeat(2, 1fr); gap: 15px 0; }
       .trust-item { padding: 0 13px; }
       .trust-item:nth-child(2) { border: 0; }
@@ -347,7 +291,7 @@
   <nav class="nav" aria-label="主导航">
     <div class="nav-inner">
       <a class="brand" href="#top" aria-label="装修不凡首页">
-        <img src="/assets/app-icon.png" alt="装修不凡 App 图标">
+        <img src="/assets/app_icon.png" alt="装修不凡 App 图标">
         <span>装修不凡</span>
       </a>
       <div class="nav-links">
@@ -370,23 +314,6 @@
           </div>
         </div>
 
-        <div class="hero-product" aria-label="装修不凡 App 真实界面预览">
-          <div class="phone">
-            <div class="phone-screen">
-              <img class="product-screen is-active" src="/assets/screens/project-overview.jpg" alt="装修不凡项目总览页面" data-screen-title="项目总览">
-              <img class="product-screen" src="/assets/screens/project-progress.jpg" alt="装修不凡项目进度管理页面" data-screen-title="进度管理" loading="lazy">
-              <img class="product-screen" src="/assets/screens/project-archive.jpg" alt="装修不凡项目档案页面" data-screen-title="项目档案" loading="lazy">
-              <img class="product-screen" src="/assets/screens/inspection-assistant.jpg" alt="装修不凡验收助理页面" data-screen-title="验收助理" loading="lazy">
-              <img class="product-screen" src="/assets/screens/merchant-shop.jpg" alt="装修不凡我的店铺页面" data-screen-title="我的店铺" loading="lazy">
-              <img class="product-screen" src="/assets/screens/company-workbench.jpg" alt="装修不凡装修公司工作台页面" data-screen-title="公司工作台" loading="lazy">
-            </div>
-          </div>
-          <div class="gallery-arrows" aria-label="切换 App 页面">
-            <button class="gallery-arrow" type="button" data-gallery-prev aria-label="上一张">‹</button>
-            <button class="gallery-arrow" type="button" data-gallery-next aria-label="下一张">›</button>
-          </div>
-          <div class="gallery-meta"><span class="gallery-title">项目总览</span><span class="gallery-count">1 / 6</span><div class="gallery-dots" role="tablist" aria-label="选择 App 页面"><button class="gallery-dot" type="button" aria-label="项目总览" aria-selected="true" data-screen-index="0"></button><button class="gallery-dot" type="button" aria-label="进度管理" aria-selected="false" data-screen-index="1"></button><button class="gallery-dot" type="button" aria-label="项目档案" aria-selected="false" data-screen-index="2"></button><button class="gallery-dot" type="button" aria-label="验收助理" aria-selected="false" data-screen-index="3"></button><button class="gallery-dot" type="button" aria-label="我的店铺" aria-selected="false" data-screen-index="4"></button><button class="gallery-dot" type="button" aria-label="公司工作台" aria-selected="false" data-screen-index="5"></button></div></div>
-        </div>
       </div>
     </section>
 
@@ -517,23 +444,6 @@
       });
     });
 
-    const productScreens = Array.from(document.querySelectorAll('.product-screen'));
-    const screenDots = Array.from(document.querySelectorAll('[data-screen-index]'));
-    const galleryTitle = document.querySelector('.gallery-title');
-    const galleryCount = document.querySelector('.gallery-count');
-    let activeScreenIndex = 0;
-
-    function selectScreen(index) {
-      activeScreenIndex = (index + productScreens.length) % productScreens.length;
-      productScreens.forEach((screen, screenIndex) => screen.classList.toggle('is-active', screenIndex === activeScreenIndex));
-      screenDots.forEach((dot, screenIndex) => dot.setAttribute('aria-selected', screenIndex === activeScreenIndex ? 'true' : 'false'));
-      galleryTitle.textContent = productScreens[activeScreenIndex].dataset.screenTitle;
-      galleryCount.textContent = `${activeScreenIndex + 1} / ${productScreens.length}`;
-    }
-
-    document.querySelector('[data-gallery-prev]').addEventListener('click', () => selectScreen(activeScreenIndex - 1));
-    document.querySelector('[data-gallery-next]').addEventListener('click', () => selectScreen(activeScreenIndex + 1));
-    screenDots.forEach((dot) => dot.addEventListener('click', () => selectScreen(Number(dot.dataset.screenIndex))));
   </script>
 </body>
 </html>
