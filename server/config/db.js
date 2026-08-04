@@ -1175,6 +1175,32 @@ async function ensureProjectDesignDocumentRevisionRequestTables() {
       KEY idx_design_revision_assignee (assignee_id, status, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_design_document_delete_requests (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      design_document_id BIGINT UNSIGNED NOT NULL,
+      requested_by BIGINT UNSIGNED NOT NULL,
+      status VARCHAR(24) NOT NULL DEFAULT 'pending',
+      reviewed_by BIGINT UNSIGNED DEFAULT NULL,
+      review_note VARCHAR(500) DEFAULT NULL,
+      reviewed_at TIMESTAMP NULL DEFAULT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_design_delete_project (project_id, status, created_at),
+      KEY idx_design_delete_document (design_document_id, status, created_at),
+      KEY idx_design_delete_requester (requested_by, status, created_at),
+      CONSTRAINT fk_design_delete_project FOREIGN KEY (project_id)
+        REFERENCES renovation_projects(id) ON DELETE CASCADE,
+      CONSTRAINT fk_design_delete_document FOREIGN KEY (design_document_id)
+        REFERENCES project_design_documents(id) ON DELETE CASCADE,
+      CONSTRAINT fk_design_delete_requester FOREIGN KEY (requested_by)
+        REFERENCES users(id) ON DELETE CASCADE,
+      CONSTRAINT fk_design_delete_reviewer FOREIGN KEY (reviewed_by)
+        REFERENCES users(id) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
 }
 
 async function ensureConstructionDisclosureDocumentTables() {

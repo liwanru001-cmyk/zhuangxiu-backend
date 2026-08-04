@@ -6,6 +6,9 @@ const path = require('path');
 const storageService = require('../services/storage.service');
 const { ProjectEventType, emitProjectEvent } = require('../services/project-event.service');
 const { requireProjectContext } = require('../utils/project-context');
+const {
+  recomputeProjectProgressDerivedDates,
+} = require('../services/progress-derived-dates');
 
 const stages = [
   { id: 1, name: '设计准备', traditional: '设计准备', emoji: '📐', days: 14, taskCount: 3, keyTaskCount: 1 },
@@ -4368,6 +4371,7 @@ async function getProjectDesignDocuments(req, res) {
   if (!(await canAccessProject(projectId, req.user.id))) {
     return error(res, '项目不存在或无权限', 404);
   }
+  const ownerSide = await isOwnerSide(projectId, req.user.id);
   const [rows] = await db.query(
     `SELECT doc.id, doc.project_id, doc.upload_batch_id, doc.upload_batch_title,
             doc.version_group_id, doc.version_no,
@@ -4392,6 +4396,7 @@ async function getProjectDesignDocuments(req, res) {
   );
   if (!rows.length) return success(res, []);
   const groupIds = [...new Set(rows.map((row) => row.version_group_id || row.id))];
+  const documentIds = rows.map((row) => row.id);
   const [references] = await db.query(
     `SELECT ref.id, ref.project_id, ref.disclosure_id, ref.design_document_id,
             ref.design_document_version_id, ref.purpose, ref.snapshot_title,
@@ -4420,6 +4425,17 @@ async function getProjectDesignDocuments(req, res) {
      ORDER BY request.created_at DESC, request.id DESC`,
     [projectId, ...groupIds]
   );
+  const [deleteRequests] = await db.query(
+    `SELECT request.id, request.design_document_id, request.requested_by,
+            request.status, request.review_note, request.created_at,
+            requester.nickname AS requester_name
+     FROM project_design_document_delete_requests request
+     JOIN users requester ON requester.id = request.requested_by
+     WHERE request.project_id = ?
+       AND request.design_document_id IN (${documentIds.map(() => '?').join(', ')})
+     ORDER BY request.created_at DESC, request.id DESC`,
+    [projectId, ...documentIds]
+  );
   const referencesByGroup = new Map();
   const referencesByVersion = new Map();
   for (const item of references) {
@@ -4443,6 +4459,13 @@ async function getProjectDesignDocuments(req, res) {
     }
     revisionRequestsByGroup.get(item.design_document_id).push(item);
     revisionRequestsByVersion.get(item.design_document_version_id).push(item);
+  }
+  const pendingDeleteRequestByDocument = new Map();
+  for (const request of deleteRequests) {
+    if (request.status !== 'pending') continue;
+    if (!pendingDeleteRequestByDocument.has(Number(request.design_document_id))) {
+      pendingDeleteRequestByDocument.set(Number(request.design_document_id), request);
+    }
   }
   const versionsByGroup = new Map();
   for (const row of rows) {
@@ -4482,6 +4505,16 @@ async function getProjectDesignDocuments(req, res) {
       const groupId = row.version_group_id || row.id;
       return {
         ...row,
+        uploaded_by_me: Number(row.uploaded_by) === Number(req.user.id),
+        delete_mode: ownerSide
+          ? Number(row.uploaded_by) === Number(req.user.id)
+            ? 'direct'
+            : 'owner_review'
+          : Number(row.uploaded_by) === Number(req.user.id)
+            ? 'owner_review_required'
+            : 'not_uploader',
+        pending_delete_request:
+          pendingDeleteRequestByDocument.get(Number(row.id)) || null,
         original_name: normalizeUploadedOriginalName(row.original_name),
         file_url: normalizeDesignStorageUrl(
           canonicalizeDesignStorageUrl(row.file_url, row.storage_key),
@@ -4858,6 +4891,144 @@ async function canDeleteDesignDocument(documentId, connection = db) {
   return { canDelete: true, reason: null };
 }
 
+async function deleteDesignDocumentBatch(connection, projectId, document) {
+  const [batchDocuments] = document.upload_batch_id
+    ? await connection.query(
+        `SELECT id, status FROM project_design_documents
+         WHERE project_id = ? AND upload_batch_id = ? FOR UPDATE`,
+        [projectId, document.upload_batch_id]
+      )
+    : await connection.query(
+        `SELECT id, status FROM project_design_documents
+         WHERE project_id = ? AND id = ? FOR UPDATE`,
+        [projectId, document.id]
+      );
+  for (const item of batchDocuments) {
+    const guard = await canDeleteDesignDocument(item.id, connection);
+    if (!guard.canDelete) return { error: guard.reason };
+  }
+  const ids = batchDocuments.map((item) => item.id);
+  if (ids.length) {
+    const placeholders = ids.map(() => '?').join(', ');
+    await connection.query(
+      `DELETE FROM project_design_document_revision_requests
+       WHERE design_document_version_id IN (${placeholders})
+          OR design_document_id IN (${placeholders})`,
+      [...ids, ...ids]
+    );
+    await connection.query(
+      `DELETE FROM project_design_document_delete_requests
+       WHERE project_id = ? AND design_document_id IN (${placeholders})`,
+      [projectId, ...ids]
+    );
+    await connection.query(
+      `DELETE FROM project_design_documents WHERE project_id = ? AND id IN (${placeholders})`,
+      [projectId, ...ids]
+    );
+  }
+  return { ids };
+}
+
+async function createProjectDesignDocumentDeleteRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const documentId = Number(req.params.documentId);
+  if (await isOwnerSide(projectId, req.user.id)) {
+    return error(res, '业主无需提交删除申请，可直接复核处理', 409);
+  }
+  const [documents] = await db.query(
+    `SELECT id, uploaded_by FROM project_design_documents
+     WHERE id = ? AND project_id = ?`,
+    [documentId, projectId]
+  );
+  const document = documents[0];
+  if (!document) return error(res, '设计资料不存在', 404);
+  if (Number(document.uploaded_by) !== Number(req.user.id)) {
+    return error(res, '只能为自己上传的资料提交删除申请', 403);
+  }
+  const guard = await canDeleteDesignDocument(documentId);
+  if (!guard.canDelete) return error(res, guard.reason, 409);
+  const [existing] = await db.query(
+    `SELECT id FROM project_design_document_delete_requests
+     WHERE project_id = ? AND design_document_id = ? AND status = 'pending'
+     LIMIT 1`,
+    [projectId, documentId]
+  );
+  if (existing[0]) {
+    return success(res, { id: existing[0].id, pending: true }, '删除申请已提交，请等待业主复核');
+  }
+  const [result] = await db.query(
+    `INSERT INTO project_design_document_delete_requests
+       (project_id, design_document_id, requested_by, status)
+     VALUES (?, ?, ?, 'pending')`,
+    [projectId, documentId, req.user.id]
+  );
+  return success(res, { id: result.insertId, pending: true }, '删除申请已提交，请等待业主复核');
+}
+
+async function reviewProjectDesignDocumentDeleteRequest(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const documentId = Number(req.params.documentId);
+  const requestId = Number(req.params.requestId);
+  const action = String(req.body.action || '');
+  if (!['approve', 'reject'].includes(action)) return error(res, '复核操作不正确');
+  if (!(await isOwnerSide(projectId, req.user.id))) {
+    return error(res, '只有业主可以复核删除申请', 403);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [requests] = await connection.query(
+      `SELECT * FROM project_design_document_delete_requests
+       WHERE id = ? AND project_id = ? AND design_document_id = ?
+         AND status = 'pending' FOR UPDATE`,
+      [requestId, projectId, documentId]
+    );
+    if (!requests[0]) {
+      await connection.rollback();
+      return error(res, '删除申请不存在或已处理', 404);
+    }
+    if (action === 'reject') {
+      await connection.query(
+        `UPDATE project_design_document_delete_requests
+         SET status = 'rejected', reviewed_by = ?, reviewed_at = NOW()
+         WHERE id = ?`,
+        [req.user.id, requestId]
+      );
+      await connection.commit();
+      return success(res, { status: 'rejected' }, '已驳回删除申请');
+    }
+    const [documents] = await connection.query(
+      `SELECT id, upload_batch_id FROM project_design_documents
+       WHERE id = ? AND project_id = ? FOR UPDATE`,
+      [documentId, projectId]
+    );
+    if (!documents[0]) {
+      await connection.rollback();
+      return error(res, '设计资料不存在或已删除', 404);
+    }
+    const result = await deleteDesignDocumentBatch(
+      connection,
+      projectId,
+      documents[0]
+    );
+    if (result.error) {
+      await connection.rollback();
+      return error(res, result.error, 409);
+    }
+    await connection.commit();
+    return success(res, { deleted: result.ids.length }, '业主已复核，设计资料已删除');
+  } catch (reviewError) {
+    await connection.rollback();
+    throw reviewError;
+  } finally {
+    connection.release();
+  }
+}
+
 async function deleteProjectDesignDocument(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
@@ -4877,51 +5048,25 @@ async function deleteProjectDesignDocument(req, res) {
   const document = documents[0];
   if (!document) return error(res, '设计资料不存在', 404);
   const ownerSide = await isOwnerSide(projectId, req.user.id);
-  if (!ownerSide && Number(document.uploaded_by) !== Number(req.user.id)) {
-    return error(res, '只能删除自己上传且业主未确认的资料', 403);
+  if (!ownerSide) {
+    return error(res, '请先提交删除申请，等待业主复核确认', 403);
+  }
+  const uploadedByCurrentOwner =
+    Number(document.uploaded_by) === Number(req.user.id);
+  if (!uploadedByCurrentOwner) {
+    return error(res, '请由资料上传者先提交删除申请，再由业主复核', 409);
   }
 
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const [batchDocuments] = document.upload_batch_id
-      ? await connection.query(
-          `SELECT id, status FROM project_design_documents
-           WHERE project_id = ? AND upload_batch_id = ? FOR UPDATE`,
-          [projectId, document.upload_batch_id]
-        )
-      : await connection.query(
-          `SELECT id, status FROM project_design_documents
-           WHERE project_id = ? AND id = ? FOR UPDATE`,
-          [projectId, documentId]
-        );
-    if (batchDocuments.some((item) => item.status === 'confirmed')) {
+    const result = await deleteDesignDocumentBatch(connection, projectId, document);
+    if (result.error) {
       await connection.rollback();
-      return error(res, '业主已确认的资料不能删除', 409);
-    }
-    for (const item of batchDocuments) {
-      const guard = await canDeleteDesignDocument(item.id, connection);
-      if (!guard.canDelete) {
-        await connection.rollback();
-        return error(res, guard.reason, 409);
-      }
-    }
-    const ids = batchDocuments.map((item) => item.id);
-    if (ids.length) {
-      const placeholders = ids.map(() => '?').join(', ');
-      await connection.query(
-        `DELETE FROM project_design_document_revision_requests
-         WHERE design_document_version_id IN (${placeholders})
-            OR design_document_id IN (${placeholders})`,
-        [...ids, ...ids]
-      );
-      await connection.query(
-        `DELETE FROM project_design_documents WHERE project_id = ? AND id IN (${placeholders})`,
-        [projectId, ...ids]
-      );
+      return error(res, result.error, 409);
     }
     await connection.commit();
-    return success(res, { deleted: ids.length }, '设计资料已删除');
+    return success(res, { deleted: result.ids.length }, '设计资料已删除');
   } catch (deleteError) {
     await connection.rollback();
     throw deleteError;
@@ -6929,6 +7074,7 @@ async function reviewProjectProgressChangeRequest(req, res) {
         await connection.commit();
         conflictMessage = result.conflict;
       } else {
+        await recomputeProjectProgressDerivedDates(connection, projectId);
         await connection.query(
           `UPDATE project_progress_change_requests
            SET status = 'approved', target_id = COALESCE(target_id, ?),
@@ -8249,6 +8395,7 @@ async function createProjectProgressItem(req, res) {
     userId: req.user.id,
     role: memberRole,
   });
+  await recomputeProjectProgressDerivedDates(db, projectId);
   await recomputeProjectProgressDerivedStatuses(projectId);
   return success(res, { id: result.insertId }, '子事项已创建');
 }
@@ -8394,6 +8541,7 @@ async function updateProjectProgressItem(req, res) {
       });
     }
   }
+  await recomputeProjectProgressDerivedDates(db, projectId);
   await recomputeProjectProgressDerivedStatuses(projectId);
   return success(res, { updated: true }, '子事项已更新');
 }
@@ -8493,6 +8641,7 @@ async function deleteProjectProgressItem(req, res) {
       'DELETE FROM project_progress_items WHERE project_id = ? AND id IN (?)',
       [projectId, ids]
     );
+    await recomputeProjectProgressDerivedDates(connection, projectId);
     await connection.commit();
 
     const progress = await refreshProjectStageByTaskCompletion(projectId);
@@ -10589,6 +10738,8 @@ module.exports = {
   createProjectDesignDocument,
   canDeleteDesignDocument,
   deleteProjectDesignDocument,
+  createProjectDesignDocumentDeleteRequest,
+  reviewProjectDesignDocumentDeleteRequest,
   updateProjectDesignDocument,
   updateProjectDesignDocumentStatus,
   getProjectHandovers,

@@ -281,6 +281,10 @@ test('owner approval applies the proposed task changes before closing the reques
         statements.push('apply-task');
         return [{ affectedRows: 1 }];
       }
+      if (/SELECT id, task_id, parent_id, planned_start, planned_end/.test(sql)) {
+        assert.deepEqual(params, [9]);
+        return [[]];
+      }
       if (/UPDATE project_progress_change_requests/.test(sql)) {
         assert.equal(params[1], 7);
         assert.equal(params[3], 81);
