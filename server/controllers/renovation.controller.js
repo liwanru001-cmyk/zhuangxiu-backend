@@ -3409,6 +3409,24 @@ async function getProjectCheckIns(req, res) {
   await ensureProjectCheckInCircleSharesTable();
 
   const canViewAllCheckIns = role === 'owner';
+  const query = req.query || {};
+  const paginated = query.limit !== undefined || query.cursor !== undefined || query.date !== undefined;
+  const limit = Math.min(50, Math.max(1, Number.parseInt(query.limit, 10) || 10));
+  const requestedDate = String(query.date || '').trim();
+  if (requestedDate && !/^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    return error(res, '打卡日期不正确');
+  }
+  let cursor = null;
+  if (query.cursor) {
+    try {
+      cursor = JSON.parse(Buffer.from(String(query.cursor), 'base64url').toString('utf8'));
+      if (!cursor.date || !Number.isFinite(Number(cursor.createdAt)) || !Number(cursor.id)) {
+        throw new Error('invalid cursor');
+      }
+    } catch (_) {
+      return error(res, '分页位置已失效，请刷新后重试');
+    }
+  }
   const visibilityClause = canViewAllCheckIns
     ? ''
     : `AND (
@@ -3420,7 +3438,31 @@ async function getProjectCheckIns(req, res) {
              AND visible_share.shared_with_user_id = ?
          )
        )`;
-  const [rows] = await db.query(
+  const params = canViewAllCheckIns
+    ? [projectId]
+    : [projectId, req.user.id, req.user.id];
+  const dateClause = requestedDate ? 'AND checkin.checkin_date = ?' : '';
+  if (requestedDate) params.push(requestedDate);
+  const cursorClause = cursor
+    ? `AND (
+         checkin.checkin_date < ?
+         OR (checkin.checkin_date = ? AND checkin.created_at < ?)
+         OR (checkin.checkin_date = ? AND checkin.created_at = ? AND checkin.id < ?)
+       )`
+    : '';
+  if (cursor) {
+    const cursorCreatedAt = new Date(Number(cursor.createdAt));
+    params.push(
+      cursor.date,
+      cursor.date,
+      cursorCreatedAt,
+      cursor.date,
+      cursorCreatedAt,
+      Number(cursor.id)
+    );
+  }
+  if (paginated) params.push(limit + 1);
+  const [queriedRows] = await db.query(
     `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
             checkin.description, checkin.checkin_date,
             checkin.shared_with_members, checkin.created_at, checkin.updated_at,
@@ -3429,12 +3471,17 @@ async function getProjectCheckIns(req, res) {
      JOIN users user ON user.id = checkin.user_id
      WHERE checkin.project_id = ?
      ${visibilityClause}
-     ORDER BY checkin.checkin_date DESC, checkin.created_at DESC, checkin.id DESC`,
-    canViewAllCheckIns
-      ? [projectId]
-      : [projectId, req.user.id, req.user.id]
+     ${dateClause}
+     ${cursorClause}
+     ORDER BY checkin.checkin_date DESC, checkin.created_at DESC, checkin.id DESC
+     ${paginated ? 'LIMIT ?' : ''}`,
+    params
   );
-  if (!rows.length) return success(res, []);
+  const hasMore = paginated && queriedRows.length > limit;
+  const rows = paginated ? queriedRows.slice(0, limit) : queriedRows;
+  if (!rows.length) {
+    return success(res, paginated ? { items: [], hasMore: false, nextCursor: null } : []);
+  }
   const ids = rows.map((item) => item.id);
   const [media] = await db.query(
     `SELECT id, checkin_id, media_type, media_url, created_at
@@ -3473,15 +3520,83 @@ async function getProjectCheckIns(req, res) {
     ids
   );
   const circleShareSet = new Set(circleShares.map((item) => Number(item.checkin_id)));
-  return success(
-    res,
-    rows.map((item) => ({
+  const items = rows.map((item) => ({
       ...item,
       media: mediaMap.get(item.id) || [],
       shared_members: shareMap.get(item.id) || [],
       shared_to_circle: circleShareSet.has(Number(item.id)),
-    }))
+    }));
+  if (!paginated) return success(res, items);
+  const last = rows.at(-1);
+  const nextCursor = hasMore
+    ? Buffer.from(JSON.stringify({
+        date: dateOnly(last.checkin_date),
+        createdAt: new Date(last.created_at).getTime(),
+        id: Number(last.id),
+      })).toString('base64url')
+    : null;
+  return success(res, { items, hasMore, nextCursor });
+}
+
+async function getProjectCheckInDetail(req, res) {
+  const projectId = Number(req.params.id);
+  const checkInId = Number(req.params.checkInId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!role) return error(res, '项目不存在或无权限', 404);
+  await ensureProjectCheckInCircleSharesTable();
+  const [rows] = await db.query(
+    `SELECT checkin.id, checkin.project_id, checkin.user_id, checkin.role,
+            checkin.description, checkin.checkin_date,
+            checkin.shared_with_members, checkin.created_at, checkin.updated_at,
+            user.nickname AS user_nickname, user.avatar AS user_avatar
+     FROM project_checkins checkin
+     JOIN users user ON user.id = checkin.user_id
+     WHERE checkin.id = ? AND checkin.project_id = ?
+       AND (
+         ? = 'owner'
+         OR checkin.user_id = ?
+         OR EXISTS (
+           SELECT 1 FROM project_checkin_shares visible_share
+           WHERE visible_share.checkin_id = checkin.id
+             AND visible_share.shared_with_user_id = ?
+         )
+       )
+     LIMIT 1`,
+    [checkInId, projectId, role, req.user.id, req.user.id]
   );
+  const item = rows[0];
+  if (!item) return error(res, '打卡记录不存在或无权查看', 404);
+  const [[media], [shares], [circleShares]] = await Promise.all([
+    db.query(
+      `SELECT id, checkin_id, media_type, media_url, created_at
+       FROM project_checkin_media WHERE checkin_id = ? ORDER BY id`,
+      [checkInId]
+    ),
+    db.query(
+      `SELECT share.checkin_id, share.shared_with_user_id AS user_id,
+              user.nickname, user.avatar
+       FROM project_checkin_shares share
+       JOIN users user ON user.id = share.shared_with_user_id
+       WHERE share.checkin_id = ? ORDER BY share.id`,
+      [checkInId]
+    ),
+    db.query(
+      'SELECT checkin_id FROM project_checkin_circle_shares WHERE checkin_id = ? LIMIT 1',
+      [checkInId]
+    ),
+  ]);
+  const host = `${req.protocol}://${req.get('host')}`;
+  for (const mediaItem of media) {
+    if (mediaItem.media_url && String(mediaItem.media_url).startsWith('/uploads/')) {
+      mediaItem.media_url = `${host}/api${mediaItem.media_url}`;
+    }
+  }
+  return success(res, {
+    ...item,
+    media,
+    shared_members: shares,
+    shared_to_circle: Boolean(circleShares[0]),
+  });
 }
 
 async function createProjectCheckIn(req, res) {
@@ -4104,6 +4219,25 @@ async function getProjectExpenses(req, res) {
   if (!(await isOwnerSide(projectId, req.user.id))) {
     return error(res, '无权限查看费用支出', 403);
   }
+  const page = Math.max(1, Number.parseInt(req.query.page, 10) || 1);
+  const pageSize = Math.min(50, Math.max(1, Number.parseInt(req.query.pageSize, 10) || 10));
+  const offset = (page - 1) * pageSize;
+  const status = String(req.query.status || 'all');
+  const requestedCategories = String(req.query.categories || '')
+    .split(',')
+    .map((item) => item.trim())
+    .filter((item) => expenseCategories.has(item));
+  const where = ['expense.project_id = ?', 'expense.created_by = ?'];
+  const params = [projectId, req.user.id];
+  if (status !== 'all' && expenseStatuses.has(status)) {
+    where.push('expense.status = ?');
+    params.push(status);
+  }
+  if (requestedCategories.length) {
+    where.push(`expense.category IN (${requestedCategories.map(() => '?').join(', ')})`);
+    params.push(...requestedCategories);
+  }
+  const whereSql = where.join(' AND ');
   const [rows] = await db.query(
     `SELECT expense.id, expense.project_id, expense.created_by,
             expense.expense_date, expense.category, expense.title,
@@ -4113,9 +4247,10 @@ async function getProjectExpenses(req, res) {
             user.nickname AS creator_name
      FROM project_expenses expense
      JOIN users user ON user.id = expense.created_by
-     WHERE expense.project_id = ? AND expense.created_by = ?
-     ORDER BY expense.expense_date DESC, expense.created_at DESC, expense.id DESC`,
-    [projectId, req.user.id]
+     WHERE ${whereSql}
+     ORDER BY expense.expense_date DESC, expense.created_at DESC, expense.id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
   );
   const [summaryRows] = await db.query(
     `SELECT
@@ -4132,10 +4267,11 @@ async function getProjectExpenses(req, res) {
          ELSE 0
        END), 0) AS pending_amount,
        COUNT(*) AS total_count
-     FROM project_expenses
-     WHERE project_id = ? AND created_by = ?`,
-    [projectId, req.user.id]
+     FROM project_expenses expense
+     WHERE ${whereSql}`,
+    params
   );
+  const total = Number(summaryRows[0]?.total_count || 0);
   if (!rows.length) {
     return success(res, {
       summary: {
@@ -4145,6 +4281,10 @@ async function getProjectExpenses(req, res) {
         total_count: Number(summaryRows[0]?.total_count || 0),
       },
       expenses: [],
+      page,
+      pageSize,
+      total,
+      hasMore: false,
     });
   }
 
@@ -4173,6 +4313,10 @@ async function getProjectExpenses(req, res) {
       amount: Number(item.amount),
       media: mediaMap.get(item.id) || [],
     })),
+    page,
+    pageSize,
+    total,
+    hasMore: offset + rows.length < total,
   });
 }
 
@@ -6226,6 +6370,7 @@ async function getProjectActionItems(projectId, userId) {
   return items.map((item) => ({
     ...item,
     created_by: Number(item.created_by),
+    is_creator: Number(item.created_by) === Number(userId),
     is_assignee: (assigneeMap.get(item.id) || []).some(
       (assignee) => Number(assignee.user_id) === Number(userId)
     ),
@@ -6269,18 +6414,16 @@ async function createProjectActionItem(req, res) {
     await removeUploadedFiles(files);
     return error(res, '请填写事项内容和处理日期');
   }
-  if (!assigneeIds.length) {
-    await removeUploadedFiles(files);
-    return error(res, '请至少选择一位项目成员');
-  }
-  const [members] = await db.query(
-    `SELECT user_id FROM project_members
-     WHERE project_id = ? AND status = 1 AND user_id IN (${assigneeIds.map(() => '?').join(', ')})`,
-    [projectId, ...assigneeIds]
-  );
-  if (members.length !== assigneeIds.length) {
-    await removeUploadedFiles(files);
-    return error(res, '所选处理人包含非项目成员');
+  if (assigneeIds.length) {
+    const [members] = await db.query(
+      `SELECT user_id FROM project_members
+       WHERE project_id = ? AND status = 1 AND user_id IN (${assigneeIds.map(() => '?').join(', ')})`,
+      [projectId, ...assigneeIds]
+    );
+    if (members.length !== assigneeIds.length) {
+      await removeUploadedFiles(files);
+      return error(res, '所选处理人包含非项目成员');
+    }
   }
 
   const connection = await db.getConnection();
@@ -6292,11 +6435,13 @@ async function createProjectActionItem(req, res) {
        VALUES (?, ?, ?, ?, 'pending')`,
       [projectId, req.user.id, content, dueDate]
     );
-    await connection.query(
-      `INSERT INTO project_action_item_assignees (item_id, user_id)
-       VALUES ${assigneeIds.map(() => '(?, ?)').join(', ')}`,
-      assigneeIds.flatMap((userId) => [result.insertId, userId])
-    );
+    if (assigneeIds.length) {
+      await connection.query(
+        `INSERT INTO project_action_item_assignees (item_id, user_id)
+         VALUES ${assigneeIds.map(() => '(?, ?)').join(', ')}`,
+        assigneeIds.flatMap((userId) => [result.insertId, userId])
+      );
+    }
     if (files.length) {
       const host = `${req.protocol}://${req.get('host')}`;
       await connection.query(
@@ -6311,21 +6456,23 @@ async function createProjectActionItem(req, res) {
         ])
       );
     }
-    await connection.query(
-      `INSERT INTO project_action_notifications
-       (item_id, recipient_id, event_type, delivery_status, payload)
-       VALUES ${assigneeIds.map(() => "(?, ?, 'assigned', 'pending', ?)").join(', ')}`,
-      assigneeIds.flatMap((userId) => [
-        result.insertId,
-        userId,
-        JSON.stringify({ project_id: projectId, item_id: result.insertId }),
-      ])
-    );
+    if (assigneeIds.length) {
+      await connection.query(
+        `INSERT INTO project_action_notifications
+         (item_id, recipient_id, event_type, delivery_status, payload)
+         VALUES ${assigneeIds.map(() => "(?, ?, 'assigned', 'pending', ?)").join(', ')}`,
+        assigneeIds.flatMap((userId) => [
+          result.insertId,
+          userId,
+          JSON.stringify({ project_id: projectId, item_id: result.insertId }),
+        ])
+      );
+    }
     await connection.commit();
     return success(
       res,
       { id: result.insertId, notification_status: 'pending' },
-      '事项已创建并加入推送队列'
+      assigneeIds.length ? '事项已创建并加入推送队列' : '工作已创建'
     );
   } catch (itemError) {
     await connection.rollback();
@@ -9545,8 +9692,8 @@ async function createProjectInspection(req, res) {
   const responsibleUserId = req.body.responsible_user_id
     ? Number(req.body.responsible_user_id)
     : null;
-  const description = String(req.body.description || '').trim().slice(0, 500);
   const files = req.files || [];
+  const description = String(req.body.description || '').trim().slice(0, 500);
   if (!(await canAccessProject(projectId, req.user.id))) {
     await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     return error(res, '项目不存在或无权限', 404);
@@ -10362,6 +10509,7 @@ async function reviewProjectInspectionStepRecord(req, res) {
   const responsibleUserId = req.body.responsible_user_id
     ? Number(req.body.responsible_user_id)
     : null;
+  const files = req.files || [];
   if (!['recorded', 'rework'].includes(result)) {
     return error(res, '处理结果不正确');
   }
@@ -10371,6 +10519,10 @@ async function reviewProjectInspectionStepRecord(req, res) {
   if (result === 'rework' && !remark) return error(res, '请填写整改要求');
   if (result === 'rework' && !responsibleUserId) {
     return error(res, '请选择整改成员');
+  }
+  if (files.length > PROJECT_UPLOAD_QUOTAS.inspectionImageLimit) {
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
+    return error(res, `整改图片最多上传 ${PROJECT_UPLOAD_QUOTAS.inspectionImageLimit} 张`);
   }
   if (responsibleUserId) {
     const responsibleMember = await requireActiveProjectMember(
@@ -10392,6 +10544,7 @@ async function reviewProjectInspectionStepRecord(req, res) {
     );
     if (!rows[0]) {
       await connection.rollback();
+      await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
       return error(res, '记录不存在或已处理', 404);
     }
     await connection.query(
@@ -10409,6 +10562,19 @@ async function reviewProjectInspectionStepRecord(req, res) {
       ]
     );
     if (result === 'rework') {
+      if (files.length) {
+        const host = `${req.protocol}://${req.get('host')}`;
+        await connection.query(
+          `INSERT INTO project_inspection_step_record_images
+           (record_id, image_url, uploaded_by)
+           VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
+          files.flatMap((file) => [
+            recordId,
+            file.storageUrl || `${host}/uploads/inspections/${file.filename}`,
+            req.user.id,
+          ])
+        );
+      }
       await emitProjectEvent(ProjectEventType.INSPECTION_REWORK_REQUIRED, {
         projectId,
         actorId: req.user.id,
@@ -10429,6 +10595,7 @@ async function reviewProjectInspectionStepRecord(req, res) {
     );
   } catch (reviewError) {
     await connection.rollback();
+    await Promise.all(files.map((file) => fs.unlink(file.path).catch(() => {})));
     throw reviewError;
   } finally {
     connection.release();
@@ -10721,6 +10888,7 @@ module.exports = {
   getProjectDetail,
   getProjectTasks,
   getProjectCheckIns,
+  getProjectCheckInDetail,
   createProjectCheckIn,
   updateProjectCheckInShares,
   getReceivedProjectCheckInShare,

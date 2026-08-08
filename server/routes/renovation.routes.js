@@ -539,6 +539,14 @@ router.put(
   asyncHandler(controller.reviewProjectInspectionStepRecord)
 );
 router.post(
+  '/projects/:id/inspection-step-records/:recordId/review',
+  ...protectedRoute,
+  inspectionImageUpload.array('images', 3),
+  setUploadedFilePermissions,
+  persistUploadedFiles('uploads/inspections'),
+  asyncHandler(controller.reviewProjectInspectionStepRecord)
+);
+router.post(
   '/projects/:id/inspection-step-records/:recordId/rework-response',
   ...protectedRoute,
   inspectionImageUpload.array('images', 3),
@@ -612,6 +620,11 @@ router.post(
   setUploadedFilePermissions,
   persistUploadedFiles('uploads/check-ins'),
   asyncHandler(controller.createProjectCheckIn)
+);
+router.get(
+  '/projects/:id/check-ins/:checkInId',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectCheckInDetail)
 );
 router.put(
   '/projects/:id/check-ins/:checkInId/share-members',
