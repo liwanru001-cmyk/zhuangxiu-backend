@@ -231,6 +231,8 @@ test('consultation reply creates notification for the other participant', async 
   assert.equal(payload.projectId, 3);
   assert.equal(payload.messageId, 501);
   assert.equal(payload.route, 'consultation_chat');
+  const statusUpdate = connectionCalls.find((item) => item.type === 'status');
+  assert.deepEqual(statusUpdate.params, [42, 7]);
   assert.equal(connectionCalls.at(-2).type, 'commit');
 });
 

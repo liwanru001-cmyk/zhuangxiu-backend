@@ -58,6 +58,38 @@ function parseOssStorageUri(value) {
   return { bucket: match[1], key: match[2] };
 }
 
+function canonicalStorageUri(value) {
+  if (typeof value !== 'string') return value;
+  if (value.startsWith('oss://')) return value;
+  const bucket = String(process.env.OSS_BUCKET || '').trim();
+  if (!bucket || !/^https?:\/\//i.test(value)) return value;
+  try {
+    const parsed = new URL(value);
+    const expectedPrefix = `${bucket}.oss-`;
+    if (parsed.hostname !== `${bucket}.oss.aliyuncs.com`
+      && !parsed.hostname.startsWith(expectedPrefix)) return value;
+    let key = parsed.pathname.replace(/^\/+/, '');
+    try {
+      key = decodeURIComponent(key);
+    } catch (_) {}
+    return key ? `oss://${bucket}/${key}` : value;
+  } catch (_) {
+    return value;
+  }
+}
+
+function canonicalizeStorageUrisDeep(value) {
+  if (typeof value === 'string') return canonicalStorageUri(value);
+  if (value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map(canonicalizeStorageUrisDeep);
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, canonicalizeStorageUrisDeep(item)])
+    );
+  }
+  return value;
+}
+
 function signedUrlForStorageUri(value, expires) {
   const object = parseOssStorageUri(value);
   if (!object || !hasOssConfig()) return value;
@@ -70,6 +102,9 @@ function signedUrlForStorageUri(value, expires) {
 
 function signStorageUrisInString(value) {
   if (typeof value !== 'string' || !value.includes('oss://')) return value;
+  if (value.startsWith('oss://') && parseOssStorageUri(value)) {
+    return signedUrlForStorageUri(value);
+  }
   return value.replace(/oss:\/\/[^/\s"'\\]+\/[^\s"'\\]+/g, (uri) =>
     signedUrlForStorageUri(uri)
   );
@@ -77,6 +112,7 @@ function signStorageUrisInString(value) {
 
 function signStorageUrisDeep(value) {
   if (typeof value === 'string') return signStorageUrisInString(value);
+  if (value instanceof Date) return value;
   if (Array.isArray(value)) return value.map(signStorageUrisDeep);
   if (value && typeof value === 'object') {
     return Object.fromEntries(
@@ -274,6 +310,8 @@ module.exports = {
   uploadedFileUrl,
   checkStorageConnection,
   parseOssStorageUri,
+  canonicalStorageUri,
+  canonicalizeStorageUrisDeep,
   signedUrlForStorageUri,
   signStorageUrisDeep,
   storeDesignDocument,

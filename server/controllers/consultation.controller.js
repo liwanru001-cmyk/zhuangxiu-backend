@@ -154,6 +154,21 @@ async function createUnifiedConsultation(req, res) {
   if (Number(target.recipientUserId) === Number(req.user.id)) {
     return error(res, '不能咨询自己');
   }
+  if (targetType === 'company' && targetId > 0) {
+    const [ownCompanyRows] = await db.query(
+      `SELECT c.id
+       FROM companies c
+       LEFT JOIN company_members member
+         ON member.company_id = c.id
+        AND member.user_id = ?
+        AND member.status = 'active'
+       WHERE c.id = ?
+         AND (c.owner_user_id = ? OR member.id IS NOT NULL)
+       LIMIT 1`,
+      [req.user.id, targetId, req.user.id]
+    );
+    if (ownCompanyRows[0]) return error(res, '不能咨询自己所属的公司');
+  }
 
   const catalog = await resolveBusinessCatalog(businessCatalogId);
   if (!catalog.exists) return error(res, '业务分类不存在', 404);

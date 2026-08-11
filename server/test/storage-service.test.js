@@ -30,3 +30,38 @@ test('local driver leaves OSS identifiers unchanged without credentials', () => 
   if (previous.secret === undefined) delete process.env.OSS_ACCESS_KEY_SECRET;
   else process.env.OSS_ACCESS_KEY_SECRET = previous.secret;
 });
+
+test('canonicalizes this bucket signed HTTPS URL before persistence', () => {
+  const originalBucket = process.env.OSS_BUCKET;
+  process.env.OSS_BUCKET = 'yinnkhome666';
+  try {
+    const signed = 'https://yinnkhome666.oss-rg-china-mainland.aliyuncs.com/uploads/a%20b.jpg?OSSAccessKeyId=test&Expires=1&Signature=a%2Bb%3D';
+    assert.equal(
+      storage.canonicalStorageUri(signed),
+      'oss://yinnkhome666/uploads/a b.jpg'
+    );
+    assert.deepEqual(
+      storage.canonicalizeStorageUrisDeep({ cover_url: signed, external: 'https://example.com/a.jpg' }),
+      {
+        cover_url: 'oss://yinnkhome666/uploads/a b.jpg',
+        external: 'https://example.com/a.jpg',
+      }
+    );
+  } finally {
+    if (originalBucket === undefined) delete process.env.OSS_BUCKET;
+    else process.env.OSS_BUCKET = originalBucket;
+  }
+});
+
+test('deep storage URL transforms preserve database date values', () => {
+  const createdAt = new Date('2026-08-11T03:04:05.000Z');
+  const signed = storage.signStorageUrisDeep({ created_at: createdAt });
+  const canonical = storage.canonicalizeStorageUrisDeep({ created_at: createdAt });
+
+  assert.equal(signed.created_at, createdAt);
+  assert.equal(canonical.created_at, createdAt);
+  assert.equal(
+    JSON.parse(JSON.stringify(signed)).created_at,
+    '2026-08-11T03:04:05.000Z'
+  );
+});

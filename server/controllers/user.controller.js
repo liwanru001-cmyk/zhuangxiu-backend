@@ -1353,13 +1353,18 @@ async function getDesignerConsultations(req, res) {
     return error(res, '当前身份不能查看咨询线索', 403);
   }
   const [rows] = await db.query(
-    `SELECT c.id, c.designer_id, c.target_role, c.user_id, c.content, c.project_city,
+    `SELECT c.id, c.designer_id, c.target_role, c.user_id, c.product_id,
+            c.content, c.project_city,
             c.renovation_stage, c.has_project, c.status,
             c.created_at, c.updated_at,
             u.nickname AS user_nickname, u.avatar AS user_avatar,
-            u.city AS user_city
+            u.city AS user_city,
+            product.name AS product_name
      FROM designer_consultations c
      JOIN users u ON u.id = c.user_id
+     LEFT JOIN merchant_products product
+       ON product.id = c.product_id
+      AND product.merchant_user_id = c.designer_id
      WHERE c.designer_id = ?
      ORDER BY c.created_at DESC, c.id DESC
      LIMIT 100`,
@@ -1592,12 +1597,24 @@ async function sendConsultationMessage(req, res) {
       ]
     );
     if (Number(req.user.id) === Number(consultation.designer_id)) {
-      await connection.query(
-        `UPDATE designer_consultations
-         SET status = 'replied'
-         WHERE id = ? AND status = 'pending'`,
-        [consultationId]
-      );
+      if (consultation.target_role === 'merchant') {
+        await connection.query(
+          `UPDATE designer_consultations
+           SET status = 'replied'
+           WHERE designer_id = ?
+             AND user_id = ?
+             AND target_role = 'merchant'
+             AND status = 'pending'`,
+          [consultation.designer_id, consultation.user_id]
+        );
+      } else {
+        await connection.query(
+          `UPDATE designer_consultations
+           SET status = 'replied'
+           WHERE id = ? AND status = 'pending'`,
+          [consultationId]
+        );
+      }
     }
     await connection.commit();
     return success(res, { id: result.insertId }, '消息已发送');

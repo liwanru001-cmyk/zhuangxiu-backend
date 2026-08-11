@@ -354,12 +354,14 @@ test('company workbench summary uses explicit and company-member project links',
         assert.deepEqual(params, [42, 9, 42]);
         return [[{ id: 9, owner_user_id: 42, member_role: null }]];
       }
-      if (/COUNT\(DISTINCT item_key\) AS total/.test(sql)) {
+      if (/COUNT\(DISTINCT item\.id\) AS total/.test(sql)) {
         assert.match(sql, /project_participants_ext ppe/);
         assert.match(sql, /ppe\.company_id = \?/);
         assert.match(sql, /participant_type = 'company'/);
         assert.match(sql, /JOIN project_members project_member/);
         assert.match(sql, /company_member\.company_id = \?/);
+        assert.match(sql, /item\.due_date <= CURDATE\(\)/);
+        assert.doesNotMatch(sql, /renovation_tasks/);
         assert.deepEqual(params, [9, 9, 9, 9]);
         return [[{
           total: 18,
@@ -378,32 +380,33 @@ test('company workbench summary uses explicit and company-member project links',
       }
       if (/nearest_due_at/.test(sql)) {
         assert.match(sql, /project_progress_items item/);
-        assert.match(sql, /item\.status NOT IN \('completed', 'delayed'\)/);
+        assert.match(sql, /item\.status <> 'completed'/);
+        assert.doesNotMatch(sql, /project_action_items action/);
         assert.deepEqual(params, [9, 9, 9]);
         return [[{
           total: 4,
           project_count: 3,
           nearest_due_at: new Date(Date.now() + 24 * 3600000).toISOString(),
+          overdue_count: 1,
+          upcoming_count: 3,
         }]];
       }
-      if (/COUNT\(DISTINCT handover\.project_id\) AS project_count/.test(sql)) {
-        assert.match(sql, /handover\.status = 'pending_confirm'/);
+      if (/inspection_issues/.test(sql) && /COUNT\(\*\) AS total/.test(sql)) {
+        assert.match(sql, /inspection\.status = 'rework'/);
+        assert.match(sql, /record\.status = 'rework'/);
         assert.deepEqual(params, [9, 9, 9]);
         return [[{
           total: 3,
           project_count: 3,
-          oldest_submitted_at: new Date(Date.now() - 2 * 86400000).toISOString(),
+          oldest_updated_at: new Date(Date.now() - 2 * 86400000).toISOString(),
         }]];
       }
-      if (sql.includes("SELECT 'task' AS item_type")
-        && sql.includes('FROM renovation_tasks task')
-        && sql.includes('task.planned_start <= CURDATE()')) {
-        assert.match(sql, /project_participants_ext ppe/);
-        assert.match(sql, /responsible\.id = project\.user_id/);
-        assert.doesNotMatch(sql, /ppe_resp\./);
-        assert.deepEqual(params, [9, 9, 9]);
+      if (sql.includes("SELECT 'action' AS item_type")
+        && sql.includes('FROM project_action_items item')) {
+        assert.deepEqual(params, [9, 9, 9, 9]);
+        assert.match(sql, /item\.due_date <= CURDATE\(\)/);
         return [[{
-          item_type: 'task',
+          item_type: 'action',
           item_id: 101,
           title: '确认水电验收',
           project_id: 11,
@@ -415,11 +418,6 @@ test('company workbench summary uses explicit and company-member project links',
           submitted_at: new Date().toISOString(),
           waiting_hours: null,
         }]];
-      }
-      if (sql.includes("SELECT 'action' AS item_type")
-        && sql.includes('FROM project_action_items item')) {
-        assert.deepEqual(params, [9, 9, 9, 9]);
-        return [[]];
       }
       if (/SELECT 'consultation' AS item_type/.test(sql)) {
         assert.deepEqual(params, [9, 9]);
@@ -447,7 +445,7 @@ test('company workbench summary uses explicit and company-member project links',
       if (sql.includes("SELECT 'progress' AS item_type")
         && sql.includes('FROM project_progress_items item')) {
         assert.match(sql, /project_progress_items item/);
-        assert.match(sql, /item\.status NOT IN \('completed', 'delayed'\)/);
+        assert.match(sql, /item\.status <> 'completed'/);
         assert.doesNotMatch(sql, /ppe_resp\./);
         assert.deepEqual(params, [9, 9, 9]);
         return [[{
@@ -464,22 +462,17 @@ test('company workbench summary uses explicit and company-member project links',
           waiting_hours: null,
         }]];
       }
-      if (sql.includes("SELECT 'action' AS item_type")
-        && sql.includes('FROM project_action_items action')) {
-        assert.deepEqual(params, [9, 9, 9, 9]);
-        return [[]];
-      }
-      if (/SELECT 'handover' AS item_type/.test(sql)) {
+      if (/SELECT issue_items\.\*/.test(sql)) {
         assert.deepEqual(params, [9, 9, 9]);
         return [[{
-          item_type: 'handover',
+          item_type: 'inspection',
           item_id: 401,
-          title: '设计交底确认',
+          title: '水电验收问题',
           project_id: 13,
           project_name: '湖滨工地',
           person_id: 71,
           person_name: '项目经理赵六',
-          person_role: '待确认人',
+          person_role: '整改负责人',
           due_at: null,
           submitted_at: new Date(Date.now() - 2 * 86400000).toISOString(),
           waiting_hours: null,
@@ -502,16 +495,17 @@ test('company workbench summary uses explicit and company-member project links',
   assert.equal(res.payload.data.todayTodos.projectCount, 6);
   assert.equal(res.payload.data.todayTodos.memberCount, 4);
   assert.equal(res.payload.data.todayTodos.ownerCount, 3);
-  assert.match(res.payload.data.todayTodos.summary, /今日共18项待办/);
+  assert.match(res.payload.data.todayTodos.summary, /共18项今日到期或已逾期待办/);
   assert.equal(res.payload.data.pendingConsultations.total, 5);
   assert.equal(res.payload.data.upcomingDeadlines.total, 4);
-  assert.equal(res.payload.data.pendingHandovers.total, 3);
+  assert.match(res.payload.data.upcomingDeadlines.summary, /已延期1项/);
+  assert.equal(res.payload.data.inspectionIssues.total, 3);
   assert.equal(res.payload.data.todayTodos.items[0].projectName, '星河湾工地');
   assert.equal(res.payload.data.todayTodos.items[0].personName, '业主张三');
   assert.equal(res.payload.data.pendingConsultations.items[0].personRole, '咨询用户');
   assert.equal(res.payload.data.upcomingDeadlines.items[0].projectName, '江南里工地');
-  assert.equal(res.payload.data.pendingHandovers.items[0].personName, '项目经理赵六');
-  assert.equal(queries.length, 12);
+  assert.equal(res.payload.data.inspectionIssues.items[0].personName, '项目经理赵六');
+  assert.equal(queries.length, 10);
 });
 
 test('company workbench summary rejects ordinary company members', async () => {
@@ -534,6 +528,88 @@ test('company workbench summary rejects ordinary company members', async () => {
   assert.equal(res.payload.message, '当前成员不能查看公司工作台');
 });
 
+test('company deadline detail lists only construction tasks and progress items', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT c\.id, c\.owner_user_id, cm\.member_role/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9, owner_user_id: 42, member_role: null }]];
+      }
+      assert.match(sql, /FROM renovation_tasks task/);
+      assert.match(sql, /FROM project_progress_items item/);
+      assert.doesNotMatch(sql, /FROM project_action_items/);
+      assert.match(sql, /ORDER BY deadline_items\.due_at ASC/);
+      assert.deepEqual(params, [9, 9, 9]);
+      return [[{
+        item_type: 'task',
+        item_id: 7,
+        title: '木工施工',
+        project_id: 11,
+        project_name: '星河湾工地',
+        person_id: 42,
+        person_name: '业主张三',
+        person_role: '业主',
+        due_at: '2026-08-03',
+        submitted_at: '2026-08-01',
+        waiting_hours: null,
+      }]];
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.listCompanyDeadlineItems({
+    user: { id: 42 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.length, 1);
+  assert.equal(res.payload.data[0].type, 'task');
+  assert.equal(res.payload.data[0].projectName, '星河湾工地');
+});
+
+test('company inspection issue detail lists inspection and step rework records', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/SELECT c\.id, c\.owner_user_id, cm\.member_role/.test(sql)) {
+        assert.deepEqual(params, [42, 9, 42]);
+        return [[{ id: 9, owner_user_id: 42, member_role: null }]];
+      }
+      assert.match(sql, /FROM project_inspections inspection/);
+      assert.match(sql, /FROM project_inspection_step_records record/);
+      assert.match(sql, /inspection\.status = 'rework'/);
+      assert.match(sql, /record\.status = 'rework'/);
+      assert.deepEqual(params, [9, 9, 9]);
+      return [[{
+        item_type: 'inspection_step',
+        item_id: 8,
+        title: '闭水试验待整改',
+        project_id: 11,
+        project_name: '星河湾工地',
+        person_id: 61,
+        person_name: '项目经理王五',
+        person_role: '整改负责人',
+        due_at: null,
+        submitted_at: '2026-08-11',
+        waiting_hours: null,
+      }]];
+    },
+  };
+  const controller = loadController('../controllers/marketplace.controller', dbMock);
+  const res = mockResponse();
+
+  await controller.listCompanyInspectionIssues({
+    user: { id: 42 },
+    params: { id: '9' },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.data.length, 1);
+  assert.equal(res.payload.data[0].type, 'inspection_step');
+  assert.equal(res.payload.data[0].personName, '项目经理王五');
+});
+
 test('company workbench summary tolerates detail query schema drift', async () => {
   const dbMock = {
     async query(sql, params) {
@@ -541,7 +617,7 @@ test('company workbench summary tolerates detail query schema drift', async () =
         assert.deepEqual(params, [42, 9, 42]);
         return [[{ id: 9, owner_user_id: 42, member_role: null }]];
       }
-      if (/COUNT\(DISTINCT item_key\) AS total/.test(sql)) {
+      if (/COUNT\(DISTINCT item\.id\) AS total/.test(sql)) {
         return [[{ total: 1, project_count: 1, member_count: 0, owner_count: 0 }]];
       }
       if (/COUNT\(\*\) AS total[\s\S]*FROM consultation_targets target/.test(sql)) {
@@ -550,10 +626,11 @@ test('company workbench summary tolerates detail query schema drift', async () =
       if (/nearest_due_at/.test(sql)) {
         return [[{ total: 0, project_count: 0, nearest_due_at: null }]];
       }
-      if (/COUNT\(DISTINCT handover\.project_id\) AS project_count/.test(sql)) {
-        return [[{ total: 0, project_count: 0, oldest_submitted_at: null }]];
+      if (/inspection_issues/.test(sql) && /COUNT\(\*\) AS total/.test(sql)) {
+        return [[{ total: 0, project_count: 0, oldest_updated_at: null }]];
       }
-      if (/SELECT '(task|action|progress|consultation|handover)' AS item_type/.test(sql)) {
+      if (/SELECT '(task|action|progress|consultation)' AS item_type/.test(sql)
+        || /SELECT issue_items\.\*/.test(sql)) {
         const err = new Error('Unknown column');
         err.code = 'ER_BAD_FIELD_ERROR';
         throw err;
@@ -574,7 +651,7 @@ test('company workbench summary tolerates detail query schema drift', async () =
   assert.deepEqual(res.payload.data.todayTodos.items, []);
   assert.deepEqual(res.payload.data.pendingConsultations.items, []);
   assert.deepEqual(res.payload.data.upcomingDeadlines.items, []);
-  assert.deepEqual(res.payload.data.pendingHandovers.items, []);
+  assert.deepEqual(res.payload.data.inspectionIssues.items, []);
 });
 
 test('legacy company review submit is disabled after evaluation redesign', async () => {

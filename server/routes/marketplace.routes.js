@@ -1,5 +1,6 @@
 const express = require('express');
 const controller = require('../controllers/marketplace.controller');
+const publicSharePreviewController = require('../controllers/public-share-preview.controller');
 const asyncHandler = require('../utils/async-handler');
 const auth = require('../middleware/auth');
 const optionalAuth = require('../middleware/optional-auth');
@@ -57,6 +58,7 @@ const companyImageUpload = multer({
 });
 
 router.get('/business-catalog', asyncHandler(controller.listBusinessCatalog));
+router.get('/public/share-preview', asyncHandler(publicSharePreviewController.getSharePreview));
 router.get('/marketplace/search', asyncHandler(controller.listMarketplaceSearch));
 router.get('/companies/mine', asyncHandler(auth), asyncHandler(controller.listMyCompanies));
 router.get('/companies/my-project-companies', asyncHandler(auth), asyncHandler(controller.listMyProjectCompanies));
@@ -81,6 +83,8 @@ router.get('/projects/:projectId/companies/:companyId/evaluation', asyncHandler(
 router.post('/projects/:projectId/companies/:companyId/evaluation-feedback', asyncHandler(auth), asyncHandler(controller.submitCompanyEvaluationFeedback));
 router.post('/consultations/:id/evaluation-feedback', asyncHandler(auth), asyncHandler(controller.submitConsultationEvaluationFeedback));
 router.get('/companies/:id/workbench-summary', asyncHandler(auth), asyncHandler(controller.getCompanyWorkbenchSummary));
+router.get('/companies/:id/deadline-items', asyncHandler(auth), asyncHandler(controller.listCompanyDeadlineItems));
+router.get('/companies/:id/inspection-issues', asyncHandler(auth), asyncHandler(controller.listCompanyInspectionIssues));
 router.get('/companies/:id/projects', asyncHandler(auth), asyncHandler(controller.listCompanyProjects));
 router.get('/companies/:id/projects/:projectId/detail', asyncHandler(auth), asyncHandler(controller.getCompanyProjectDetail));
 router.post('/companies/:id/projects', asyncHandler(auth), asyncHandler(projectContextGate), asyncHandler(controller.attachCompanyProject));

@@ -47,6 +47,14 @@ app.use(helmet({
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+// Convert only this application's signed OSS HTTPS URLs back to stable
+// oss:// identifiers before controllers persist request bodies.
+app.use((req, res, next) => {
+  if (req.body && typeof req.body === 'object') {
+    req.body = storageService.canonicalizeStorageUrisDeep(req.body);
+  }
+  next();
+});
 // Database records keep stable oss:// object identifiers. Only API responses
 // receive short-lived signed URLs, so a leaked response does not expose files forever.
 app.use((req, res, next) => {
