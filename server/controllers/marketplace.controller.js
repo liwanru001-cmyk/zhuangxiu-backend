@@ -3079,57 +3079,56 @@ async function listCompanyDeadlineItems(req, res) {
   if (!access.exists) return error(res, '公司不存在', 404);
   if (!access.canView) return error(res, '当前成员不能查看公司工作台', 403);
 
-  const [rows] = await db.query(
+  const [taskRows] = await db.query(
     `${companyProjectsCte}
-     SELECT deadline_items.*
-     FROM (
-       SELECT 'task' AS item_type,
-              task.id AS item_id,
-              task.task_name AS title,
-              task.project_id,
-              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
-              responsible.id AS person_id,
-              responsible.nickname AS person_name,
-              '业主' AS person_role,
-              task.planned_end AS due_at,
-              task.updated_at AS submitted_at,
-              NULL AS waiting_hours
-       FROM renovation_tasks task
-       JOIN company_projects cp ON cp.project_id = task.project_id
-       JOIN renovation_projects project ON project.id = task.project_id
-       LEFT JOIN users responsible ON responsible.id = project.user_id
-       WHERE task.status <> 2
-         AND task.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-
-       UNION ALL
-
-       SELECT 'progress' AS item_type,
-              item.id AS item_id,
-              item.title,
-              item.project_id,
-              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
-              creator.id AS person_id,
-              creator.nickname AS person_name,
-              '创建人' AS person_role,
-              item.planned_end AS due_at,
-              item.updated_at AS submitted_at,
-              NULL AS waiting_hours
-       FROM project_progress_items item
-       JOIN company_projects cp ON cp.project_id = item.project_id
-       JOIN renovation_projects project ON project.id = item.project_id
-       LEFT JOIN users creator ON creator.id = item.created_by
-       WHERE item.status <> 'completed'
-         AND item.planned_end IS NOT NULL
-         AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
-     ) deadline_items
-     ORDER BY deadline_items.due_at ASC,
-              deadline_items.project_id ASC,
-              deadline_items.item_id ASC
+     SELECT 'task' AS item_type,
+            task.id AS item_id,
+            task.task_name AS title,
+            task.project_id,
+            COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+            NULL AS person_id,
+            NULL AS person_name,
+            NULL AS person_role,
+            task.planned_end AS due_at,
+            NULL AS submitted_at,
+            NULL AS waiting_hours
+     FROM renovation_tasks task
+     JOIN company_projects cp ON cp.project_id = task.project_id
+     JOIN renovation_projects project ON project.id = task.project_id
+     WHERE task.status <> 2
+       AND task.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+     ORDER BY task.planned_end ASC, task.id ASC
      LIMIT 200`,
     [companyId, companyId, companyId]
   );
 
-  return success(res, rows.map(mapWorkbenchItem));
+  const [progressRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT 'progress' AS item_type,
+            item.id AS item_id,
+            item.title,
+            item.project_id,
+            COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+            NULL AS person_id,
+            NULL AS person_name,
+            NULL AS person_role,
+            item.planned_end AS due_at,
+            NULL AS submitted_at,
+            NULL AS waiting_hours
+     FROM project_progress_items item
+     JOIN company_projects cp ON cp.project_id = item.project_id
+     JOIN renovation_projects project ON project.id = item.project_id
+     WHERE item.status <> 'completed'
+       AND item.planned_end IS NOT NULL
+       AND item.planned_end <= DATE_ADD(CURDATE(), INTERVAL 3 DAY)
+     ORDER BY item.planned_end ASC, item.id ASC
+     LIMIT 200`,
+    [companyId, companyId, companyId]
+  );
+
+  return success(res, sortWorkbenchRows([...taskRows, ...progressRows])
+    .slice(0, 200)
+    .map(mapWorkbenchItem));
 }
 
 async function listCompanyInspectionIssues(req, res) {
@@ -3140,63 +3139,59 @@ async function listCompanyInspectionIssues(req, res) {
   if (!access.exists) return error(res, '公司不存在', 404);
   if (!access.canView) return error(res, '当前成员不能查看公司工作台', 403);
 
-  const [rows] = await db.query(
+  const [inspectionRows] = await db.query(
     `${companyProjectsCte}
-     SELECT issue_items.*
-     FROM (
-       SELECT 'inspection' AS item_type,
-              inspection.id AS item_id,
-              COALESCE(NULLIF(inspection.title, ''), task.task_name,
-                       progress.title, '验收问题') AS title,
-              inspection.project_id,
-              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
-              responsible.id AS person_id,
-              responsible.nickname AS person_name,
-              '整改负责人' AS person_role,
-              NULL AS due_at,
-              inspection.updated_at AS submitted_at,
-              NULL AS waiting_hours
-       FROM project_inspections inspection
-       JOIN company_projects cp ON cp.project_id = inspection.project_id
-       JOIN renovation_projects project ON project.id = inspection.project_id
-       LEFT JOIN renovation_tasks task ON task.id = inspection.task_id
-       LEFT JOIN project_progress_items progress ON progress.id = inspection.progress_item_id
-       LEFT JOIN users responsible ON responsible.id = inspection.responsible_user_id
-       WHERE inspection.status = 'rework'
-          OR (
-            inspection.status = 'pending'
-            AND COALESCE(inspection.member_role, 'owner') IN ('owner', 'owner_member')
-            AND inspection.submission_round = 1
-            AND inspection.responsible_user_id IS NOT NULL
-          )
-
-       UNION ALL
-
-       SELECT 'inspection_step' AS item_type,
-              record.id AS item_id,
-              COALESCE(NULLIF(record.step_title, ''), '验收步骤问题') AS title,
-              record.project_id,
-              COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
-              target_user.id AS person_id,
-              target_user.nickname AS person_name,
-              '整改负责人' AS person_role,
-              NULL AS due_at,
-              record.updated_at AS submitted_at,
-              NULL AS waiting_hours
-       FROM project_inspection_step_records record
-       JOIN company_projects cp ON cp.project_id = record.project_id
-       JOIN renovation_projects project ON project.id = record.project_id
-       LEFT JOIN users target_user ON target_user.id = record.target_user_id
-       WHERE record.status = 'rework'
-     ) issue_items
-     ORDER BY issue_items.submitted_at ASC,
-              issue_items.project_id ASC,
-              issue_items.item_id ASC
+     SELECT 'inspection' AS item_type,
+            inspection.id AS item_id,
+            COALESCE(NULLIF(inspection.title, ''), '验收问题') AS title,
+            inspection.project_id,
+            COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+            NULL AS person_id,
+            NULL AS person_name,
+            NULL AS person_role,
+            NULL AS due_at,
+            inspection.updated_at AS submitted_at,
+            NULL AS waiting_hours
+     FROM project_inspections inspection
+     JOIN company_projects cp ON cp.project_id = inspection.project_id
+     JOIN renovation_projects project ON project.id = inspection.project_id
+     WHERE inspection.status = 'rework'
+        OR (
+          inspection.status = 'pending'
+          AND COALESCE(inspection.member_role, 'owner') IN ('owner', 'owner_member')
+          AND inspection.submission_round = 1
+          AND inspection.responsible_user_id IS NOT NULL
+        )
+     ORDER BY inspection.updated_at ASC, inspection.id ASC
      LIMIT 200`,
     [companyId, companyId, companyId]
   );
 
-  return success(res, rows.map(mapWorkbenchItem));
+  const [stepRows] = await db.query(
+    `${companyProjectsCte}
+     SELECT 'inspection_step' AS item_type,
+            record.id AS item_id,
+            COALESCE(NULLIF(record.step_title, ''), '验收步骤问题') AS title,
+            record.project_id,
+            COALESCE(NULLIF(project.project_name, ''), '装修项目') AS project_name,
+            NULL AS person_id,
+            NULL AS person_name,
+            NULL AS person_role,
+            NULL AS due_at,
+            record.updated_at AS submitted_at,
+            NULL AS waiting_hours
+     FROM project_inspection_step_records record
+     JOIN company_projects cp ON cp.project_id = record.project_id
+     JOIN renovation_projects project ON project.id = record.project_id
+     WHERE record.status = 'rework'
+     ORDER BY record.updated_at ASC, record.id ASC
+     LIMIT 200`,
+    [companyId, companyId, companyId]
+  );
+
+  return success(res, sortWorkbenchRows([...inspectionRows, ...stepRows])
+    .slice(0, 200)
+    .map(mapWorkbenchItem));
 }
 
 async function attachCompanyProject(req, res) {

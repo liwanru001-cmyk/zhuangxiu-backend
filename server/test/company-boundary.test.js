@@ -535,12 +535,8 @@ test('company deadline detail lists only construction tasks and progress items',
         assert.deepEqual(params, [42, 9, 42]);
         return [[{ id: 9, owner_user_id: 42, member_role: null }]];
       }
-      assert.match(sql, /FROM renovation_tasks task/);
-      assert.match(sql, /FROM project_progress_items item/);
-      assert.doesNotMatch(sql, /FROM project_action_items/);
-      assert.match(sql, /ORDER BY deadline_items\.due_at ASC/);
       assert.deepEqual(params, [9, 9, 9]);
-      return [[{
+      if (/FROM renovation_tasks task/.test(sql)) return [[{
         item_type: 'task',
         item_id: 7,
         title: '木工施工',
@@ -553,6 +549,9 @@ test('company deadline detail lists only construction tasks and progress items',
         submitted_at: '2026-08-01',
         waiting_hours: null,
       }]];
+      assert.match(sql, /FROM project_progress_items item/);
+      assert.doesNotMatch(sql, /FROM project_action_items/);
+      return [[]];
     },
   };
   const controller = loadController('../controllers/marketplace.controller', dbMock);
@@ -576,11 +575,13 @@ test('company inspection issue detail lists inspection and step rework records',
         assert.deepEqual(params, [42, 9, 42]);
         return [[{ id: 9, owner_user_id: 42, member_role: null }]];
       }
-      assert.match(sql, /FROM project_inspections inspection/);
-      assert.match(sql, /FROM project_inspection_step_records record/);
-      assert.match(sql, /inspection\.status = 'rework'/);
-      assert.match(sql, /record\.status = 'rework'/);
       assert.deepEqual(params, [9, 9, 9]);
+      if (/FROM project_inspections inspection/.test(sql)) {
+        assert.match(sql, /inspection\.status = 'rework'/);
+        return [[]];
+      }
+      assert.match(sql, /FROM project_inspection_step_records record/);
+      assert.match(sql, /record\.status = 'rework'/);
       return [[{
         item_type: 'inspection_step',
         item_id: 8,
