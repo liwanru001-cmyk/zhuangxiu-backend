@@ -1263,6 +1263,8 @@ async function ensureProjectMaterialTables() {
       actual_unit_price DECIMAL(12,2) DEFAULT NULL,
       supplier_type VARCHAR(32) NOT NULL DEFAULT 'other',
       arrival_status VARCHAR(32) NOT NULL DEFAULT 'pending',
+      arrival_date DATE DEFAULT NULL,
+      merchant_product_id BIGINT UNSIGNED DEFAULT NULL,
       confirm_status VARCHAR(32) NOT NULL DEFAULT 'pending',
       note TEXT DEFAULT NULL,
       created_by BIGINT UNSIGNED NOT NULL,
@@ -1274,7 +1276,8 @@ async function ensureProjectMaterialTables() {
       KEY idx_material_project_category (project_id, category, created_at),
       KEY idx_material_arrival (project_id, arrival_status, updated_at),
       KEY idx_material_confirm (project_id, confirm_status, updated_at),
-      KEY idx_material_creator (created_by, created_at)
+      KEY idx_material_creator (created_by, created_at),
+      KEY idx_material_product (merchant_product_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   const [materialColumns] = await pool.query(`
@@ -1287,6 +1290,31 @@ async function ensureProjectMaterialTables() {
     await pool.query(`
       ALTER TABLE project_material_items
       ADD COLUMN space_tags JSON DEFAULT NULL AFTER location
+    `);
+  }
+  const [arrivalDateColumns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_material_items'
+      AND COLUMN_NAME = 'arrival_date'
+  `);
+  if (!arrivalDateColumns.length) {
+    await pool.query(`
+      ALTER TABLE project_material_items
+      ADD COLUMN arrival_date DATE DEFAULT NULL AFTER arrival_status
+    `);
+  }
+  const [materialProductColumns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE()
+      AND TABLE_NAME = 'project_material_items'
+      AND COLUMN_NAME = 'merchant_product_id'
+  `);
+  if (!materialProductColumns.length) {
+    await pool.query(`
+      ALTER TABLE project_material_items
+      ADD COLUMN merchant_product_id BIGINT UNSIGNED DEFAULT NULL AFTER arrival_date,
+      ADD KEY idx_material_product (merchant_product_id)
     `);
   }
   await pool.query(`

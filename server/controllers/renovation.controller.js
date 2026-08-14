@@ -5849,15 +5849,22 @@ async function getProjectMaterials(req, res) {
     `SELECT material.id, material.project_id, material.name, material.category,
             material.location, material.space_tags, material.brand_model, material.quantity,
             material.unit, material.budget_unit_price, material.actual_unit_price,
-            material.supplier_type, material.arrival_status,
+            material.supplier_type, material.arrival_status, material.arrival_date,
+            material.merchant_product_id,
             material.confirm_status, material.note, material.created_by,
             material.confirmed_by, material.confirmed_at,
             material.created_at, material.updated_at,
             creator.nickname AS creator_name,
-            confirmer.nickname AS confirmer_name
+            confirmer.nickname AS confirmer_name,
+            product.merchant_user_id AS product_merchant_user_id,
+            product.name AS product_name, product.cover_url AS product_cover_url,
+            product.image_urls AS product_image_urls, product.summary AS product_summary,
+            product.brand AS product_brand, product.spec AS product_spec,
+            product.price_text AS product_price_text, product.status AS product_status
      FROM project_material_items material
      JOIN users creator ON creator.id = material.created_by
      LEFT JOIN users confirmer ON confirmer.id = material.confirmed_by
+     LEFT JOIN merchant_products product ON product.id = material.merchant_product_id
      WHERE material.project_id = ?
      ORDER BY FIELD(material.confirm_status, 'pending', 'confirmed'),
               FIELD(material.arrival_status, 'pending', 'ordered', 'arrived', 'installed', 'returned'),
@@ -5867,10 +5874,13 @@ async function getProjectMaterials(req, res) {
   if (!rows.length) return success(res, []);
   const ids = rows.map((item) => item.id);
   const [media] = await db.query(
-    `SELECT id, material_id, media_type, media_url, uploaded_by, created_at
-     FROM project_material_media
+    `SELECT media.id, media.material_id, media.media_type, media.media_url,
+            media.uploaded_by, media.created_at,
+            uploader.nickname AS uploader_name
+     FROM project_material_media media
+     LEFT JOIN users uploader ON uploader.id = media.uploaded_by
      WHERE material_id IN (${ids.map(() => '?').join(', ')})
-     ORDER BY id`,
+     ORDER BY media.id`,
     ids
   );
   const mediaMap = new Map();
@@ -5917,6 +5927,18 @@ async function getProjectMaterials(req, res) {
     res,
     rows.map((item) => ({
       ...item,
+      merchant_product: item.product_name ? {
+        id: Number(item.merchant_product_id),
+        merchant_user_id: Number(item.product_merchant_user_id),
+        name: item.product_name,
+        cover_url: item.product_cover_url || '',
+        image_urls: item.product_image_urls || [],
+        summary: item.product_summary || '',
+        brand: item.product_brand || '',
+        spec: item.product_spec || '',
+        price_text: item.product_price_text || '',
+        status: item.product_status || '',
+      } : null,
       budget_total: multiplyMoney(item.quantity, item.budget_unit_price),
       actual_total: multiplyMoney(item.quantity, item.actual_unit_price),
       media: mediaMap.get(item.id) || [],
@@ -6058,7 +6080,10 @@ async function createProjectMaterial(req, res) {
   const actualUnitPrice = parseOptionalNumber(req.body.actual_unit_price);
   const supplierType = String(req.body.supplier_type || 'other');
   const arrivalStatus = String(req.body.arrival_status || 'pending');
+  const arrivalDate = String(req.body.arrival_date || '').trim();
+  const merchantProductId = Number(req.body.merchant_product_id || 0) || null;
   const note = String(req.body.note || '').trim().slice(0, 1000);
+  const linkUrl = String(req.body.link_url || '').trim().slice(0, 500);
 
   if (!name) {
     await removeUploadedFiles(files);
@@ -6079,6 +6104,29 @@ async function createProjectMaterial(req, res) {
   if (!materialArrivalStatuses.has(arrivalStatus)) {
     await removeUploadedFiles(files);
     return error(res, '到场状态不正确');
+  }
+  if (arrivalDate && !/^\d{4}-\d{2}-\d{2}$/.test(arrivalDate)) {
+    await removeUploadedFiles(files);
+    return error(res, '进场日期格式不正确');
+  }
+  if (merchantProductId) {
+    const [products] = await db.query(
+      `SELECT product.id
+       FROM merchant_products product
+       WHERE product.id = ? AND product.status = 'active'
+         AND EXISTS (
+           SELECT 1 FROM user_roles merchant_role
+           WHERE merchant_role.user_id = product.merchant_user_id
+             AND merchant_role.role = 'merchant'
+             AND merchant_role.verified_status = 'approved'
+             AND (merchant_role.verified_until IS NULL OR merchant_role.verified_until >= NOW())
+         )`,
+      [merchantProductId]
+    );
+    if (!products.length) {
+      await removeUploadedFiles(files);
+      return error(res, '所选商品已下架或不可查看', 400);
+    }
   }
   const invalidSpaceTag = spaceTags.find((tag) => !materialSpaceTags.has(tag));
   if (invalidSpaceTag) {
@@ -6105,8 +6153,8 @@ async function createProjectMaterial(req, res) {
       `INSERT INTO project_material_items
        (project_id, name, category, location, space_tags, brand_model, quantity, unit,
         budget_unit_price, actual_unit_price, supplier_type, arrival_status,
-        confirm_status, note, created_by)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
+        arrival_date, merchant_product_id, confirm_status, note, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?, ?)`,
       [
         projectId,
         name,
@@ -6120,6 +6168,8 @@ async function createProjectMaterial(req, res) {
         actualUnitPrice,
         supplierType,
         arrivalStatus,
+        arrivalDate || null,
+        merchantProductId,
         note || null,
         req.user.id,
       ]
