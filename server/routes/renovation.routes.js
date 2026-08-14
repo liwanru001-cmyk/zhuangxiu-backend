@@ -81,7 +81,7 @@ const inspectionImageUpload = multer({
       );
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024, files: 3 },
+  limits: { fileSize: 15 * 1024 * 1024, files: 9 },
   fileFilter: (req, file, callback) => {
     callback(null, file.mimetype.startsWith('image/'));
   },
@@ -663,7 +663,7 @@ router.get(
 router.post(
   '/projects/:id/expenses',
   ...protectedRoute,
-  expenseMediaUpload.array('receipts', 3),
+  expenseMediaUpload.array('receipts', 9),
   setUploadedFilePermissions,
   persistUploadedFiles('uploads/expenses'),
   asyncHandler(controller.createProjectExpense)
@@ -671,6 +671,9 @@ router.post(
 router.put(
   '/projects/:id/expenses/:expenseId',
   ...protectedRoute,
+  expenseMediaUpload.array('receipts', 9),
+  setUploadedFilePermissions,
+  persistUploadedFiles('uploads/expenses'),
   asyncHandler(controller.updateProjectExpense)
 );
 router.delete(

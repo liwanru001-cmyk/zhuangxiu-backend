@@ -150,6 +150,7 @@ async function ensureAppTables() {
       project_id BIGINT UNSIGNED NOT NULL,
       created_by BIGINT UNSIGNED NOT NULL,
       expense_date DATE NOT NULL,
+      payment_date DATE DEFAULT NULL,
       category VARCHAR(32) NOT NULL,
       title VARCHAR(120) NOT NULL,
       amount DECIMAL(12,2) NOT NULL,
@@ -166,6 +167,18 @@ async function ensureAppTables() {
       KEY idx_created_by (created_by)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  const [expensePaymentDateColumns] = await pool.query(`
+    SELECT COLUMN_NAME FROM information_schema.COLUMNS
+    WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_expenses'
+      AND COLUMN_NAME = 'payment_date'
+  `);
+  if (!expensePaymentDateColumns.length) {
+    await pool.query(`
+      ALTER TABLE project_expenses
+      ADD COLUMN payment_date DATE NULL AFTER expense_date,
+      ADD KEY idx_project_payment_date (project_id, payment_date)
+    `);
+  }
   await pool.query(`
     CREATE TABLE IF NOT EXISTS project_expense_media (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,

@@ -92,7 +92,7 @@ const PROJECT_UPLOAD_QUOTAS = {
   checkInDailyLimit: 3,
   checkInTotalLimit: 50,
   inspectionImageLimit: 3,
-  expenseReceiptLimit: 3,
+  expenseReceiptLimit: 9,
   spaceImagesPerSpaceLimit: 30,
   spaceImagesDailyLimit: 20,
   designDocumentsPerProjectLimit: 30,
@@ -4386,7 +4386,7 @@ async function getProjectExpenses(req, res) {
   const whereSql = where.join(' AND ');
   const [rows] = await db.query(
     `SELECT expense.id, expense.project_id, expense.created_by,
-            expense.expense_date, expense.category, expense.title,
+            expense.expense_date, expense.payment_date, expense.category, expense.title,
             expense.amount, expense.payment_method, expense.payee,
             expense.note, expense.include_in_total, expense.status,
             expense.created_at, expense.updated_at,
@@ -4472,6 +4472,7 @@ async function createProjectExpense(req, res) {
 
   const projectId = Number(req.params.id);
   const expenseDate = String(req.body.expense_date || '');
+  const paymentDate = String(req.body.payment_date || '').trim();
   const category = String(req.body.category || 'other');
   const title = String(req.body.title || '').trim().slice(0, 120);
   const amount = Number(req.body.amount);
@@ -4489,6 +4490,10 @@ async function createProjectExpense(req, res) {
   if (!expenseDate || Number.isNaN(Date.parse(expenseDate))) {
     await removeUploadedFiles(files);
     return error(res, '支出日期不正确');
+  }
+  if (paymentDate && Number.isNaN(Date.parse(paymentDate))) {
+    await removeUploadedFiles(files);
+    return error(res, '支付日期不正确');
   }
   if (!expenseCategories.has(category)) {
     await removeUploadedFiles(files);
@@ -4520,13 +4525,14 @@ async function createProjectExpense(req, res) {
     await connection.beginTransaction();
     const [result] = await connection.query(
       `INSERT INTO project_expenses
-       (project_id, created_by, expense_date, category, title, amount,
+       (project_id, created_by, expense_date, payment_date, category, title, amount,
         payment_method, payee, note, include_in_total, status)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       [
         projectId,
         req.user.id,
         expenseDate,
+        paymentDate || (status === 'paid' ? expenseDate : null),
         category,
         title,
         amount,
@@ -4581,14 +4587,22 @@ async function loadProjectExpenseForManage(projectId, expenseId, userId) {
 
 async function updateProjectExpense(req, res) {
   const projectContext = await requireProjectContext(req, res);
-  if (!projectContext.ok) return projectContext.response;
+  const files = req.files || [];
+  if (!projectContext.ok) {
+    await removeUploadedFiles(files);
+    return projectContext.response;
+  }
 
   const projectId = Number(req.params.id);
   const expenseId = Number(req.params.expenseId);
   const guard = await loadProjectExpenseForManage(projectId, expenseId, req.user.id);
-  if (guard.error) return error(res, guard.error, guard.status);
+  if (guard.error) {
+    await removeUploadedFiles(files);
+    return error(res, guard.error, guard.status);
+  }
 
   const expenseDate = String(req.body.expense_date || '');
+  const paymentDate = String(req.body.payment_date || '').trim();
   const category = String(req.body.category || 'other');
   const title = String(req.body.title || '').trim().slice(0, 120);
   const amount = Number(req.body.amount);
@@ -4596,36 +4610,90 @@ async function updateProjectExpense(req, res) {
   const payee = String(req.body.payee || '').trim().slice(0, 120);
   const note = String(req.body.note || '').trim().slice(0, 1000);
   const status = String(req.body.status || 'paid');
+  const deletedReceiptIds = String(req.body.deleted_receipt_ids || '')
+    .split(',')
+    .map((item) => Number(item.trim()))
+    .filter((item) => Number.isInteger(item) && item > 0);
 
   if (!expenseDate || Number.isNaN(Date.parse(expenseDate))) {
+    await removeUploadedFiles(files);
     return error(res, '支出日期不正确');
   }
-  if (!expenseCategories.has(category)) return error(res, '费用分类不正确');
-  if (!title) return error(res, '请填写费用名称');
-  if (!Number.isFinite(amount) || amount <= 0) return error(res, '费用金额不正确');
-  if (!expensePaymentMethods.has(paymentMethod)) return error(res, '支付方式不正确');
-  if (!expenseStatuses.has(status)) return error(res, '费用状态不正确');
+  if (paymentDate && Number.isNaN(Date.parse(paymentDate))) {
+    await removeUploadedFiles(files);
+    return error(res, '支付日期不正确');
+  }
+  for (const [valid, message] of [
+    [expenseCategories.has(category), '费用分类不正确'],
+    [Boolean(title), '请填写费用名称'],
+    [Number.isFinite(amount) && amount > 0, '费用金额不正确'],
+    [expensePaymentMethods.has(paymentMethod), '支付方式不正确'],
+    [expenseStatuses.has(status), '费用状态不正确'],
+  ]) {
+    if (!valid) {
+      await removeUploadedFiles(files);
+      return error(res, message);
+    }
+  }
 
-  await db.query(
-    `UPDATE project_expenses
-     SET expense_date = ?, category = ?, title = ?, amount = ?,
-         payment_method = ?, payee = ?, note = ?, include_in_total = ?,
-         status = ?
-     WHERE id = ? AND project_id = ?`,
-    [
-      expenseDate,
-      category,
-      title,
-      amount,
-      paymentMethod,
-      payee || null,
-      note || null,
-      1,
-      status,
-      expenseId,
-      projectId,
-    ]
-  );
+  const connection = await db.getConnection();
+  let removedMedia = [];
+  try {
+    await connection.beginTransaction();
+    const [currentMedia] = await connection.query(
+      'SELECT id, media_url FROM project_expense_media WHERE expense_id = ? FOR UPDATE',
+      [expenseId]
+    );
+    const deleteIds = new Set(deletedReceiptIds);
+    removedMedia = currentMedia.filter((item) => deleteIds.has(Number(item.id)));
+    const remainingCount = currentMedia.length - removedMedia.length;
+    if (remainingCount + files.length > PROJECT_UPLOAD_QUOTAS.expenseReceiptLimit) {
+      await connection.rollback();
+      await removeUploadedFiles(files);
+      return error(res, `费用凭证最多保存 ${PROJECT_UPLOAD_QUOTAS.expenseReceiptLimit} 张`);
+    }
+    await connection.query(
+      `UPDATE project_expenses
+       SET expense_date = ?, payment_date = COALESCE(?, payment_date), category = ?, title = ?, amount = ?,
+           payment_method = ?, payee = ?, note = ?, include_in_total = ?, status = ?
+       WHERE id = ? AND project_id = ?`,
+      [expenseDate, paymentDate || null, category, title, amount, paymentMethod, payee || null,
+        note || null, 1, status, expenseId, projectId]
+    );
+    if (removedMedia.length) {
+      await connection.query(
+        `DELETE FROM project_expense_media
+         WHERE expense_id = ? AND id IN (${removedMedia.map(() => '?').join(', ')})`,
+        [expenseId, ...removedMedia.map((item) => item.id)]
+      );
+    }
+    if (files.length) {
+      const host = `${req.protocol}://${req.get('host')}`;
+      await connection.query(
+        `INSERT INTO project_expense_media (expense_id, media_type, media_url)
+         VALUES ${files.map(() => '(?, ?, ?)').join(', ')}`,
+        files.flatMap((file) => [
+          expenseId,
+          'image',
+          file.storageUrl || `${host}/uploads/expenses/${file.filename}`,
+        ])
+      );
+    }
+    await connection.commit();
+  } catch (updateError) {
+    await connection.rollback();
+    await removeUploadedFiles(files);
+    throw updateError;
+  } finally {
+    connection.release();
+  }
+  await Promise.allSettled(removedMedia.map(async (item) => {
+    const removedFromStorage = await storageService.deleteStoredFile(item.media_url);
+    if (!removedFromStorage) {
+      const filePath = uploadPathFromUrl(item.media_url, 'expenses');
+      if (filePath) await fs.unlink(filePath).catch(() => {});
+    }
+  }));
   return success(res, { id: expenseId, updated: true }, '费用支出已更新');
 }
 
