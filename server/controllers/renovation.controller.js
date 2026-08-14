@@ -6042,6 +6042,61 @@ async function createProjectMaterialSupplement(req, res) {
   return success(res, null, '补充资料已添加');
 }
 
+async function deleteProjectMaterialSupplement(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const materialId = Number(req.params.materialId);
+  const mediaId = Number(req.params.mediaId);
+  const [rows] = await db.query(
+    `SELECT media.id, media.media_type, media.media_url, media.uploaded_by
+     FROM project_material_media media
+     JOIN project_material_items material ON material.id = media.material_id
+     WHERE media.id = ? AND media.material_id = ? AND material.project_id = ?
+     LIMIT 1`,
+    [mediaId, materialId, projectId]
+  );
+  const media = rows[0];
+  if (!media) return error(res, '补充资料不存在或已删除', 404);
+  if (Number(media.uploaded_by) !== Number(req.user.id)) {
+    return error(res, '只支持本人删除', 403);
+  }
+  const [result] = await db.query(
+    `DELETE FROM project_material_media
+     WHERE id = ? AND material_id = ? AND uploaded_by = ?`,
+    [mediaId, materialId, req.user.id]
+  );
+  if (!result.affectedRows) return error(res, '补充资料不存在或已删除', 404);
+
+  if (media.media_type !== 'link') {
+    try {
+      const removedFromOss = await storageService.deleteStoredFile(media.media_url);
+      if (!removedFromOss) {
+        let pathname = String(media.media_url || '');
+        try {
+          pathname = new URL(pathname).pathname;
+        } catch (_) {}
+        const prefix = '/uploads/materials/';
+        if (pathname.startsWith(prefix)) {
+          const relative = pathname.slice(prefix.length);
+          const root = path.resolve(__dirname, '..', 'uploads', 'materials');
+          const target = path.resolve(root, relative);
+          if (target.startsWith(`${root}${path.sep}`)) {
+            await fs.unlink(target).catch(() => {});
+          }
+        }
+      }
+    } catch (cleanupError) {
+      console.warn('material supplement file cleanup failed', {
+        mediaId,
+        code: cleanupError.code,
+        message: cleanupError.message,
+      });
+    }
+  }
+  return success(res, null, '补充资料已删除');
+}
+
 async function createProjectMaterial(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
@@ -10969,6 +11024,7 @@ module.exports = {
   createProjectMaterial,
   createProjectMaterialNote,
   createProjectMaterialSupplement,
+  deleteProjectMaterialSupplement,
   confirmProjectMaterial,
   getProjectTodos,
   createProjectActionItem,

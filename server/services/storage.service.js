@@ -207,6 +207,15 @@ async function checkStorageConnection() {
   };
 }
 
+async function deleteStoredFile(value) {
+  const object = parseOssStorageUri(value);
+  if (!object || !useOss() || !hasOssConfig()) return false;
+  const config = requiredOssConfig();
+  if (object.bucket !== config.bucket) return false;
+  await getOssClient().delete(object.key);
+  return true;
+}
+
 async function putLocalImageVariant({ sourcePath, key, req, width, quality }) {
   const targetPath = path.join(storageRoot, key);
   await ensureDir(path.dirname(targetPath));
@@ -308,6 +317,7 @@ module.exports = {
   putFile,
   persistUploadedFile,
   uploadedFileUrl,
+  deleteStoredFile,
   checkStorageConnection,
   parseOssStorageUri,
   canonicalStorageUri,

@@ -785,6 +785,11 @@ router.post(
   persistUploadedFiles('uploads/materials'),
   asyncHandler(controller.createProjectMaterialSupplement)
 );
+router.delete(
+  '/projects/:id/materials/:materialId/media/:mediaId',
+  ...protectedRoute,
+  asyncHandler(controller.deleteProjectMaterialSupplement)
+);
 router.put(
   '/projects/:id/materials/:materialId/confirm',
   ...protectedRoute,

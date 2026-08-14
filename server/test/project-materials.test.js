@@ -184,3 +184,73 @@ test('material create rolls back and releases its connection on database failure
   assert.equal(released, true);
   assert.equal(res.statusCode, null);
 });
+
+test('material supplement can only be deleted by its uploader', async () => {
+  let deleteCalled = false;
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        assert.deepEqual(params, [7, 9, 7]);
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/FROM project_material_media media/.test(sql)) {
+        assert.deepEqual(params, [61, 51, 9]);
+        return [[{
+          id: 61,
+          media_type: 'link',
+          media_url: 'https://example.com/product',
+          uploaded_by: 8,
+        }]];
+      }
+      if (/DELETE FROM project_material_media/.test(sql)) deleteCalled = true;
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.deleteProjectMaterialSupplement({
+    user: { id: 7 },
+    params: { id: '9', materialId: '51', mediaId: '61' },
+    body: { project_id: 9 },
+  }, res);
+
+  assert.equal(res.statusCode, 403);
+  assert.equal(res.payload.message, '只支持本人删除');
+  assert.equal(deleteCalled, false);
+});
+
+test('material supplement uploader can delete own record', async () => {
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/FROM project_material_media media/.test(sql)) {
+        assert.deepEqual(params, [61, 51, 9]);
+        return [[{
+          id: 61,
+          media_type: 'link',
+          media_url: 'https://example.com/product',
+          uploaded_by: 7,
+        }]];
+      }
+      if (/DELETE FROM project_material_media/.test(sql)) {
+        assert.deepEqual(params, [61, 51, 7]);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.deleteProjectMaterialSupplement({
+    user: { id: 7 },
+    params: { id: '9', materialId: '51', mediaId: '61' },
+    body: { project_id: 9 },
+  }, res);
+
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.payload.message, '补充资料已删除');
+});
