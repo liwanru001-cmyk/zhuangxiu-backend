@@ -679,6 +679,26 @@ router.delete(
   asyncHandler(controller.deleteProjectExpense)
 );
 router.get(
+  '/projects/:id/design-document-categories',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectDesignDocumentCategories)
+);
+router.post(
+  '/projects/:id/design-document-categories',
+  ...protectedRoute,
+  asyncHandler(controller.createProjectDesignDocumentCategory)
+);
+router.put(
+  '/projects/:id/design-document-categories/:categoryId',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectDesignDocumentCategory)
+);
+router.delete(
+  '/projects/:id/design-document-categories/:categoryId',
+  ...protectedRoute,
+  asyncHandler(controller.deleteProjectDesignDocumentCategory)
+);
+router.get(
   '/projects/:id/design-documents',
   ...protectedRoute,
   asyncHandler(controller.getProjectDesignDocuments)
@@ -794,6 +814,21 @@ router.put(
   '/projects/:id/materials/:materialId/confirm',
   ...protectedRoute,
   asyncHandler(controller.confirmProjectMaterial)
+);
+router.get(
+  '/projects/:id/archive-trash',
+  ...protectedRoute,
+  asyncHandler(controller.getProjectArchiveTrash)
+);
+router.delete(
+  '/projects/:id/archive/:itemType/:itemId',
+  ...protectedRoute,
+  asyncHandler(controller.moveProjectArchiveItemToTrash)
+);
+router.post(
+  '/projects/:id/archive/:itemType/:itemId/restore',
+  ...protectedRoute,
+  asyncHandler(controller.restoreProjectArchiveItem)
 );
 router.get(
   '/projects/:id/spaces',

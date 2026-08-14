@@ -742,6 +742,21 @@ async function ensureRenovationProjectArchiveColumns() {
 
 async function ensureProjectDesignDocumentTables() {
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS project_design_document_categories (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      project_id BIGINT UNSIGNED NOT NULL,
+      category_key VARCHAR(32) NOT NULL,
+      name VARCHAR(40) NOT NULL,
+      created_by BIGINT UNSIGNED NOT NULL,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      UNIQUE KEY uk_design_category_project_key (project_id, category_key),
+      UNIQUE KEY uk_design_category_project_name (project_id, name),
+      KEY idx_design_category_creator (created_by, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS project_design_documents (
       id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
       project_id BIGINT UNSIGNED NOT NULL,
@@ -841,6 +856,8 @@ async function ensureProjectHandoverTables() {
       created_by BIGINT UNSIGNED NOT NULL,
       confirmed_by BIGINT UNSIGNED DEFAULT NULL,
       confirmed_at TIMESTAMP NULL DEFAULT NULL,
+      deleted_at TIMESTAMP NULL DEFAULT NULL,
+      deleted_by BIGINT UNSIGNED DEFAULT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
@@ -863,6 +880,8 @@ async function ensureProjectHandoverTables() {
   `);
   const optionalColumns = [
     ['version_no', "INT UNSIGNED NOT NULL DEFAULT 1 AFTER target_user_id"],
+    ['deleted_at', "TIMESTAMP NULL DEFAULT NULL AFTER confirmed_at"],
+    ['deleted_by', "BIGINT UNSIGNED DEFAULT NULL AFTER deleted_at"],
   ];
   for (const [columnName, definition] of optionalColumns) {
     const [existing] = await pool.query(
@@ -1270,6 +1289,8 @@ async function ensureProjectMaterialTables() {
       created_by BIGINT UNSIGNED NOT NULL,
       confirmed_by BIGINT UNSIGNED DEFAULT NULL,
       confirmed_at TIMESTAMP NULL DEFAULT NULL,
+      deleted_at TIMESTAMP NULL DEFAULT NULL,
+      deleted_by BIGINT UNSIGNED DEFAULT NULL,
       created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       PRIMARY KEY (id),
@@ -1291,6 +1312,19 @@ async function ensureProjectMaterialTables() {
       ALTER TABLE project_material_items
       ADD COLUMN space_tags JSON DEFAULT NULL AFTER location
     `);
+  }
+  for (const [columnName, definition] of [
+    ['deleted_at', 'TIMESTAMP NULL DEFAULT NULL AFTER confirmed_at'],
+    ['deleted_by', 'BIGINT UNSIGNED DEFAULT NULL AFTER deleted_at'],
+  ]) {
+    const [columns] = await pool.query(`
+      SELECT COLUMN_NAME FROM information_schema.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'project_material_items'
+        AND COLUMN_NAME = ?
+    `, [columnName]);
+    if (!columns.length) {
+      await pool.query(`ALTER TABLE project_material_items ADD COLUMN ${columnName} ${definition}`);
+    }
   }
   const [arrivalDateColumns] = await pool.query(`
     SELECT COLUMN_NAME FROM information_schema.COLUMNS

@@ -4154,6 +4154,152 @@ const designDocumentCategories = new Set([
   'hydropower',
   'other',
 ]);
+const systemDesignDocumentCategories = [
+  ['original_floor_plan', '原始户型图'],
+  ['measurement', '量房图'],
+  ['layout_plan', '平面方案'],
+  ['rendering', '效果图'],
+  ['construction_drawing', '施工图'],
+  ['hydropower', '水电图'],
+  ['other', '其他图纸'],
+];
+
+async function isValidDesignDocumentCategory(projectId, category) {
+  if (designDocumentCategories.has(category)) return true;
+  const [rows] = await db.query(
+    `SELECT id FROM project_design_document_categories
+     WHERE project_id = ? AND category_key = ? LIMIT 1`,
+    [projectId, category]
+  );
+  return Boolean(rows[0]);
+}
+
+async function getProjectDesignDocumentCategories(req, res) {
+  const projectId = Number(req.params.id);
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  const [rows] = await db.query(
+    `SELECT id, category_key, name, created_by, created_at, updated_at
+     FROM project_design_document_categories
+     WHERE project_id = ? ORDER BY created_at, id`,
+    [projectId]
+  );
+  return success(res, [
+    ...systemDesignDocumentCategories.map(([key, name]) => ({
+      id: null,
+      category_key: key,
+      name,
+      is_system: true,
+      can_manage: false,
+    })),
+    ...rows.map((item) => ({
+      ...item,
+      is_system: false,
+      can_manage: role === 'owner' || Number(item.created_by) === Number(req.user.id),
+    })),
+  ]);
+}
+
+async function createProjectDesignDocumentCategory(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  if (!(await canAccessProject(projectId, req.user.id))) {
+    return error(res, '项目不存在或无权限', 404);
+  }
+  const name = String(req.body.name || '').trim().slice(0, 40);
+  if (!name) return error(res, '请填写分类名称');
+  const [counts] = await db.query(
+    'SELECT COUNT(*) AS total FROM project_design_document_categories WHERE project_id = ?',
+    [projectId]
+  );
+  if (Number(counts[0]?.total || 0) >= 20) return error(res, '自定义分类最多支持20个');
+  if (systemDesignDocumentCategories.some((item) => item[1] === name)) {
+    return error(res, '该分类名称已存在', 409);
+  }
+  try {
+    const categoryKey = `custom_${crypto.randomBytes(8).toString('hex')}`;
+    const [result] = await db.query(
+      `INSERT INTO project_design_document_categories
+       (project_id, category_key, name, created_by)
+       VALUES (?, ?, ?, ?)`,
+      [projectId, categoryKey, name, req.user.id]
+    );
+    return success(res, {
+      id: result.insertId,
+      category_key: categoryKey,
+      name,
+      created_by: req.user.id,
+      is_system: false,
+      can_manage: true,
+    }, '分类已新增');
+  } catch (createError) {
+    if (createError?.code === 'ER_DUP_ENTRY') return error(res, '该分类名称已存在', 409);
+    throw createError;
+  }
+}
+
+async function updateProjectDesignDocumentCategory(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const categoryId = Number(req.params.categoryId);
+  const name = String(req.body.name || '').trim().slice(0, 40);
+  if (!name) return error(res, '请填写分类名称');
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  const [rows] = await db.query(
+    'SELECT id, created_by FROM project_design_document_categories WHERE id = ? AND project_id = ?',
+    [categoryId, projectId]
+  );
+  if (!rows[0]) return error(res, '分类不存在', 404);
+  if (role !== 'owner' && Number(rows[0].created_by) !== Number(req.user.id)) {
+    return error(res, '只支持创建人或业主修改该分类', 403);
+  }
+  if (systemDesignDocumentCategories.some((item) => item[1] === name)) {
+    return error(res, '该分类名称已存在', 409);
+  }
+  try {
+    await db.query(
+      'UPDATE project_design_document_categories SET name = ? WHERE id = ? AND project_id = ?',
+      [name, categoryId, projectId]
+    );
+    return success(res, null, '分类名称已更新');
+  } catch (updateError) {
+    if (updateError?.code === 'ER_DUP_ENTRY') return error(res, '该分类名称已存在', 409);
+    throw updateError;
+  }
+}
+
+async function deleteProjectDesignDocumentCategory(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const categoryId = Number(req.params.categoryId);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  const [rows] = await db.query(
+    `SELECT id, category_key, created_by FROM project_design_document_categories
+     WHERE id = ? AND project_id = ?`,
+    [categoryId, projectId]
+  );
+  const category = rows[0];
+  if (!category) return error(res, '分类不存在', 404);
+  if (role !== 'owner' && Number(category.created_by) !== Number(req.user.id)) {
+    return error(res, '只支持创建人或业主删除该分类', 403);
+  }
+  const [documents] = await db.query(
+    `SELECT id FROM project_design_documents
+     WHERE project_id = ? AND category = ? LIMIT 1`,
+    [projectId, category.category_key]
+  );
+  if (documents[0]) return error(res, '该分类中还有设计资料，请先处理资料后再删除', 409);
+  await db.query(
+    'DELETE FROM project_design_document_categories WHERE id = ? AND project_id = ?',
+    [categoryId, projectId]
+  );
+  return success(res, null, '分类已删除');
+}
 const designDocumentStatuses = new Set([
   'draft',
   'pending',
@@ -4875,7 +5021,7 @@ async function createProjectDesignDocument(req, res) {
   const requestedVersionGroupId = req.body.version_group_id
     ? Number(req.body.version_group_id)
     : null;
-  if (!designDocumentCategories.has(category)) {
+  if (!(await isValidDesignDocumentCategory(projectId, category))) {
     return error(res, '设计资料分类不正确');
   }
   if (!title) return error(res, '请填写资料标题');
@@ -5233,7 +5379,7 @@ async function updateProjectDesignDocument(req, res) {
   const spaceKey = String(req.body.space_key || 'whole_house').trim().slice(0, 32);
   const title = String(req.body.title || '').trim().slice(0, 120);
   const versionNote = String(req.body.version_note || '').trim().slice(0, 500);
-  if (!designDocumentCategories.has(category)) {
+  if (!(await isValidDesignDocumentCategory(projectId, category))) {
     return error(res, '设计资料分类不正确');
   }
   if (!title) return error(res, '请填写资料标题');
@@ -5375,7 +5521,7 @@ async function getProjectHandovers(req, res) {
      JOIN users creator ON creator.id = handover.created_by
      LEFT JOIN users target ON target.id = handover.target_user_id
      LEFT JOIN users confirmer ON confirmer.id = handover.confirmed_by
-     WHERE handover.project_id = ?
+     WHERE handover.project_id = ? AND handover.deleted_at IS NULL
      ORDER BY FIELD(handover.status, 'draft', 'pending_confirm', 'pending',
                     'revision_needed', 'needs_supplement', 'confirmed', 'archived'),
               handover.created_at DESC, handover.id DESC`,
@@ -5865,7 +6011,7 @@ async function getProjectMaterials(req, res) {
      JOIN users creator ON creator.id = material.created_by
      LEFT JOIN users confirmer ON confirmer.id = material.confirmed_by
      LEFT JOIN merchant_products product ON product.id = material.merchant_product_id
-     WHERE material.project_id = ?
+     WHERE material.project_id = ? AND material.deleted_at IS NULL
      ORDER BY FIELD(material.confirm_status, 'pending', 'confirmed'),
               FIELD(material.arrival_status, 'pending', 'ordered', 'arrived', 'installed', 'returned'),
               material.created_at DESC, material.id DESC`,
@@ -6276,6 +6422,94 @@ async function confirmProjectMaterial(req, res) {
   );
   if (result.affectedRows === 0) return error(res, '材料不存在', 404);
   return success(res, null, '材料项已确认');
+}
+
+async function getProjectArchiveTrash(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const [materials] = await db.query(
+    `SELECT id, project_id, name AS title, created_by, deleted_by, deleted_at,
+            'material' AS item_type
+     FROM project_material_items
+     WHERE project_id = ? AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC, id DESC`,
+    [projectId]
+  );
+  const [handovers] = await db.query(
+    `SELECT id, project_id, title, created_by, deleted_by, deleted_at,
+            'handover' AS item_type
+     FROM project_handovers
+     WHERE project_id = ? AND deleted_at IS NOT NULL
+     ORDER BY deleted_at DESC, id DESC`,
+    [projectId]
+  );
+  return success(res, { materials, handovers });
+}
+
+async function moveProjectArchiveItemToTrash(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const itemType = String(req.params.itemType || '');
+  const itemId = Number(req.params.itemId);
+  const config = itemType === 'material'
+    ? { table: 'project_material_items', label: '材料信息' }
+    : itemType === 'handover'
+      ? { table: 'project_handovers', label: '设计交底' }
+      : null;
+  if (!config) return error(res, '删除类型不正确');
+  const [rows] = await db.query(
+    `SELECT id, created_by, deleted_at FROM ${config.table}
+     WHERE id = ? AND project_id = ? LIMIT 1`,
+    [itemId, projectId]
+  );
+  const item = rows[0];
+  if (!item) return error(res, `${config.label}不存在`, 404);
+  if (item.deleted_at) return success(res, null, `${config.label}已在删除列表中`);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (role !== 'owner' && Number(item.created_by) !== Number(req.user.id)) {
+    return error(res, '只有创建人或项目业主可以删除', 403);
+  }
+  await db.query(
+    `UPDATE ${config.table}
+     SET deleted_at = NOW(), deleted_by = ?, updated_at = NOW()
+     WHERE id = ? AND project_id = ? AND deleted_at IS NULL`,
+    [req.user.id, itemId, projectId]
+  );
+  return success(res, null, `${config.label}已移入删除列表`);
+}
+
+async function restoreProjectArchiveItem(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const itemType = String(req.params.itemType || '');
+  const itemId = Number(req.params.itemId);
+  const config = itemType === 'material'
+    ? { table: 'project_material_items', label: '材料信息' }
+    : itemType === 'handover'
+      ? { table: 'project_handovers', label: '设计交底' }
+      : null;
+  if (!config) return error(res, '恢复类型不正确');
+  const [rows] = await db.query(
+    `SELECT id, created_by, deleted_at FROM ${config.table}
+     WHERE id = ? AND project_id = ? LIMIT 1`,
+    [itemId, projectId]
+  );
+  const item = rows[0];
+  if (!item || !item.deleted_at) return error(res, '删除列表中没有这条内容', 404);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (role !== 'owner' && Number(item.created_by) !== Number(req.user.id)) {
+    return error(res, '只有创建人或项目业主可以恢复', 403);
+  }
+  await db.query(
+    `UPDATE ${config.table}
+     SET deleted_at = NULL, deleted_by = NULL, updated_at = NOW()
+     WHERE id = ? AND project_id = ?`,
+    [itemId, projectId]
+  );
+  return success(res, null, `${config.label}已恢复`);
 }
 
 function parseMaterialSpaceTags(value) {
@@ -11006,6 +11240,10 @@ module.exports = {
   updateProjectExpense,
   deleteProjectExpense,
   getProjectDesignDocuments,
+  getProjectDesignDocumentCategories,
+  createProjectDesignDocumentCategory,
+  updateProjectDesignDocumentCategory,
+  deleteProjectDesignDocumentCategory,
   getProjectDesignDocumentAccessUrl,
   uploadProjectDesignDocument,
   createProjectDesignDocument,
@@ -11025,6 +11263,9 @@ module.exports = {
   createProjectMaterialNote,
   createProjectMaterialSupplement,
   deleteProjectMaterialSupplement,
+  getProjectArchiveTrash,
+  moveProjectArchiveItemToTrash,
+  restoreProjectArchiveItem,
   confirmProjectMaterial,
   getProjectTodos,
   createProjectActionItem,
