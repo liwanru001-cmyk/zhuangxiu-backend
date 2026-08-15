@@ -1519,7 +1519,7 @@
             <label for="password">密码</label>
             <div class="password-wrap"><input id="password" name="password" type="password" autocomplete="current-password" placeholder="请输入账户密码"><button id="passwordToggle" class="password-toggle" type="button">显示</button></div>
           </div>
-          <button id="loginBtn" class="button button-primary" type="submit">登录</button>
+          <button id="loginBtn" class="button button-primary" type="submit" disabled aria-disabled="true">暂未上线</button>
           <div id="loginMessage" class="message"></div>
         </form>
       </div>
@@ -3699,6 +3699,10 @@
 
     $('loginForm').addEventListener('submit', async (event) => {
       event.preventDefault();
+      if ($('loginBtn').disabled) {
+        setMessage('loginMessage', '商家中心暂未上线', 'error');
+        return;
+      }
       const phone = $('phone').value.trim();
       const password = $('password').value.trim();
       if (!/^1[3-9]\d{9}$/.test(phone)) {
