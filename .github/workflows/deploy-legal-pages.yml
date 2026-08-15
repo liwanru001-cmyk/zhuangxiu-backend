@@ -19,8 +19,8 @@ jobs:
         run: |
           test -f server/public/privacy-policy/index.html
           test -f server/public/user-agreement/index.html
-          grep -q '装修不凡隐私政策' server/public/privacy-policy/index.html
-          grep -q '装修不凡用户协议' server/public/user-agreement/index.html
+          grep -q '装筱窝隐私政策' server/public/privacy-policy/index.html
+          grep -q '装筱窝用户协议' server/public/user-agreement/index.html
       - name: Upload legal pages
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -40,5 +40,5 @@ jobs:
             "set -euo pipefail; sudo mkdir -p /opt/yinnkhome-backend/server/public; sudo tar -xzf /tmp/yinnkhome-legal.tar.gz -C /opt/yinnkhome-backend/server/public; rm -f /tmp/yinnkhome-legal.tar.gz"
       - name: Verify public URLs
         run: |
-          curl -fsS https://yinnkhome.com/privacy-policy/ | grep -q '装修不凡隐私政策'
-          curl -fsS https://yinnkhome.com/user-agreement/ | grep -q '装修不凡用户协议'
+          curl -fsS https://yinnkhome.com/privacy-policy/ | grep -q '装筱窝隐私政策'
+          curl -fsS https://yinnkhome.com/user-agreement/ | grep -q '装筱窝用户协议'

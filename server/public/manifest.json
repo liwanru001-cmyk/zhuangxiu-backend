@@ -1,11 +1,11 @@
 {
-    "name": "zhuangxiu_app",
-    "short_name": "zhuangxiu_app",
+    "name": "装筱窝",
+    "short_name": "装筱窝",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",
     "theme_color": "#0175C2",
-    "description": "A new Flutter project.",
+    "description": "装筱窝装修项目协作平台",
     "orientation": "portrait-primary",
     "prefer_related_applications": false,
     "icons": [

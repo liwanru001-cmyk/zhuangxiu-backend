@@ -850,7 +850,7 @@ test('company project detail only returns the linked project summary without mem
       }
       if (/SELECT name FROM companies/.test(sql)) {
         assert.deepEqual(params, [9]);
-        return [[{ name: '装修不凡软装' }]];
+        return [[{ name: '装筱窝软装' }]];
       }
       if (/SELECT user\.nickname AS display_name, pm\.role/.test(sql)) {
         assert.deepEqual(params, [88]);
@@ -925,7 +925,7 @@ test('company project detail falls back when historical summary fields or tables
       }
       if (/SELECT name FROM companies/.test(sql)) {
         assert.deepEqual(params, [9]);
-        return [[{ name: '装修不凡软装' }]];
+        return [[{ name: '装筱窝软装' }]];
       }
       if (/SELECT user\.nickname AS display_name, pm\.role/.test(sql)) {
         throw schemaDrift('ER_NO_SUCH_TABLE');

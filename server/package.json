@@ -1,7 +1,7 @@
 {
   "name": "zhuangxiu-backend",
   "version": "1.0.0",
-  "description": "装修不凡 App 后端服务",
+  "description": "装筱窝 App 后端服务",
   "main": "app.js",
   "scripts": {
     "start": "node app.js",

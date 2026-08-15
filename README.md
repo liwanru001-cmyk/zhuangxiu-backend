@@ -1,4 +1,4 @@
-# 装修好烦
+# 装筱窝
 
 装修 App 项目，包含 Flutter 客户端和 Node/Express 后端。
 
