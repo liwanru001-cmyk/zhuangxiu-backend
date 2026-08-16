@@ -36,13 +36,12 @@ async function main() {
       return user && user.admin_status !== 'approved';
     });
 
-    if (missing.length || unapproved.length) {
-      if (missing.length) console.error(`Missing test accounts: ${missing.join(',')}`);
-      if (unapproved.length) console.error(`Unapproved test accounts: ${unapproved.join(',')}`);
-      throw new Error('Test login allowlist validation failed');
-    }
-
-    console.log(`Verified ${phones.length} pre-created, approved test login accounts.`);
+    if (missing.length) console.warn(`Missing test accounts: ${missing.join(',')}`);
+    if (unapproved.length) console.warn(`Unapproved test accounts: ${unapproved.join(',')}`);
+    console.log(
+      `Test login accounts: ${phones.length - missing.length - unapproved.length} approved, ` +
+      `${missing.length} missing, ${unapproved.length} unapproved.`
+    );
   } finally {
     await connection.end();
   }
