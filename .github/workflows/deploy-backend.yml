@@ -221,13 +221,12 @@ jobs:
           APP_DIR: ${{ secrets.APP_DIR }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           EXPECTED_SSH_HOST: 115.29.194.46
-          TEST_LOGIN_PHONES: 13800000001,13800000002,13800000003,13800138000,13900139000,13700137000,13600136000,13999999999,13777077777,13777060606,13712345678,13500135000,13800138001,13800138002,13800138003,13800138005,13800138006,13500138000,13900139001,13900139002,13900139003
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,TEST_LOGIN_PHONES
+          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST
           script: |
             set -euo pipefail
 
@@ -371,26 +370,10 @@ jobs:
             fi
 
             if [ -f .env ]; then
-              env_tmp="$(mktemp)"
-              awk -v phones="$TEST_LOGIN_PHONES" '
-                BEGIN { replaced = 0 }
-                /^TEST_LOGIN_PHONES=/ {
-                  if (!replaced) print "TEST_LOGIN_PHONES=" phones
-                  replaced = 1
-                  next
-                }
-                { print }
-                END { if (!replaced) print "TEST_LOGIN_PHONES=" phones }
-              ' .env > "$env_tmp"
-              chmod --reference=.env "$env_tmp"
-              mv "$env_tmp" .env
-
               set -a
               . ./.env
               set +a
             fi
-
-            node scripts/verify-test-login-accounts.js
 
             if ! command -v mysqldump >/dev/null 2>&1; then
               echo "mysqldump is required before starting the new backend code"

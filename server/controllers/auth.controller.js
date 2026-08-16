@@ -14,7 +14,7 @@ function generateCode() {
 async function findUserByPhone(phone) {
   const [userRows] = await db.query(
     `SELECT id, phone, password_hash, nickname, avatar, bio, city, role,
-            admin_status, identity_onboarding_completed
+            admin_status, is_test_account, identity_onboarding_completed
        FROM users WHERE phone = ?`,
     [phone]
   );
@@ -265,25 +265,19 @@ async function passwordLogin(req, res) {
 async function testLogin(req, res) {
   const { phone, password } = req.body;
   const testPassword = String(process.env.TEST_LOGIN_PASSWORD || '');
-  const allowedPhones = new Set(
-    String(process.env.TEST_LOGIN_PHONES || '')
-      .split(',')
-      .map((item) => item.trim())
-      .filter(Boolean)
-  );
 
-  if (!testPassword || allowedPhones.size === 0) {
+  if (!testPassword) {
     return error(res, '测试登录未启用', 404);
   }
   if (!validatePhone(phone)) {
     return error(res, '手机号格式不正确');
   }
-  if (!allowedPhones.has(String(phone)) || String(password || '') !== testPassword) {
+  if (String(password || '') !== testPassword) {
     return error(res, '手机号或密码错误', 401);
   }
 
   const user = await findUserByPhone(phone);
-  if (!user) {
+  if (!user || !user.is_test_account) {
     return error(res, '测试账号不存在或未审核', 403);
   }
   if (user.admin_status !== 'approved') {

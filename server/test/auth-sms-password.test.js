@@ -179,11 +179,9 @@ test('password login returns a clear message when the password is wrong', async 
   assert.equal(res.payload.message, '密码错误，请重新输入');
 });
 
-test('test login only accepts a pre-created approved allowlisted account', async () => {
+test('test login accepts a pre-created approved test account', async () => {
   const previousPassword = process.env.TEST_LOGIN_PASSWORD;
-  const previousPhones = process.env.TEST_LOGIN_PHONES;
   process.env.TEST_LOGIN_PASSWORD = '123456';
-  process.env.TEST_LOGIN_PHONES = '13800138000, 13900139000';
   const dbMock = {
     async query(sql, params) {
       if (/FROM users WHERE phone = \?/.test(sql)) {
@@ -197,6 +195,7 @@ test('test login only accepts a pre-created approved allowlisted account', async
           bio: '',
           city: '',
           admin_status: 'approved',
+          is_test_account: 1,
           identity_onboarding_completed: 1,
         }]];
       }
@@ -217,22 +216,15 @@ test('test login only accepts a pre-created approved allowlisted account', async
     } else {
       process.env.TEST_LOGIN_PASSWORD = previousPassword;
     }
-    if (previousPhones === undefined) {
-      delete process.env.TEST_LOGIN_PHONES;
-    } else {
-      process.env.TEST_LOGIN_PHONES = previousPhones;
-    }
   }
 
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.data.user.phone, '13800138000');
 });
 
-test('test login rejects non-allowlisted phones before querying the database', async () => {
+test('test login rejects a wrong test password before querying the database', async () => {
   const previousPassword = process.env.TEST_LOGIN_PASSWORD;
-  const previousPhones = process.env.TEST_LOGIN_PHONES;
   process.env.TEST_LOGIN_PASSWORD = '123456';
-  process.env.TEST_LOGIN_PHONES = '13900139000';
   let queried = false;
   const dbMock = {
     async query() {
@@ -244,17 +236,12 @@ test('test login rejects non-allowlisted phones before querying the database', a
   const res = mockResponse();
 
   try {
-    await controller.testLogin({ body: { phone: '13800138000', password: '123456' } }, res);
+    await controller.testLogin({ body: { phone: '13800138000', password: 'wrong' } }, res);
   } finally {
     if (previousPassword === undefined) {
       delete process.env.TEST_LOGIN_PASSWORD;
     } else {
       process.env.TEST_LOGIN_PASSWORD = previousPassword;
-    }
-    if (previousPhones === undefined) {
-      delete process.env.TEST_LOGIN_PHONES;
-    } else {
-      process.env.TEST_LOGIN_PHONES = previousPhones;
     }
   }
 
@@ -263,11 +250,9 @@ test('test login rejects non-allowlisted phones before querying the database', a
   assert.equal(queried, false);
 });
 
-test('test login never creates a missing allowlisted account', async () => {
+test('test login never creates a missing test account', async () => {
   const previousPassword = process.env.TEST_LOGIN_PASSWORD;
-  const previousPhones = process.env.TEST_LOGIN_PHONES;
   process.env.TEST_LOGIN_PASSWORD = '123456';
-  process.env.TEST_LOGIN_PHONES = '13800138000';
   const dbMock = {
     async query(sql, params) {
       assert.match(sql, /FROM users WHERE phone = \?/);
@@ -283,19 +268,15 @@ test('test login never creates a missing allowlisted account', async () => {
   } finally {
     if (previousPassword === undefined) delete process.env.TEST_LOGIN_PASSWORD;
     else process.env.TEST_LOGIN_PASSWORD = previousPassword;
-    if (previousPhones === undefined) delete process.env.TEST_LOGIN_PHONES;
-    else process.env.TEST_LOGIN_PHONES = previousPhones;
   }
 
   assert.equal(res.statusCode, 403);
   assert.match(res.payload.message, /不存在或未审核/);
 });
 
-test('test login rejects an allowlisted account that is not approved', async () => {
+test('test login rejects a test account that is not approved', async () => {
   const previousPassword = process.env.TEST_LOGIN_PASSWORD;
-  const previousPhones = process.env.TEST_LOGIN_PHONES;
   process.env.TEST_LOGIN_PASSWORD = '123456';
-  process.env.TEST_LOGIN_PHONES = '13800138000';
   const dbMock = {
     async query(sql) {
       assert.match(sql, /FROM users WHERE phone = \?/);
@@ -308,6 +289,7 @@ test('test login rejects an allowlisted account that is not approved', async () 
         bio: '',
         city: '',
         admin_status: 'pending',
+        is_test_account: 1,
       }]];
     },
   };
@@ -319,8 +301,40 @@ test('test login rejects an allowlisted account that is not approved', async () 
   } finally {
     if (previousPassword === undefined) delete process.env.TEST_LOGIN_PASSWORD;
     else process.env.TEST_LOGIN_PASSWORD = previousPassword;
-    if (previousPhones === undefined) delete process.env.TEST_LOGIN_PHONES;
-    else process.env.TEST_LOGIN_PHONES = previousPhones;
+  }
+
+  assert.equal(res.statusCode, 403);
+  assert.match(res.payload.message, /不存在或未审核/);
+});
+
+test('test login rejects a real approved account', async () => {
+  const previousPassword = process.env.TEST_LOGIN_PASSWORD;
+  process.env.TEST_LOGIN_PASSWORD = '123456';
+  const dbMock = {
+    async query(sql, params) {
+      assert.match(sql, /FROM users WHERE phone = \?/);
+      assert.deepEqual(params, ['18664659126']);
+      return [[{
+        id: 21,
+        phone: '18664659126',
+        role: 'owner',
+        nickname: '真实账号',
+        avatar: '',
+        bio: '',
+        city: '',
+        admin_status: 'approved',
+        is_test_account: 0,
+      }]];
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  try {
+    await controller.testLogin({ body: { phone: '18664659126', password: '123456' } }, res);
+  } finally {
+    if (previousPassword === undefined) delete process.env.TEST_LOGIN_PASSWORD;
+    else process.env.TEST_LOGIN_PASSWORD = previousPassword;
   }
 
   assert.equal(res.statusCode, 403);
