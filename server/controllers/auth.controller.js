@@ -265,24 +265,30 @@ async function passwordLogin(req, res) {
 async function testLogin(req, res) {
   const { phone, password } = req.body;
   const testPassword = String(process.env.TEST_LOGIN_PASSWORD || '');
+  const allowedPhones = new Set(
+    String(process.env.TEST_LOGIN_PHONES || '')
+      .split(',')
+      .map((item) => item.trim())
+      .filter(Boolean)
+  );
 
-  if (!testPassword) {
+  if (!testPassword || allowedPhones.size === 0) {
     return error(res, '测试登录未启用', 404);
   }
   if (!validatePhone(phone)) {
     return error(res, '手机号格式不正确');
   }
-  if (String(password || '') !== testPassword) {
+  if (!allowedPhones.has(String(phone)) || String(password || '') !== testPassword) {
     return error(res, '手机号或密码错误', 401);
   }
 
-  let user = await findUserByPhone(phone);
+  const user = await findUserByPhone(phone);
   if (!user) {
-    user = await createFormalUser(phone);
+    return error(res, '测试账号不存在或未审核', 403);
   }
-
-  const blocked = guardAdminStatus(res, user);
-  if (blocked) return blocked;
+  if (user.admin_status !== 'approved') {
+    return error(res, '测试账号不存在或未审核', 403);
+  }
   return success(res, await buildLoginResponse(user));
 }
 
