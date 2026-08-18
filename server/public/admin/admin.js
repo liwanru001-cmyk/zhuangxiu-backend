@@ -63,6 +63,7 @@ let billingAppealTotal = 0;
 let billingDetailTab = 'overview';
 let selectedBillingDetailData = null;
 let billingActionState = null;
+let appReleases = [];
 
 document.getElementById('u-pass').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
@@ -143,6 +144,7 @@ function switchMenu(key) {
   else if (key === 'supportFeedback') renderSupportFeedback();
   else if (key === 'inspectionTemplates') renderInspectionTemplates();
   else if (key === 'projects') renderProgressLibrary();
+  else if (key === 'settings') renderSystemSettings();
   else renderPlaceholder(item);
 }
 
@@ -170,17 +172,153 @@ function refreshCurrent() {
   }
   else if (activeMenu === 'inspectionTemplates') loadInspectionTemplates();
   else if (activeMenu === 'projects') loadProgressLibrary();
+  else if (activeMenu === 'settings') loadAppReleases();
   else switchMenu(activeMenu);
+}
+
+function renderSystemSettings() {
+  document.getElementById('page-content').innerHTML = `
+    <div class="settings-grid">
+      <div class="card settings-section-card">
+        <div class="card-title">
+          <div>
+            <h3>版本发布中心</h3>
+            <p>统一管理 Windows 和 macOS 桌面端安装包、更新说明与发布状态</p>
+          </div>
+          <button class="primary-btn" onclick="toggleReleaseForm(true)">+新建版本</button>
+        </div>
+        <div id="release-create-panel" class="release-create-panel" hidden>
+          <form id="release-form" onsubmit="createAppRelease(event)">
+            <div class="release-form-grid">
+              <label>平台<select name="platform" required><option value="windows">Windows</option><option value="macos">macOS</option></select></label>
+              <label>版本号<input name="version_name" required placeholder="例如 1.2.0" pattern="\\d+\\.\\d+\\.\\d+.*"></label>
+              <label>构建号<input name="build_number" required type="number" min="1" step="1" placeholder="例如 7"></label>
+              <label>更新方式<select name="update_mode" required><option value="optional">普通更新</option><option value="required">强制更新</option></select></label>
+            </div>
+            <label class="release-field">安装包<input name="package" required type="file" accept=".exe,.msix,.dmg,.pkg"><small>Windows 支持 .exe/.msix，macOS 支持 .dmg/.pkg，最大 1GB</small></label>
+            <label class="release-field">更新说明<textarea name="release_notes" required placeholder="请说明本次新增、修复和注意事项"></textarea></label>
+            <div class="release-form-actions">
+              <button type="button" class="ghost-btn" onclick="toggleReleaseForm(false)">取消</button>
+              <button id="release-submit" type="submit" class="primary-btn">上传并保存草稿</button>
+            </div>
+          </form>
+        </div>
+        <div id="release-list" class="release-list"><div class="empty-editor">正在读取版本……</div></div>
+      </div>
+      <div class="card settings-section-card">
+        <div class="card-title"><div><h3>其他系统设置</h3><p>城市、风格和身份标签等配置后续在此接入</p></div></div>
+        <div class="empty-editor">当前优先上线桌面软件版本发布能力。</div>
+      </div>
+    </div>
+  `;
+  loadAppReleases();
+}
+
+function toggleReleaseForm(show) {
+  const panel = document.getElementById('release-create-panel');
+  if (panel) panel.hidden = !show;
+}
+
+async function loadAppReleases() {
+  const host = document.getElementById('release-list');
+  if (!host) return;
+  try {
+    const j = await adminFetch('/app-releases');
+    if (j.code !== 200) throw new Error(j.message || '版本列表加载失败');
+    appReleases = Array.isArray(j.data) ? j.data : [];
+    host.innerHTML = appReleases.length ? `
+      <div class="table-wrap"><table class="release-table">
+        <thead><tr><th>平台</th><th>版本</th><th>状态</th><th>更新方式</th><th>安装包</th><th>更新说明</th><th>发布时间</th><th>操作</th></tr></thead>
+        <tbody>${appReleases.map(releaseRowHtml).join('')}</tbody>
+      </table></div>
+    ` : '<div class="empty-editor">还没有桌面端版本，点击“新建版本”开始上传。</div>';
+  } catch (e) {
+    host.innerHTML = `<div class="empty-editor">${esc(e.message || '版本列表加载失败')}</div>`;
+  }
+}
+
+function releaseRowHtml(item) {
+  const status = { draft: '草稿', published: '已发布', withdrawn: '已撤回' }[item.status] || item.status;
+  const mode = item.update_mode === 'required' ? '强制更新' : '普通更新';
+  return `<tr>
+    <td><span class="badge ${item.platform === 'windows' ? 'status-processing' : 'status-approved'}">${item.platform === 'windows' ? 'Windows' : 'macOS'}</span></td>
+    <td><strong>${esc(item.version_name)}</strong><div class="muted">Build ${Number(item.build_number || 0)}</div></td>
+    <td><span class="badge status-${item.status === 'published' ? 'approved' : item.status === 'draft' ? 'draft' : 'hidden'}">${status}</span></td>
+    <td>${mode}</td>
+    <td><a href="${esc(item.package_url)}" target="_blank" rel="noopener">${esc(item.package_name)}</a><div class="muted">${formatFileSize(item.package_size)} · SHA-256 ${esc(String(item.sha256 || '').slice(0, 12))}…</div></td>
+    <td><div class="detail-text">${esc(item.release_notes || '')}</div></td>
+    <td>${item.published_at ? formatAdminTime(item.published_at) : '-'}</td>
+    <td><div class="row-actions">
+      ${item.status === 'draft' ? `<button class="success-btn" onclick="publishAppRelease(${Number(item.id)})">发布</button>` : ''}
+      ${item.status !== 'withdrawn' ? `<button class="danger-btn" onclick="withdrawAppRelease(${Number(item.id)})">撤回</button>` : ''}
+    </div></td>
+  </tr>`;
+}
+
+function formatFileSize(value) {
+  const bytes = Number(value || 0);
+  if (bytes >= 1024 * 1024 * 1024) return `${(bytes / 1024 / 1024 / 1024).toFixed(2)} GB`;
+  if (bytes >= 1024 * 1024) return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+  return `${Math.max(0, bytes / 1024).toFixed(1)} KB`;
+}
+
+function formatAdminTime(value) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? '-' : date.toLocaleString('zh-CN', { hour12: false });
+}
+
+async function createAppRelease(event) {
+  event.preventDefault();
+  const form = event.currentTarget;
+  const submit = document.getElementById('release-submit');
+  submit.disabled = true;
+  submit.textContent = '正在上传……';
+  try {
+    const j = await adminFetch('/app-releases', {
+      method: 'POST',
+      body: new FormData(form),
+      timeoutMs: 30 * 60 * 1000,
+    });
+    if (j.code !== 200) throw new Error(j.message || '版本上传失败');
+    toast(j.message || '版本草稿已创建');
+    form.reset();
+    toggleReleaseForm(false);
+    await loadAppReleases();
+  } catch (e) {
+    toast(e.message || '版本上传失败');
+  } finally {
+    submit.disabled = false;
+    submit.textContent = '上传并保存草稿';
+  }
+}
+
+async function publishAppRelease(id) {
+  if (!confirm('确定发布该版本？发布后桌面软件将能检查到它。')) return;
+  const j = await adminFetch(`/app-releases/${id}/publish`, { method: 'POST' });
+  if (j.code !== 200) return toast(j.message || '发布失败');
+  toast(j.message || '版本已发布');
+  loadAppReleases();
+}
+
+async function withdrawAppRelease(id) {
+  if (!confirm('确定撤回该版本？撤回后客户端不再获取它。')) return;
+  const j = await adminFetch(`/app-releases/${id}/withdraw`, { method: 'POST' });
+  if (j.code !== 200) return toast(j.message || '撤回失败');
+  toast(j.message || '版本已撤回');
+  loadAppReleases();
 }
 
 async function adminFetch(path, options = {}) {
   const headers = Object.assign({}, options.headers || {}, { Authorization: `Bearer ${token}` });
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timeoutMs = Number(options.timeoutMs || 12000);
+  const requestOptions = Object.assign({}, options);
+  delete requestOptions.timeoutMs;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
   const url = `${API}${path}`;
   let r;
   try {
-    r = await fetch(url, Object.assign({}, options, { headers, signal: controller.signal }));
+    r = await fetch(url, Object.assign({}, requestOptions, { headers, signal: controller.signal }));
   } catch (e) {
     if (e.name === 'AbortError') throw new Error(`接口请求超时：${url}`);
     throw new Error(`接口请求失败：${url}；${e.message || '请确认 API 地址和 HTTPS/跨域配置'}`);
@@ -2112,7 +2250,7 @@ function renderProgressEditor(item, isNew = false) {
   el.innerHTML = `
     <h3>${isNew ? '新增事项' : '事项编辑'}</h3>
     <div class="editor-body">
-      <div class="editor-note">默认加入会自动进入新项目进度；核心事项会在验收助理中重点提醒。</div>
+      <div class="editor-note">默认加入会自动进入新项目进度；核心事项会在施工记录中重点提醒。</div>
       <div>
         <label>事项编码</label>
         <input id="progress-template-key" class="inline-edit" value="${attr(item.template_key || '')}" placeholder="可留空，新增时自动生成">

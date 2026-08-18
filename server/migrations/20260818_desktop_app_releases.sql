@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS desktop_app_releases (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  platform ENUM('windows', 'macos') NOT NULL,
+  version_name VARCHAR(32) NOT NULL,
+  build_number INT UNSIGNED NOT NULL,
+  package_url VARCHAR(1000) NOT NULL,
+  package_name VARCHAR(255) NOT NULL,
+  package_size BIGINT UNSIGNED NOT NULL,
+  sha256 CHAR(64) NOT NULL,
+  release_notes TEXT NOT NULL,
+  update_mode ENUM('optional', 'required') NOT NULL DEFAULT 'optional',
+  status ENUM('draft', 'published', 'withdrawn') NOT NULL DEFAULT 'draft',
+  created_by VARCHAR(64) NOT NULL DEFAULT 'admin',
+  published_at DATETIME DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uniq_desktop_release (platform, version_name, build_number),
+  KEY idx_desktop_release_latest (platform, status, build_number, published_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

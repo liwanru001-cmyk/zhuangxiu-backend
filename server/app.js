@@ -25,10 +25,26 @@ const PORT = process.env.PORT || 3001;
 const path = require('path');
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
+const fs = require('fs');
+const fsPromises = require('fs/promises');
+const multer = require('multer');
 const { success, error } = require('./utils/response');
 const INSPECTION_KB_ENABLED = process.env.FEATURE_INSPECTION_KB === 'true';
 const storageService = require('./services/storage.service');
 const { checkRuntimeSchema } = require('./services/runtime-schema.service');
+
+const releaseUploadDir = path.join(__dirname, 'storage', 'release-uploads');
+fs.mkdirSync(releaseUploadDir, { recursive: true });
+const releaseUpload = multer({
+  storage: multer.diskStorage({
+    destination: releaseUploadDir,
+    filename: (_req, file, callback) => {
+      const extension = path.extname(file.originalname || '').toLowerCase();
+      callback(null, `${Date.now()}-${crypto.randomUUID()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 1024 * 1024 * 1024 },
+});
 
 // 信任 Nginx 反向代理
 app.set('trust proxy', 1);
@@ -128,6 +144,180 @@ function adminAuth(req, res, next) {
     return error(res, '登录已过期', 401);
   }
 }
+
+function desktopReleaseRow(row) {
+  return {
+    id: Number(row.id),
+    platform: row.platform,
+    version_name: row.version_name,
+    build_number: Number(row.build_number),
+    package_url: row.package_url,
+    package_name: row.package_name,
+    package_size: Number(row.package_size),
+    sha256: row.sha256,
+    release_notes: row.release_notes || '',
+    update_mode: row.update_mode,
+    status: row.status,
+    published_at: row.published_at,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+function fileSha256(filePath) {
+  return new Promise((resolve, reject) => {
+    const hash = crypto.createHash('sha256');
+    const stream = fs.createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', () => resolve(hash.digest('hex')));
+  });
+}
+
+function releaseExtensionAllowed(platform, filename) {
+  const extension = path.extname(filename || '').toLowerCase();
+  return platform === 'windows'
+    ? ['.exe', '.msix'].includes(extension)
+    : platform === 'macos' && ['.dmg', '.pkg'].includes(extension);
+}
+
+app.get('/api/app-releases/latest', async (req, res) => {
+  const platform = String(req.query.platform || '').toLowerCase();
+  if (!['windows', 'macos'].includes(platform)) {
+    return error(res, '请指定正确的桌面端平台');
+  }
+  const [rows] = await db.query(
+    `SELECT * FROM desktop_app_releases
+     WHERE platform = ? AND status = 'published'
+     ORDER BY build_number DESC, published_at DESC, id DESC LIMIT 1`,
+    [platform]
+  );
+  return success(res, rows[0] ? desktopReleaseRow(rows[0]) : null);
+});
+
+app.get('/api/admin/app-releases', adminAuth, async (req, res) => {
+  const platform = String(req.query.platform || '').toLowerCase();
+  const params = [];
+  let where = '';
+  if (platform) {
+    if (!['windows', 'macos'].includes(platform)) return error(res, '平台不正确');
+    where = 'WHERE platform = ?';
+    params.push(platform);
+  }
+  const [rows] = await db.query(
+    `SELECT * FROM desktop_app_releases ${where}
+     ORDER BY created_at DESC, id DESC`,
+    params
+  );
+  return success(res, rows.map(desktopReleaseRow));
+});
+
+app.post(
+  '/api/admin/app-releases',
+  adminAuth,
+  releaseUpload.single('package'),
+  async (req, res) => {
+    const file = req.file;
+    try {
+      const platform = String(req.body.platform || '').toLowerCase();
+      const versionName = String(req.body.version_name || '').trim();
+      const buildNumber = Number(req.body.build_number);
+      const releaseNotes = String(req.body.release_notes || '').trim();
+      const updateMode = String(req.body.update_mode || 'optional');
+      if (!['windows', 'macos'].includes(platform)) return error(res, '平台不正确');
+      if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(versionName)) {
+        return error(res, '版本号格式不正确，例如 1.2.0');
+      }
+      if (!Number.isInteger(buildNumber) || buildNumber <= 0) return error(res, '构建号必须是正整数');
+      if (!releaseNotes) return error(res, '请填写更新说明');
+      if (!['optional', 'required'].includes(updateMode)) return error(res, '更新方式不正确');
+      if (!file) return error(res, '请选择安装包');
+      if (!releaseExtensionAllowed(platform, file.originalname)) {
+        return error(res, platform === 'windows' ? 'Windows 仅支持 .exe 或 .msix' : 'macOS 仅支持 .dmg 或 .pkg');
+      }
+
+      const sha256 = await fileSha256(file.path);
+      const safeName = path.basename(file.originalname).replace(/[^0-9A-Za-z._\-\u4e00-\u9fff]/g, '_');
+      const storageKey = `releases/${platform}/${versionName}/${buildNumber}-${safeName}`;
+      const stored = await storageService.putFile({
+        sourcePath: file.path,
+        key: storageKey,
+        req,
+        contentType: file.mimetype || 'application/octet-stream',
+      });
+      const [result] = await db.query(
+        `INSERT INTO desktop_app_releases
+         (platform, version_name, build_number, package_url, package_name,
+          package_size, sha256, release_notes, update_mode, status, created_by)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
+        [
+          platform, versionName, buildNumber, stored.url, file.originalname,
+          file.size, sha256, releaseNotes, updateMode, req.admin?.role || 'admin',
+        ]
+      );
+      const [rows] = await db.query('SELECT * FROM desktop_app_releases WHERE id = ?', [result.insertId]);
+      return success(res, desktopReleaseRow(rows[0]), '版本草稿已创建');
+    } finally {
+      if (file?.path) await fsPromises.rm(file.path, { force: true }).catch(() => {});
+    }
+  }
+);
+
+app.post('/api/admin/app-releases/:id/publish', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id <= 0) return error(res, '版本 ID 不正确');
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query(
+      'SELECT * FROM desktop_app_releases WHERE id = ? FOR UPDATE',
+      [id]
+    );
+    const release = rows[0];
+    if (!release) {
+      await connection.rollback();
+      return error(res, '版本不存在', 404);
+    }
+    const [publishedRows] = await connection.query(
+      `SELECT id, build_number FROM desktop_app_releases
+       WHERE platform = ? AND status = 'published' AND id <> ?
+       ORDER BY build_number DESC LIMIT 1 FOR UPDATE`,
+      [release.platform, id]
+    );
+    if (publishedRows[0] && Number(release.build_number) <= Number(publishedRows[0].build_number)) {
+      await connection.rollback();
+      return error(res, '构建号必须高于当前线上版本', 409);
+    }
+    await connection.query(
+      `UPDATE desktop_app_releases SET status = 'withdrawn'
+       WHERE platform = ? AND status = 'published' AND id <> ?`,
+      [release.platform, id]
+    );
+    await connection.query(
+      `UPDATE desktop_app_releases
+       SET status = 'published', published_at = NOW() WHERE id = ?`,
+      [id]
+    );
+    await connection.commit();
+    return success(res, { id, status: 'published' }, '版本已发布');
+  } catch (publishError) {
+    await connection.rollback();
+    throw publishError;
+  } finally {
+    connection.release();
+  }
+});
+
+app.post('/api/admin/app-releases/:id/withdraw', adminAuth, async (req, res) => {
+  const id = Number(req.params.id);
+  const [result] = await db.query(
+    `UPDATE desktop_app_releases SET status = 'withdrawn'
+     WHERE id = ? AND status IN ('draft', 'published')`,
+    [id]
+  );
+  if (!result.affectedRows) return error(res, '版本不存在或已撤回', 404);
+  return success(res, { id, status: 'withdrawn' }, '版本已撤回');
+});
 
 function requireInspectionKb(req, res, next) {
   if (!INSPECTION_KB_ENABLED) return error(res, '验收标准库功能未启用', 404);
