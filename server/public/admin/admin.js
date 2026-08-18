@@ -177,6 +177,15 @@ function refreshCurrent() {
 }
 
 function renderSystemSettings() {
+  const inDesktopApp = document.documentElement.classList.contains('xiaowo-desktop-app');
+  if (inDesktopApp) {
+    document.getElementById('page-content').innerHTML = `
+      <div class="settings-grid"><div class="card settings-section-card">
+        <div class="card-title"><div><h3>版本发布中心</h3><p>在桌面软件原生页面中管理安装包、更新说明与发布状态</p></div>
+        <button class="primary-btn" onclick="location.href='xiaowo-admin://release-center'">打开版本发布中心</button></div>
+      </div></div>`;
+    return;
+  }
   document.getElementById('page-content').innerHTML = `
     <div class="settings-grid">
       <div class="card settings-section-card">
