@@ -245,6 +245,32 @@ async function directUploadSession(token) {
   return rows[0] || null;
 }
 
+app.post('/api/admin/app-releases/uploads/cleanup', adminAuth, async (_req, res) => {
+  try {
+    const [activeRows] = await db.query(
+      `SELECT upload_id FROM desktop_release_upload_sessions
+       WHERE status = 'pending' AND expires_at > NOW()`
+    );
+    const active = new Set(activeRows.map((row) => row.upload_id));
+    const uploads = await storageService.listIncompleteMultipartUploads('releases/');
+    const cutoff = Date.now() - 10 * 60 * 1000;
+    const orphans = uploads.filter((item) => {
+      const initiatedAt = new Date(item.initiated || item.initiatedAt || 0).getTime();
+      return !active.has(item.uploadId) && initiatedAt > 0 && initiatedAt < cutoff;
+    });
+    for (const item of orphans) {
+      await storageService.abortDirectMultipartUpload({ key: item.name, uploadId: item.uploadId });
+    }
+    await db.query(
+      `UPDATE desktop_release_upload_sessions SET status = 'expired'
+       WHERE status = 'pending' AND expires_at <= NOW()`
+    );
+    return success(res, { inspected: uploads.length, active: active.size, cleaned: orphans.length }, '上传残留检查完成');
+  } catch (cleanupError) {
+    return error(res, `OSS 上传残留检查失败：${cleanupError.message}`, 503);
+  }
+});
+
 app.post('/api/admin/app-releases/uploads/init', adminAuth, async (req, res) => {
   if (!storageService.useOss()) return error(res, '服务器尚未启用 OSS 直传', 503);
   let metadata;
