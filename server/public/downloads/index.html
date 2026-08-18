@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="下载装筱窝 Windows 或 macOS 桌面端软件的最新正式版本。">
+  <meta name="theme-color" content="#f7f4ee">
+  <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=20260815">
+  <title>下载桌面端软件 - 装筱窝</title>
+  <style>
+    :root { --ink:#302a25; --muted:#786f67; --soft:#9b9188; --line:#e5ddd4; --paper:#f7f4ee; --white:#fff; --clay:#b76549; --clay-dark:#8f432d; --clay-soft:#f4e4dc; --sage:#67836f; --sage-soft:#e7eee8; --shadow:0 22px 60px rgba(83,65,52,.12); }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:var(--paper); font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei",sans-serif; -webkit-font-smoothing:antialiased; }
+    a { color:inherit; text-decoration:none; }
+    button { color:inherit; font:inherit; }
+    .nav { height:68px; border-bottom:1px solid var(--line); background:rgba(247,244,238,.94); }
+    .nav-inner { width:min(1180px,calc(100% - 40px)); height:100%; margin:auto; display:flex; align-items:center; justify-content:space-between; }
+    .brand { display:flex; align-items:center; gap:10px; font-size:18px; font-weight:900; }
+    .brand img { width:36px; height:36px; border-radius:9px; }
+    .back { color:var(--muted); font-size:14px; font-weight:750; }
+    .back:hover { color:var(--clay-dark); }
+    main { width:min(960px,calc(100% - 40px)); margin:0 auto; padding:86px 0 110px; }
+    .eyebrow { color:var(--clay-dark); font-size:13px; font-weight:900; }
+    h1 { margin:14px 0 16px; font-size:clamp(36px,6vw,58px); line-height:1.12; }
+    .lead { max-width:650px; margin:0; color:var(--muted); font-size:17px; line-height:1.8; font-weight:600; }
+    .trial-notice { width:fit-content; margin-top:18px; padding:9px 13px; border:1px solid #e4c49a; border-radius:8px; color:#8a5b1e; background:#fbf0dc; font-size:13px; font-weight:800; }
+    .download-shell { margin-top:44px; padding:8px; border:1px solid var(--line); border-radius:20px; background:rgba(255,255,255,.48); }
+    .platform-tabs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .platform-tab { min-height:72px; padding:0 22px; border:0; border-radius:14px; background:transparent; cursor:pointer; text-align:left; }
+    .platform-tab b { display:block; font-size:17px; }
+    .platform-tab span { display:block; margin-top:5px; color:var(--soft); font-size:12px; }
+    .platform-tab[aria-selected="true"] { background:var(--white); box-shadow:0 5px 18px rgba(83,65,52,.09); }
+    .release-card { margin-top:8px; min-height:330px; padding:42px; border-radius:14px; background:var(--white); box-shadow:var(--shadow); }
+    .release-head { display:flex; align-items:flex-start; justify-content:space-between; gap:24px; }
+    .system-mark { width:54px; height:54px; display:grid; place-items:center; flex:0 0 auto; border-radius:14px; color:var(--clay-dark); background:var(--clay-soft); font-size:15px; font-weight:950; }
+    .release-title { flex:1; }
+    .release-title h2 { margin:1px 0 7px; font-size:27px; }
+    .release-meta { color:var(--muted); font-size:14px; }
+    .notes { margin:30px 0 0; padding-top:24px; border-top:1px solid var(--line); }
+    .notes h3 { margin:0 0 10px; font-size:14px; }
+    .notes p { margin:0; color:var(--muted); white-space:pre-wrap; font-size:14px; line-height:1.75; }
+    .actions { margin-top:30px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+    .download-button { min-height:48px; padding:0 22px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; color:#fff; background:var(--clay); font-weight:850; }
+    .download-button:hover { background:var(--clay-dark); }
+    .download-button[aria-disabled="true"] { pointer-events:none; opacity:.5; }
+    .file-name { color:var(--soft); font-size:12px; overflow-wrap:anywhere; }
+    .status { min-height:230px; display:grid; place-items:center; color:var(--muted); text-align:center; line-height:1.7; }
+    .retry { margin-top:14px; padding:9px 15px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; font-weight:750; }
+    .footnote { margin:20px 4px 0; color:var(--soft); font-size:12px; line-height:1.7; }
+    @media (max-width:640px) { .nav { height:62px; } .nav-inner,main { width:calc(100% - 28px); } main { padding:52px 0 74px; } .brand { font-size:16px; } .brand img { width:32px; height:32px; } .download-shell { margin-top:32px; } .platform-tab { min-height:68px; padding:0 15px; } .release-card { min-height:350px; padding:26px 20px; } .release-head { gap:14px; } .system-mark { width:46px; height:46px; } .release-title h2 { font-size:22px; } }
+  </style>
+</head>
+<body>
+  <nav class="nav">
+    <div class="nav-inner">
+      <a class="brand" href="/"><img src="/assets/app_icon.png" alt="装筱窝图标"><span>装筱窝</span></a>
+      <a class="back" href="/">返回首页</a>
+    </div>
+  </nav>
+  <main>
+    <div class="eyebrow">装筱窝桌面端</div>
+    <h1>下载桌面端软件</h1>
+    <p class="lead">选择你的操作系统，下载版本发布中心中最新的正式安装包。</p>
+    <div class="trial-notice" role="note">当前为未发布的试用版。</div>
+
+    <div class="download-shell">
+      <div class="platform-tabs" role="tablist" aria-label="选择操作系统">
+        <button class="platform-tab" type="button" role="tab" aria-selected="true" data-platform="macos"><b>macOS</b><span>支持 .dmg / .pkg</span></button>
+        <button class="platform-tab" type="button" role="tab" aria-selected="false" data-platform="windows"><b>Windows</b><span>支持 .exe / .msix</span></button>
+      </div>
+      <section class="release-card" aria-live="polite" id="release-card"><div class="status">正在获取最新版本…</div></section>
+    </div>
+    <p class="footnote">这里只提供已正式发布的最新桌面端版本。安装前请确认系统版本和安装包来源。</p>
+  </main>
+  <script>
+    const tabs = Array.from(document.querySelectorAll('[data-platform]'));
+    const card = document.getElementById('release-card');
+    const releases = new Map();
+    let currentPlatform = /Windows/i.test(navigator.userAgent) ? 'windows' : 'macos';
+
+    function escapeHtml(value) {
+      return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
+    }
+    function formatSize(bytes) {
+      const size = Number(bytes || 0);
+      if (!size) return '大小未知';
+      if (size >= 1024 * 1024 * 1024) return `${(size / 1024 / 1024 / 1024).toFixed(2)} GB`;
+      return `${(size / 1024 / 1024).toFixed(size >= 100 * 1024 * 1024 ? 0 : 1)} MB`;
+    }
+    function renderLoading() { card.innerHTML = '<div class="status">正在获取最新版本…</div>'; }
+    function renderEmpty(platform) {
+      const name = platform === 'macos' ? 'macOS' : 'Windows';
+      card.innerHTML = `<div class="status"><div><strong>${name} 版本暂未提供</strong><br>正式发布后即可在这里下载。</div></div>`;
+    }
+    function renderError(message) {
+      card.innerHTML = `<div class="status"><div>暂时无法获取最新版本<br>${escapeHtml(message)}<br><button class="retry" type="button" id="retry">重新加载</button></div></div>`;
+      document.getElementById('retry').addEventListener('click', () => loadRelease(currentPlatform, true));
+    }
+    function renderRelease(release) {
+      const mac = release.platform === 'macos';
+      const platformName = mac ? 'macOS' : 'Windows';
+      const mark = mac ? 'mac' : 'win';
+      card.innerHTML = `
+        <div class="release-head">
+          <div class="system-mark" aria-hidden="true">${mark}</div>
+          <div class="release-title"><h2>${platformName} ${escapeHtml(release.version_name)}</h2><div class="release-meta">Build ${escapeHtml(release.build_number)} · ${formatSize(release.package_size)}</div></div>
+        </div>
+        <div class="notes"><h3>更新说明</h3><p>${escapeHtml(release.release_notes || '本版本包含功能优化与稳定性改进。')}</p></div>
+        <div class="actions"><a class="download-button" href="${escapeHtml(release.package_url)}" download="${escapeHtml(release.package_name)}">下载最新版本</a><span class="file-name">${escapeHtml(release.package_name)}</span></div>`;
+    }
+    async function loadRelease(platform, refresh = false) {
+      currentPlatform = platform;
+      tabs.forEach((tab) => tab.setAttribute('aria-selected', tab.dataset.platform === platform ? 'true' : 'false'));
+      if (!refresh && releases.has(platform)) { renderRelease(releases.get(platform)); return; }
+      renderLoading();
+      try {
+        const response = await fetch(`/api/app-releases/latest?platform=${encodeURIComponent(platform)}`, { headers:{ Accept:'application/json' } });
+        const body = await response.json().catch(() => null);
+        if (!response.ok || !body || body.code !== 200) throw new Error(body?.message || `请求失败（${response.status}）`);
+        if (!body.data) { renderEmpty(platform); return; }
+        releases.set(platform, body.data);
+        renderRelease(body.data);
+      } catch (error) { renderError(error.message || '请稍后重试'); }
+    }
+    tabs.forEach((tab) => tab.addEventListener('click', () => loadRelease(tab.dataset.platform)));
+    loadRelease(currentPlatform);
+  </script>
+</body>
+</html>
