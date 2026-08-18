@@ -192,19 +192,19 @@ function renderSystemSettings() {
         <div class="card-title">
           <div>
             <h3>版本发布中心</h3>
-            <p>统一管理 Windows 和 macOS 桌面端安装包、更新说明与发布状态</p>
+            <p>统一管理 Windows、macOS 和 Android 安装包、更新说明与发布状态</p>
           </div>
           <button class="primary-btn" onclick="toggleReleaseForm(true)">+新建版本</button>
         </div>
         <div id="release-create-panel" class="release-create-panel" hidden>
           <form id="release-form" onsubmit="createAppRelease(event)">
             <div class="release-form-grid">
-              <label>平台<select name="platform" required><option value="windows">Windows</option><option value="macos">macOS</option></select></label>
+              <label>平台<select name="platform" required><option value="windows">Windows</option><option value="macos">macOS</option><option value="android">Android</option></select></label>
               <label>版本号<input name="version_name" required placeholder="例如 1.2.0" pattern="\\d+\\.\\d+\\.\\d+.*"></label>
               <label>构建号<input name="build_number" required type="number" min="1" step="1" placeholder="例如 7"></label>
               <label>更新方式<select name="update_mode" required><option value="optional">普通更新</option><option value="required">强制更新</option></select></label>
             </div>
-            <label class="release-field">安装包<input name="package" required type="file" accept=".exe,.msix,.dmg,.pkg"><small>Windows 支持 .exe/.msix，macOS 支持 .dmg/.pkg，最大 1GB</small></label>
+            <label class="release-field">安装包<input name="package" required type="file" accept=".exe,.msix,.dmg,.pkg,.apk"><small>Windows 支持 .exe/.msix，macOS 支持 .dmg/.pkg，Android 支持 .apk，最大 1GB</small></label>
             <label class="release-field">更新说明<textarea name="release_notes" required placeholder="请说明本次新增、修复和注意事项"></textarea></label>
             <div class="release-form-actions">
               <button type="button" class="ghost-btn" onclick="toggleReleaseForm(false)">取消</button>
@@ -235,9 +235,11 @@ async function loadAppReleases() {
     const j = await adminFetch('/app-releases');
     if (j.code !== 200) throw new Error(j.message || '版本列表加载失败');
     appReleases = Array.isArray(j.data) ? j.data : [];
+    const totalDownloads = appReleases.reduce((total, item) => total + Number(item.download_count || 0), 0);
     host.innerHTML = appReleases.length ? `
+      <div class="empty-editor"><strong>总下载数量：${totalDownloads} 次</strong></div>
       <div class="table-wrap"><table class="release-table">
-        <thead><tr><th>平台</th><th>版本</th><th>状态</th><th>更新方式</th><th>安装包</th><th>更新说明</th><th>发布时间</th><th>操作</th></tr></thead>
+        <thead><tr><th>平台</th><th>版本</th><th>下载数量</th><th>状态</th><th>更新方式</th><th>安装包</th><th>更新说明</th><th>发布时间</th><th>操作</th></tr></thead>
         <tbody>${appReleases.map(releaseRowHtml).join('')}</tbody>
       </table></div>
     ` : '<div class="empty-editor">还没有桌面端版本，点击“新建版本”开始上传。</div>';
@@ -249,9 +251,11 @@ async function loadAppReleases() {
 function releaseRowHtml(item) {
   const status = { draft: '草稿', published: '已发布', withdrawn: '已撤回' }[item.status] || item.status;
   const mode = item.update_mode === 'required' ? '强制更新' : '普通更新';
+  const platform = { windows: 'Windows', macos: 'macOS', android: 'Android' }[item.platform] || item.platform;
   return `<tr>
-    <td><span class="badge ${item.platform === 'windows' ? 'status-processing' : 'status-approved'}">${item.platform === 'windows' ? 'Windows' : 'macOS'}</span></td>
+    <td><span class="badge ${item.platform === 'windows' ? 'status-processing' : 'status-approved'}">${esc(platform)}</span></td>
     <td><strong>${esc(item.version_name)}</strong><div class="muted">Build ${Number(item.build_number || 0)}</div></td>
+    <td><strong>${Number(item.download_count || 0)}</strong> 次</td>
     <td><span class="badge status-${item.status === 'published' ? 'approved' : item.status === 'draft' ? 'draft' : 'hidden'}">${status}</span></td>
     <td>${mode}</td>
     <td><a href="${esc(item.package_url)}" target="_blank" rel="noopener">${esc(item.package_name)}</a><div class="muted">${formatFileSize(item.package_size)} · SHA-256 ${esc(String(item.sha256 || '').slice(0, 12))}…</div></td>

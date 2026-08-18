@@ -25,7 +25,7 @@
     .lead { max-width:650px; margin:0; color:var(--muted); font-size:17px; line-height:1.8; font-weight:600; }
     .trial-notice { width:fit-content; margin-top:18px; padding:9px 13px; border:1px solid #e4c49a; border-radius:8px; color:#8a5b1e; background:#fbf0dc; font-size:13px; font-weight:800; }
     .download-shell { margin-top:44px; padding:8px; border:1px solid var(--line); border-radius:20px; background:rgba(255,255,255,.48); }
-    .platform-tabs { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+    .platform-tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
     .platform-tab { min-height:72px; padding:0 22px; border:0; border-radius:14px; background:transparent; cursor:pointer; text-align:left; }
     .platform-tab b { display:block; font-size:17px; }
     .platform-tab span { display:block; margin-top:5px; color:var(--soft); font-size:12px; }
@@ -47,7 +47,7 @@
     .status { min-height:230px; display:grid; place-items:center; color:var(--muted); text-align:center; line-height:1.7; }
     .retry { margin-top:14px; padding:9px 15px; border:1px solid var(--line); border-radius:8px; background:#fff; cursor:pointer; font-weight:750; }
     .footnote { margin:20px 4px 0; color:var(--soft); font-size:12px; line-height:1.7; }
-    @media (max-width:640px) { .nav { height:62px; } .nav-inner,main { width:calc(100% - 28px); } main { padding:52px 0 74px; } .brand { font-size:16px; } .brand img { width:32px; height:32px; } .download-shell { margin-top:32px; } .platform-tab { min-height:68px; padding:0 15px; } .release-card { min-height:350px; padding:26px 20px; } .release-head { gap:14px; } .system-mark { width:46px; height:46px; } .release-title h2 { font-size:22px; } }
+    @media (max-width:640px) { .nav { height:62px; } .nav-inner,main { width:calc(100% - 28px); } main { padding:52px 0 74px; } .brand { font-size:16px; } .brand img { width:32px; height:32px; } .download-shell { margin-top:32px; } .platform-tab { min-height:68px; padding:0 10px; } .platform-tab b { font-size:15px; } .platform-tab span { font-size:10px; } .release-card { min-height:350px; padding:26px 20px; } .release-head { gap:14px; } .system-mark { width:46px; height:46px; } .release-title h2 { font-size:22px; } }
   </style>
 </head>
 <body>
@@ -67,6 +67,7 @@
       <div class="platform-tabs" role="tablist" aria-label="选择操作系统">
         <button class="platform-tab" type="button" role="tab" aria-selected="true" data-platform="macos"><b>macOS</b><span>支持 .dmg / .pkg</span></button>
         <button class="platform-tab" type="button" role="tab" aria-selected="false" data-platform="windows"><b>Windows</b><span>支持 .exe / .msix</span></button>
+        <button class="platform-tab" type="button" role="tab" aria-selected="false" data-platform="android"><b>Android</b><span>支持 .apk</span></button>
       </div>
       <section class="release-card" aria-live="polite" id="release-card"><div class="status">正在获取最新版本…</div></section>
     </div>
@@ -76,7 +77,9 @@
     const tabs = Array.from(document.querySelectorAll('[data-platform]'));
     const card = document.getElementById('release-card');
     const releases = new Map();
-    let currentPlatform = /Windows/i.test(navigator.userAgent) ? 'windows' : 'macos';
+    let currentPlatform = /Android/i.test(navigator.userAgent)
+      ? 'android'
+      : /Windows/i.test(navigator.userAgent) ? 'windows' : 'macos';
 
     function escapeHtml(value) {
       return String(value ?? '').replace(/[&<>'"]/g, (character) => ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', "'":'&#39;', '"':'&quot;' })[character]);
@@ -89,7 +92,7 @@
     }
     function renderLoading() { card.innerHTML = '<div class="status">正在获取最新版本…</div>'; }
     function renderEmpty(platform) {
-      const name = platform === 'macos' ? 'macOS' : 'Windows';
+      const name = { macos:'macOS', windows:'Windows', android:'Android' }[platform] || platform;
       card.innerHTML = `<div class="status"><div><strong>${name} 版本暂未提供</strong><br>正式发布后即可在这里下载。</div></div>`;
     }
     function renderError(message) {
@@ -97,16 +100,15 @@
       document.getElementById('retry').addEventListener('click', () => loadRelease(currentPlatform, true));
     }
     function renderRelease(release) {
-      const mac = release.platform === 'macos';
-      const platformName = mac ? 'macOS' : 'Windows';
-      const mark = mac ? 'mac' : 'win';
+      const platformName = { macos:'macOS', windows:'Windows', android:'Android' }[release.platform] || release.platform;
+      const mark = { macos:'mac', windows:'win', android:'apk' }[release.platform] || 'app';
       card.innerHTML = `
         <div class="release-head">
           <div class="system-mark" aria-hidden="true">${mark}</div>
           <div class="release-title"><h2>${platformName} ${escapeHtml(release.version_name)}</h2><div class="release-meta">Build ${escapeHtml(release.build_number)} · ${formatSize(release.package_size)}</div></div>
         </div>
         <div class="notes"><h3>更新说明</h3><p>${escapeHtml(release.release_notes || '本版本包含功能优化与稳定性改进。')}</p></div>
-        <div class="actions"><a class="download-button" href="${escapeHtml(release.package_url)}" download="${escapeHtml(release.package_name)}">下载最新版本</a><span class="file-name">${escapeHtml(release.package_name)}</span></div>`;
+        <div class="actions"><a class="download-button" href="${escapeHtml(release.download_url)}">下载最新版本</a><span class="file-name">${escapeHtml(release.package_name)}</span></div>`;
     }
     async function loadRelease(platform, refresh = false) {
       currentPlatform = platform;
