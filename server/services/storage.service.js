@@ -177,6 +177,61 @@ async function putFile({ sourcePath, key, req, contentType }) {
   return { key, url: ossStorageUri(key), path: null };
 }
 
+async function initDirectMultipartUpload({ key, contentType }) {
+  if (!useOss()) throw new Error('仅 OSS 存储支持客户端直传');
+  const result = await getOssClient().initMultipartUpload(key, {
+    mime: contentType || 'application/octet-stream',
+    headers: { 'Cache-Control': process.env.OSS_CACHE_CONTROL || 'private, max-age=1800' },
+  });
+  return { key, uploadId: result.uploadId };
+}
+
+function signedMultipartPartUrl({ key, uploadId, partNumber, expires = 900 }) {
+  if (!useOss()) throw new Error('仅 OSS 存储支持客户端直传');
+  return getOssClient().signatureUrl(key, {
+    method: 'PUT',
+    expires,
+    subResource: { partNumber, uploadId },
+  });
+}
+
+async function completeDirectMultipartUpload({ key, uploadId, parts }) {
+  if (!useOss()) throw new Error('仅 OSS 存储支持客户端直传');
+  await getOssClient().completeMultipartUpload(key, uploadId, parts);
+  const head = await getOssClient().head(key);
+  return {
+    key,
+    url: ossStorageUri(key),
+    size: Number(head.res?.headers?.['content-length'] || 0),
+  };
+}
+
+async function abortDirectMultipartUpload({ key, uploadId }) {
+  if (!useOss()) return false;
+  await getOssClient().abortMultipartUpload(key, uploadId);
+  return true;
+}
+
+async function listIncompleteMultipartUploads(prefix = '') {
+  if (!useOss()) return [];
+  const uploads = [];
+  let keyMarker;
+  let uploadIdMarker;
+  do {
+    const query = { prefix, 'max-uploads': 1000 };
+    if (keyMarker) {
+      query['key-marker'] = keyMarker;
+      query['upload-id-marker'] = uploadIdMarker;
+    }
+    const result = await getOssClient().listUploads(query);
+    uploads.push(...(result.uploads || []));
+    keyMarker = result.nextKeyMarker;
+    uploadIdMarker = result.nextUploadIdMarker;
+    if (!result.isTruncated) break;
+  } while (keyMarker && uploadIdMarker);
+  return uploads;
+}
+
 async function persistUploadedFile({ req, file, folder }) {
   if (!file) return null;
   const cleanFolder = String(folder || 'uploads').replace(/^\/+|\/+$/g, '');
@@ -315,6 +370,11 @@ module.exports = {
   useOss,
   hasOssConfig,
   putFile,
+  initDirectMultipartUpload,
+  signedMultipartPartUrl,
+  completeDirectMultipartUpload,
+  abortDirectMultipartUpload,
+  listIncompleteMultipartUploads,
   persistUploadedFile,
   uploadedFileUrl,
   deleteStoredFile,

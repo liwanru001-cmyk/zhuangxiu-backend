@@ -212,6 +212,126 @@ app.get('/api/admin/app-releases', adminAuth, async (req, res) => {
   return success(res, rows.map(desktopReleaseRow));
 });
 
+const directReleasePartSize = 8 * 1024 * 1024;
+const directReleaseMaxSize = 1024 * 1024 * 1024;
+
+function validateReleaseMetadata(body) {
+  const platform = String(body.platform || '').toLowerCase();
+  const versionName = String(body.version_name || '').trim();
+  const buildNumber = Number(body.build_number);
+  const releaseNotes = String(body.release_notes || '').trim();
+  const updateMode = String(body.update_mode || 'optional');
+  const originalName = path.basename(String(body.package_name || '').trim());
+  const fileSize = Number(body.package_size);
+  const contentType = String(body.content_type || 'application/octet-stream').slice(0, 150);
+  if (!['windows', 'macos'].includes(platform)) throw new Error('平台不正确');
+  if (!/^\d+\.\d+\.\d+(?:[-+][0-9A-Za-z.-]+)?$/.test(versionName)) throw new Error('版本号格式不正确，例如 1.2.0');
+  if (!Number.isInteger(buildNumber) || buildNumber <= 0) throw new Error('构建号必须是正整数');
+  if (!releaseNotes) throw new Error('请填写更新说明');
+  if (!['optional', 'required'].includes(updateMode)) throw new Error('更新方式不正确');
+  if (!originalName || !releaseExtensionAllowed(platform, originalName)) {
+    throw new Error(platform === 'windows' ? 'Windows 仅支持 .exe 或 .msix' : 'macOS 仅支持 .dmg 或 .pkg');
+  }
+  if (!Number.isSafeInteger(fileSize) || fileSize <= 0 || fileSize > directReleaseMaxSize) throw new Error('安装包大小必须在 1GB 以内');
+  return { platform, versionName, buildNumber, releaseNotes, updateMode, originalName, fileSize, contentType };
+}
+
+async function directUploadSession(token) {
+  const [rows] = await db.query(
+    `SELECT * FROM desktop_release_upload_sessions
+     WHERE session_token = ? AND status = 'pending' AND expires_at > NOW() LIMIT 1`,
+    [token]
+  );
+  return rows[0] || null;
+}
+
+app.post('/api/admin/app-releases/uploads/init', adminAuth, async (req, res) => {
+  if (!storageService.useOss()) return error(res, '服务器尚未启用 OSS 直传', 503);
+  let metadata;
+  try { metadata = validateReleaseMetadata(req.body || {}); } catch (validationError) { return error(res, validationError.message); }
+  const safeName = metadata.originalName.replace(/[^0-9A-Za-z._\-\u4e00-\u9fff]/g, '_');
+  const sessionToken = crypto.randomUUID();
+  const storageKey = `releases/${metadata.platform}/${metadata.versionName}/${metadata.buildNumber}-${sessionToken}-${safeName}`;
+  const partCount = Math.ceil(metadata.fileSize / directReleasePartSize);
+  const initialized = await storageService.initDirectMultipartUpload({ key: storageKey, contentType: metadata.contentType });
+  try {
+    await db.query(
+      `INSERT INTO desktop_release_upload_sessions
+       (session_token, upload_id, storage_key, platform, version_name, build_number,
+        original_name, file_size, content_type, release_notes, update_mode,
+        part_size, part_count, created_by, expires_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL 2 HOUR))`,
+      [sessionToken, initialized.uploadId, storageKey, metadata.platform, metadata.versionName,
+       metadata.buildNumber, metadata.originalName, metadata.fileSize, metadata.contentType,
+       metadata.releaseNotes, metadata.updateMode, directReleasePartSize, partCount,
+       req.admin?.role || 'admin']
+    );
+  } catch (insertError) {
+    await storageService.abortDirectMultipartUpload(initialized).catch(() => {});
+    throw insertError;
+  }
+  return success(res, { session_token: sessionToken, part_size: directReleasePartSize, part_count: partCount, expires_in: 7200 });
+});
+
+app.post('/api/admin/app-releases/uploads/:token/part-url', adminAuth, async (req, res) => {
+  const session = await directUploadSession(req.params.token);
+  if (!session) return error(res, '上传会话不存在或已过期', 404);
+  const partNumber = Number(req.body?.part_number);
+  if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > Number(session.part_count)) return error(res, '分片编号不正确');
+  const uploadUrl = storageService.signedMultipartPartUrl({
+    key: session.storage_key,
+    uploadId: session.upload_id,
+    partNumber,
+    expires: 900,
+  });
+  return success(res, { part_number: partNumber, upload_url: uploadUrl, expires_in: 900 });
+});
+
+app.post('/api/admin/app-releases/uploads/:token/complete', adminAuth, async (req, res) => {
+  const session = await directUploadSession(req.params.token);
+  if (!session) return error(res, '上传会话不存在或已过期', 404);
+  const sha256 = String(req.body?.sha256 || '').toLowerCase();
+  const parts = Array.isArray(req.body?.parts) ? req.body.parts.map((part) => ({ number: Number(part.number), etag: String(part.etag || '') })) : [];
+  if (!/^[0-9a-f]{64}$/.test(sha256)) return error(res, '文件 SHA-256 不正确');
+  if (parts.length !== Number(session.part_count) || parts.some((part, index) => part.number !== index + 1 || !/^"?[0-9a-fA-F]{32}"?$/.test(part.etag))) {
+    return error(res, '上传分片不完整');
+  }
+  const completed = await storageService.completeDirectMultipartUpload({ key: session.storage_key, uploadId: session.upload_id, parts });
+  if (completed.key !== session.storage_key || completed.size !== Number(session.file_size)) {
+    await storageService.deleteStoredFile(completed.url).catch(() => {});
+    return error(res, 'OSS 文件校验失败：文件路径或大小不一致', 409);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [result] = await connection.query(
+      `INSERT INTO desktop_app_releases
+       (platform, version_name, build_number, package_url, package_name,
+        package_size, sha256, release_notes, update_mode, status, created_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
+      [session.platform, session.version_name, session.build_number, completed.url,
+       session.original_name, session.file_size, sha256, session.release_notes,
+       session.update_mode, req.admin?.role || 'admin']
+    );
+    await connection.query("UPDATE desktop_release_upload_sessions SET status = 'completed' WHERE id = ? AND status = 'pending'", [session.id]);
+    await connection.commit();
+    const [rows] = await db.query('SELECT * FROM desktop_app_releases WHERE id = ?', [result.insertId]);
+    return success(res, desktopReleaseRow(rows[0]), '版本草稿已创建');
+  } catch (completeError) {
+    await connection.rollback();
+    await storageService.deleteStoredFile(completed.url).catch(() => {});
+    throw completeError;
+  } finally { connection.release(); }
+});
+
+app.delete('/api/admin/app-releases/uploads/:token', adminAuth, async (req, res) => {
+  const session = await directUploadSession(req.params.token);
+  if (!session) return success(res, null, '上传会话已结束');
+  await storageService.abortDirectMultipartUpload({ key: session.storage_key, uploadId: session.upload_id }).catch(() => {});
+  await db.query("UPDATE desktop_release_upload_sessions SET status = 'aborted' WHERE id = ?", [session.id]);
+  return success(res, null, '上传已取消');
+});
+
 app.post(
   '/api/admin/app-releases',
   adminAuth,

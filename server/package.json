@@ -10,6 +10,7 @@
     "check:storage": "node scripts/check-storage.js",
     "migrate:oss": "node scripts/migrate-local-files-to-oss.js",
     "rollback:oss": "node scripts/rollback-oss-migration.js",
+    "cleanup:release-uploads": "node scripts/cleanup-orphan-release-uploads.js",
     "fix:uploads": "node scripts/fix-upload-permissions.js"
   },
   "dependencies": {

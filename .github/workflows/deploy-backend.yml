@@ -449,6 +449,10 @@ jobs:
             # Migrations are recorded once and applied in filename order.
             node scripts/run-pending-migrations.js
 
+            # Abort only old OSS multipart uploads that are not referenced by
+            # an active, unexpired release upload session.
+            node scripts/cleanup-orphan-release-uploads.js --apply --older-than-minutes=10
+
             export PORT="${PORT:-3001}"
             pm2 delete yinnkhome-backend || true
             pm2 startOrReload ecosystem.config.cjs --env production --update-env
