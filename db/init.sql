@@ -24,6 +24,31 @@ CREATE TABLE IF NOT EXISTS users (
     INDEX idx_admin_status (admin_status, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- 账号注销快照；不关联 users 外键，确保原账号删除后仍可审计。
+CREATE TABLE IF NOT EXISTS account_deletion_records (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    original_user_id BIGINT UNSIGNED NOT NULL,
+    phone VARCHAR(32) NOT NULL,
+    nickname VARCHAR(50) NOT NULL DEFAULT '',
+    avatar VARCHAR(500) NOT NULL DEFAULT '',
+    bio VARCHAR(500) NOT NULL DEFAULT '',
+    city VARCHAR(50) NOT NULL DEFAULT '',
+    role VARCHAR(32) NOT NULL DEFAULT 'owner',
+    admin_status VARCHAR(32) NOT NULL DEFAULT 'approved',
+    identity_onboarding_completed TINYINT UNSIGNED NOT NULL DEFAULT 0,
+    followers_count INT UNSIGNED NOT NULL DEFAULT 0,
+    following_count INT UNSIGNED NOT NULL DEFAULT 0,
+    likes_received INT UNSIGNED NOT NULL DEFAULT 0,
+    roles_snapshot JSON DEFAULT NULL,
+    wechat_identities_snapshot JSON DEFAULT NULL,
+    registered_at DATETIME DEFAULT NULL,
+    last_updated_at DATETIME DEFAULT NULL,
+    deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    INDEX idx_account_deletion_user (original_user_id),
+    INDEX idx_account_deletion_phone (phone),
+    INDEX idx_account_deletion_time (deleted_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 -- 用户拥有的身份；users.role 暂时保存当前使用身份。
 CREATE TABLE IF NOT EXISTS user_roles (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

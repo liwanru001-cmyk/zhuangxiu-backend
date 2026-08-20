@@ -1793,6 +1793,10 @@ async function getNotifications(req, res) {
      LEFT JOIN users creator ON creator.id = item.created_by
      LEFT JOIN users case_creator ON case_creator.id = case_share.designer_id
      WHERE n.recipient_id = ?
+       AND NOT (
+         n.event_type = 'consultation'
+         AND JSON_UNQUOTE(JSON_EXTRACT(n.payload, '$.targetRole')) = 'merchant'
+       )
        AND (
          n.event_type <> 'assigned'
          OR EXISTS (
@@ -2011,7 +2015,64 @@ async function changePhone(req, res) {
 
 async function deleteAccount(req, res) {
   if (!await verifyPassword(req.user.id, req.body.password)) return error(res, '密码错误');
-  await db.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [[user]] = await connection.query(
+      `SELECT id, phone, nickname, avatar, bio, city, role, admin_status,
+              identity_onboarding_completed, followers_count, following_count,
+              likes_received, created_at, updated_at
+       FROM users WHERE id = ? FOR UPDATE`,
+      [req.user.id]
+    );
+    if (!user) {
+      await connection.rollback();
+      return error(res, '账号不存在', 404);
+    }
+    const [roles] = await connection.query(
+      `SELECT role, is_default, created_at
+       FROM user_roles WHERE user_id = ? ORDER BY id`,
+      [req.user.id]
+    );
+    const [wechatIdentities] = await connection.query(
+      `SELECT platform, appid, openid, unionid, phone, last_login_at, created_at, updated_at
+       FROM wechat_identities WHERE user_id = ? ORDER BY id`,
+      [req.user.id]
+    );
+    await connection.query(
+      `INSERT INTO account_deletion_records
+       (original_user_id, phone, nickname, avatar, bio, city, role, admin_status,
+        identity_onboarding_completed, followers_count, following_count,
+        likes_received, roles_snapshot, wechat_identities_snapshot,
+        registered_at, last_updated_at, deleted_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW())`,
+      [
+        user.id,
+        user.phone,
+        user.nickname,
+        user.avatar,
+        user.bio,
+        user.city,
+        user.role,
+        user.admin_status,
+        user.identity_onboarding_completed,
+        user.followers_count,
+        user.following_count,
+        user.likes_received,
+        JSON.stringify(roles),
+        JSON.stringify(wechatIdentities),
+        user.created_at,
+        user.updated_at,
+      ]
+    );
+    await connection.query('DELETE FROM users WHERE id = ?', [req.user.id]);
+    await connection.commit();
+  } catch (deleteError) {
+    await connection.rollback();
+    throw deleteError;
+  } finally {
+    connection.release();
+  }
   return success(res, null, '账号已注销');
 }
 

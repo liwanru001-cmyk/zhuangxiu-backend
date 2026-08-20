@@ -75,6 +75,7 @@ async function ensureAppTables() {
   await ensureSmsCodesTable();
   await ensureWechatIdentityTables();
   await ensureWechatBindingAppealTables();
+  await ensureAccountDeletionRecordsTable();
   await ensureUserAdminStatusColumn();
   await ensureUserAvatarChangedAtColumn();
   await ensureRenovationProjectNameColumn();
@@ -518,6 +519,35 @@ async function ensureAppTables() {
       read_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
       PRIMARY KEY (message_id, user_id),
       KEY idx_user_read (user_id, read_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+}
+
+async function ensureAccountDeletionRecordsTable() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS account_deletion_records (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      original_user_id BIGINT UNSIGNED NOT NULL,
+      phone VARCHAR(32) NOT NULL,
+      nickname VARCHAR(50) NOT NULL DEFAULT '',
+      avatar VARCHAR(500) NOT NULL DEFAULT '',
+      bio VARCHAR(500) NOT NULL DEFAULT '',
+      city VARCHAR(50) NOT NULL DEFAULT '',
+      role VARCHAR(32) NOT NULL DEFAULT 'owner',
+      admin_status VARCHAR(32) NOT NULL DEFAULT 'approved',
+      identity_onboarding_completed TINYINT UNSIGNED NOT NULL DEFAULT 0,
+      followers_count INT UNSIGNED NOT NULL DEFAULT 0,
+      following_count INT UNSIGNED NOT NULL DEFAULT 0,
+      likes_received INT UNSIGNED NOT NULL DEFAULT 0,
+      roles_snapshot JSON DEFAULT NULL,
+      wechat_identities_snapshot JSON DEFAULT NULL,
+      registered_at DATETIME DEFAULT NULL,
+      last_updated_at DATETIME DEFAULT NULL,
+      deleted_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_account_deletion_user (original_user_id),
+      KEY idx_account_deletion_phone (phone),
+      KEY idx_account_deletion_time (deleted_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
 }

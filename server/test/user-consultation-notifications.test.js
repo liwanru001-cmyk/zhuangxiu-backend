@@ -92,35 +92,13 @@ test('merchant consultation creates a merchant notification deep link', async ()
   assert.equal(payload.route, 'consultation_chat');
 });
 
-test('notifications API returns consultation notification routing data', async () => {
+test('notifications API excludes merchant consultation notifications', async () => {
   const dbMock = {
     async query(sql, params) {
       assert.match(sql, /LEFT JOIN renovation_projects/);
+      assert.match(sql, /targetRole/);
       assert.deepEqual(params, [42]);
-      return [[{
-        id: 12,
-        item_id: null,
-        event_type: 'consultation',
-        delivery_status: 'pending',
-        payload: JSON.stringify({
-          source: 'consultation',
-          title: '新的商品咨询',
-          content: '你收到一条新的商品咨询',
-          route: 'consultation_chat',
-          deepLink: { consultationId: 88 },
-          entityType: 'consultation',
-          entityId: 88,
-        }),
-        read_at: null,
-        created_at: '2026-07-03T12:00:00.000Z',
-        project_id: null,
-        content: null,
-        item_status: null,
-        creator_name: null,
-        case_share_title: null,
-        case_share_creator_name: null,
-        project_name: null,
-      }]];
+      return [[]];
     },
   };
   const controller = loadController(dbMock);
@@ -129,12 +107,7 @@ test('notifications API returns consultation notification routing data', async (
   await controller.getNotifications({ user: { id: 42 } }, res);
 
   assert.equal(res.statusCode, 200);
-  assert.equal(res.payload.data.length, 1);
-  assert.equal(res.payload.data[0].type, 'consultation');
-  assert.equal(res.payload.data[0].title, '新的商品咨询');
-  assert.equal(res.payload.data[0].route, 'consultation_chat');
-  assert.equal(res.payload.data[0].deep_link.consultationId, 88);
-  assert.equal(res.payload.data[0].entity_id, 88);
+  assert.deepEqual(res.payload.data, []);
 });
 
 test('consultation reply creates notification for the other participant', async () => {

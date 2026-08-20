@@ -24,6 +24,8 @@ let total = 0;
 let userTab = 'accounts';
 let wechatAppealPage = 1;
 let wechatAppealTotal = 0;
+let accountDeletionPage = 1;
+let accountDeletionTotal = 0;
 let editingId = null;
 let inspectionTemplates = [];
 let inspectionItems = [];
@@ -391,6 +393,7 @@ function userTabsHtml() {
     <div class="tabs">
       <button class="${userTab === 'accounts' ? 'active' : ''}" onclick="switchUserTab('accounts')">账号列表</button>
       <button class="${userTab === 'wechatAppeals' ? 'active' : ''}" onclick="switchUserTab('wechatAppeals')">异常绑定</button>
+      <button class="${userTab === 'accountDeletions' ? 'active' : ''}" onclick="switchUserTab('accountDeletions')">注销账号</button>
     </div>
   `;
 }
@@ -399,12 +402,115 @@ function switchUserTab(tab) {
   userTab = tab;
   page = 1;
   wechatAppealPage = 1;
+  accountDeletionPage = 1;
   renderUsers();
 }
 
 function renderUserTabContent() {
   if (userTab === 'wechatAppeals') renderWechatBindingAppealsTab();
+  else if (userTab === 'accountDeletions') renderAccountDeletionsTab();
   else renderUserAccountsTab();
+}
+
+function renderAccountDeletionsTab() {
+  document.getElementById('user-tab-content').innerHTML = `
+    <div class="toolbar">
+      <input id="accountDeletionSearch" placeholder="搜索用户ID/昵称/手机号" onkeydown="if(event.key==='Enter')loadAccountDeletions(1)">
+      <select id="accountDeletionRole" onchange="loadAccountDeletions(1)">
+        <option value="">全部身份</option>
+        <option value="owner">业主</option>
+        <option value="designer">设计师</option>
+        <option value="merchant">商家</option>
+        <option value="project_manager">项目经理</option>
+        <option value="project_supervisor">项目监理</option>
+      </select>
+      <button class="primary-btn" onclick="loadAccountDeletions(1)">查询</button>
+    </div>
+    <div class="card">
+      <div class="card-title">
+        <div>
+          <h3>注销账号</h3>
+          <p>记录用户注销时的账号和绑定信息，原始数据不脱敏展示。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr>
+            <th>记录ID</th><th>原用户ID</th><th>手机号</th><th>昵称</th><th>身份</th>
+            <th>城市</th><th>微信绑定</th><th>注册时间</th><th>注销时间</th>
+          </tr></thead>
+          <tbody id="account-deletion-body"></tbody>
+        </table>
+      </div>
+      <div class="pagination">
+        <span id="account-deletion-page-info"></span>
+        <button id="account-deletion-prev" onclick="loadAccountDeletions(accountDeletionPage-1)">‹ 上一页</button>
+        <button id="account-deletion-next" onclick="loadAccountDeletions(accountDeletionPage+1)">下一页 ›</button>
+      </div>
+    </div>
+  `;
+  loadAccountDeletions(1);
+}
+
+async function loadAccountDeletions(p) {
+  accountDeletionPage = Math.max(1, p || 1);
+  const keyword = document.getElementById('accountDeletionSearch')?.value.trim() || '';
+  const role = document.getElementById('accountDeletionRole')?.value || '';
+  const params = new URLSearchParams({ page: accountDeletionPage, pageSize: 20 });
+  if (keyword) params.set('keyword', keyword);
+  if (role) params.set('role', role);
+  const body = document.getElementById('account-deletion-body');
+  body.innerHTML = '<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">加载中...</td></tr>';
+  try {
+    const j = await adminFetch(`/account-deletions?${params}`);
+    if (j.code !== 200) throw new Error(j.message || '加载失败');
+    const records = j.data.records || [];
+    accountDeletionTotal = j.data.total || 0;
+    body.innerHTML = records.map(accountDeletionRow).join('') ||
+      '<tr><td colspan="9" style="text-align:center;color:#999;padding:32px;">暂无注销记录</td></tr>';
+    const totalPages = Math.ceil(accountDeletionTotal / 20) || 1;
+    document.getElementById('account-deletion-page-info').textContent = `共 ${accountDeletionTotal} 条 · ${accountDeletionPage}/${totalPages}`;
+    document.getElementById('account-deletion-prev').disabled = accountDeletionPage <= 1;
+    document.getElementById('account-deletion-next').disabled = accountDeletionPage >= totalPages;
+  } catch (e) {
+    body.innerHTML = `<tr><td colspan="9" style="text-align:center;color:#b42318;padding:32px;">${esc(e.message || '加载失败')}</td></tr>`;
+  }
+}
+
+function accountDeletionRow(item) {
+  const roleSnapshots = parseJsonArray(item.roles_snapshot);
+  const roles = normalizeRoles(
+    roleSnapshots.map(snapshot => snapshot?.role).filter(Boolean),
+    item.role
+  );
+  const identities = parseJsonArray(item.wechat_identities_snapshot);
+  const wechat = identities.length
+    ? identities.map(identity => `${esc(identity.platform || '-')}: ${esc(identity.openid || '-')}${identity.unionid ? `<div class="muted">UnionID: ${esc(identity.unionid)}</div>` : ''}`).join('<br>')
+    : '-';
+  return `
+    <tr>
+      <td class="mono">${item.id}</td>
+      <td class="mono">${item.original_user_id}</td>
+      <td>${esc(item.phone || '-')}</td>
+      <td>${esc(item.nickname || '-')}</td>
+      <td>${roles.map(role => `<span class="badge badge-${role}">${roleLabel(role)}</span>`).join('') || '-'}</td>
+      <td>${esc(item.city || '-')}</td>
+      <td>${wechat}</td>
+      <td>${fmtTime(item.registered_at)}</td>
+      <td>${fmtTime(item.deleted_at)}</td>
+    </tr>
+  `;
+}
+
+function parseJsonArray(raw) {
+  if (Array.isArray(raw)) return raw;
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (_) {
+    return [];
+  }
 }
 
 function renderUserAccountsTab() {

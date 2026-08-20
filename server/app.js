@@ -906,6 +906,48 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
   return success(res, { users: rows, total: countRows[0].total, page, pageSize });
 });
 
+// admin 已注销账号快照列表
+app.get('/api/admin/account-deletions', adminAuth, async (req, res) => {
+  const params = [];
+  let where = '1=1';
+  const keyword = String(req.query.keyword || '').trim();
+  if (keyword) {
+    where += ' AND (nickname LIKE ? OR phone LIKE ? OR CAST(original_user_id AS CHAR) = ?)';
+    params.push(`%${keyword}%`, `%${keyword}%`, keyword);
+  }
+  const role = String(req.query.role || '').trim();
+  if (role) {
+    const allowedRoles = ['owner', 'designer', 'merchant', 'project_manager', 'project_supervisor'];
+    if (!allowedRoles.includes(role)) return error(res, '身份类型不正确');
+    where += ' AND role = ?';
+    params.push(role);
+  }
+  const page = Math.max(1, parseInt(req.query.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, parseInt(req.query.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+  const [rows] = await db.query(
+    `SELECT id, original_user_id, phone, nickname, avatar, bio, city, role,
+            admin_status, identity_onboarding_completed, followers_count,
+            following_count, likes_received, roles_snapshot,
+            wechat_identities_snapshot, registered_at, last_updated_at, deleted_at
+     FROM account_deletion_records
+     WHERE ${where}
+     ORDER BY deleted_at DESC, id DESC
+     LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  const [countRows] = await db.query(
+    `SELECT COUNT(*) AS total FROM account_deletion_records WHERE ${where}`,
+    params
+  );
+  return success(res, {
+    records: rows,
+    total: countRows[0].total,
+    page,
+    pageSize,
+  });
+});
+
 // admin 微信异常绑定列表
 app.get('/api/admin/wechat-binding-appeals', adminAuth, async (req, res) => {
   const allowedStatuses = ['pending', 'processing', 'resolved', 'rejected'];
