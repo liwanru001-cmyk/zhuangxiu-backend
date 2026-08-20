@@ -3128,6 +3128,27 @@ async function getProjectInvitations(req, res) {
   return success(res, rows);
 }
 
+// 设计师/项目经理/监理查看自己发出的工地加入申请
+async function getSentProjectInvitations(req, res) {
+  const hasMemberRole = await ensureProjectInvitationMemberRoleColumn();
+  const memberRoleSelect = hasMemberRole
+    ? 'i.`member_role` AS member_role'
+    : "'designer' AS member_role";
+  const [rows] = await db.query(
+    `SELECT i.id, i.status, ${memberRoleSelect}, i.message, i.created_at, i.updated_at,
+            u.id AS owner_id, u.nickname AS owner_nickname,
+            u.avatar AS owner_avatar, u.city AS owner_city
+     FROM designer_project_invitations i
+     JOIN users u ON i.owner_id = u.id
+     WHERE i.designer_id = ?
+     ORDER BY
+       CASE i.status WHEN 0 THEN 0 ELSE 1 END,
+       i.updated_at DESC`,
+    [req.user.id]
+  );
+  return success(res, rows);
+}
+
 // 业主同意或拒绝项目成员邀请
 async function handleProjectInvitation(req, res) {
   const invitationId = Number(req.params.id);
@@ -11285,6 +11306,7 @@ module.exports = {
   searchProjectOwners,
   inviteProjectOwner,
   getProjectInvitations,
+  getSentProjectInvitations,
   handleProjectInvitation,
   planTask,
   addTask,

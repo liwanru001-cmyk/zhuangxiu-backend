@@ -955,6 +955,7 @@ router.get('/my-requests', ...protectedRoute, asyncHandler(controller.getReceive
 router.put('/my-requests/:id', ...protectedRoute, asyncHandler(controller.handleRequest));
 router.get('/project-owners', ...protectedRoute, asyncHandler(controller.searchProjectOwners));
 router.post('/project-invitations', ...protectedRoute, asyncHandler(controller.inviteProjectOwner));
+router.get('/project-invitations/sent', ...protectedRoute, asyncHandler(controller.getSentProjectInvitations));
 router.get('/project-invitations', ...protectedRoute, asyncHandler(controller.getProjectInvitations));
 router.put('/project-invitations/:id', ...protectedRoute, asyncHandler(controller.handleProjectInvitation));
 router.get('/designers', ...protectedRoute, asyncHandler(controller.getDesigners));
