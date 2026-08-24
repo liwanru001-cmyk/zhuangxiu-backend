@@ -1,0 +1,81 @@
+name: Deploy Homepage
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/public/index.html'
+      - '.github/workflows/deploy-homepage.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate homepage
+        run: |
+          set -euo pipefail
+          test -f server/public/index.html
+          grep -q '装筱窝' server/public/index.html
+          grep -q 'class="support-fab"' server/public/index.html
+          grep -q 'href="/support/"' server/public/index.html
+          test ! -f server/public/index.html.tmp
+
+      - name: Upload homepage only
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          EXPECTED_SSH_HOST: 115.29.194.46
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          public_dir="/opt/yinnkhome-backend/server/public"
+
+          test "$SSH_HOST" != '47.114.87.69'
+          test "$SSH_HOST" != '118.178.123.31'
+          if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+            getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"
+          fi
+          test "$public_dir" = '/opt/yinnkhome-backend/server/public'
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          scp_opts=(-i ~/.ssh/deploy_key -P "$ssh_port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          remote="$SSH_USER@$SSH_HOST"
+          remote_tmp="/tmp/yinnkhome-home-${GITHUB_RUN_ID}.html"
+
+          scp "${scp_opts[@]}" server/public/index.html "$remote:$remote_tmp"
+          ssh "${ssh_opts[@]}" "$remote" \
+            "set -euo pipefail
+             runner=''
+             if [ \"\$(id -u)\" -ne 0 ]; then
+               sudo -n true
+               runner='sudo'
+             fi
+             test -f '$remote_tmp'
+             grep -q 'class=\"support-fab\"' '$remote_tmp'
+             test -d '$public_dir'
+             \$runner cp '$remote_tmp' '$public_dir/index.html.tmp'
+             \$runner mv '$public_dir/index.html.tmp' '$public_dir/index.html'
+             rm -f '$remote_tmp'
+             test -f '$public_dir/index.html'"
+
+      - name: Verify homepage
+        run: |
+          set -euo pipefail
+          homepage="$(mktemp)"
+          curl -fsS https://yinnkhome.com/ -o "$homepage"
+          grep -q 'class="support-fab"' "$homepage"
+          grep -q 'href="/support/"' "$homepage"

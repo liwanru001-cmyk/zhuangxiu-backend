@@ -5,13 +5,11 @@ on:
     branches:
       - main
     paths:
-      - 'server/public/index.html'
       - 'server/public/downloads/**'
       - 'server/public/merchant/**'
       - 'server/public/favicon.png'
       - 'server/public/assets/app_icon.png'
       - 'server/public/assets/screens/**'
-      - '.github/workflows/deploy-merchant-portal.yml'
   workflow_dispatch:
 
 jobs:

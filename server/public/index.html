@@ -235,6 +235,29 @@
     footer a:hover { color: #fff; }
     .footer-links { display: flex; gap: 18px; flex-wrap: wrap; justify-content: flex-end; }
 
+    .support-fab {
+      position: fixed;
+      right: max(22px, env(safe-area-inset-right));
+      bottom: max(22px, env(safe-area-inset-bottom));
+      z-index: 40;
+      min-height: 48px;
+      padding: 0 18px 0 14px;
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      border: 1px solid rgba(143, 67, 45, .18);
+      border-radius: 999px;
+      color: #fff;
+      background: var(--clay);
+      box-shadow: 0 12px 30px rgba(83, 48, 37, .28);
+      font-size: 14px;
+      font-weight: 800;
+      transition: transform .18s ease, background .18s ease, box-shadow .18s ease;
+    }
+    .support-fab svg { width: 20px; height: 20px; flex: 0 0 auto; }
+    .support-fab:hover { color: #fff; background: var(--clay-dark); transform: translateY(-2px); box-shadow: 0 15px 34px rgba(83, 48, 37, .34); }
+    .support-fab:focus-visible { outline: 3px solid rgba(183, 101, 73, .3); outline-offset: 3px; }
+
     @media (max-width: 940px) {
       .nav-links a:not(.nav-login) { display: none; }
       .role-panel, .feature-row, .business-grid { grid-template-columns: 1fr; gap: 34px; }
@@ -279,6 +302,7 @@
       .flow-step::before { top: 22px; left: -7px; }
       .footer-inner { flex-direction: column; }
       .footer-links { justify-content: flex-start; }
+      .support-fab { right: max(14px, env(safe-area-inset-right)); bottom: max(14px, env(safe-area-inset-bottom)); min-height: 44px; padding: 0 15px 0 12px; font-size: 13px; }
     }
 
     @media (prefers-reduced-motion: reduce) {
@@ -416,6 +440,15 @@
       <div class="footer-links"><a href="/admin/">管理后台</a><a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener">粤ICP备2025480867号-2</a><span>© 2026 yinnkhome.com</span></div>
     </div>
   </footer>
+
+  <a class="support-fab" href="/support/" aria-label="前往装筱窝技术支持页面">
+    <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="9"></circle>
+      <path d="M9.7 9a2.4 2.4 0 0 1 4.65.8c0 1.8-2.35 2.1-2.35 3.7"></path>
+      <path d="M12 17h.01"></path>
+    </svg>
+    <span>技术支持</span>
+  </a>
 
   <script>
     const roleTabs = Array.from(document.querySelectorAll('[data-role]'));
