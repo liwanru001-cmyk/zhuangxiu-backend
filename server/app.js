@@ -15,6 +15,7 @@ const projectParticipantsRoutes = require('./routes/project-participants.routes'
 const entityRelationsRoutes = require('./routes/entity-relations.routes');
 const billingRoutes = require('./routes/billing.routes');
 const locationRoutes = require('./routes/location.routes');
+const publicRoutes = require('./routes/public.routes');
 const billingService = require('./services/billing.service');
 const {
   startCompanyEvaluationScheduler,
@@ -112,6 +113,7 @@ app.use('/api/projects', projectParticipantsRoutes);
 app.use('/api/entity-relations', entityRelationsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/location', locationRoutes);
+app.use('/api/public', publicRoutes);
 
 // ===================== Admin =====================
 const ADMIN_CREDENTIALS = { username: 'admin', password: 'admin123' };

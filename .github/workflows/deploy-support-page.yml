@@ -1,0 +1,120 @@
+name: Deploy Support Page
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - 'server/public/support/**'
+      - '.github/workflows/deploy-support-page.yml'
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      actions: read
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Validate support page
+        run: |
+          set -euo pipefail
+          test -f server/public/support/index.html
+          grep -q '装筱窝技术支持' server/public/support/index.html
+          grep -q 'zxwsupport@yinnkhome.com' server/public/support/index.html
+          grep -q '/api/public/help-faqs' server/public/support/index.html
+          grep -q '/privacy-policy/' server/public/support/index.html
+          test ! -f server/public/support/index.html.tmp
+
+      - name: Wait for backend deploy on same commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 90); do
+            response="$(curl -fsS \
+              -H "Authorization: Bearer $GH_TOKEN" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/$REPO/actions/workflows/deploy-backend.yml/runs?head_sha=$SHA&event=push&per_page=1")"
+            read -r count status conclusion url < <(python3 -c 'import json,sys; d=json.load(sys.stdin); r=d.get("workflow_runs") or []; print("0 none none none" if not r else "%s %s %s %s" % (len(r),r[0].get("status") or "none",r[0].get("conclusion") or "none",r[0].get("html_url") or "none"))' <<< "$response")
+            if [ "$count" = "0" ]; then
+              if [ "$attempt" -ge 5 ]; then
+                echo "No backend deploy run found for this commit; using the already deployed API."
+                exit 0
+              fi
+              sleep 2
+              continue
+            fi
+            echo "Backend deploy run: $status / $conclusion - $url"
+            if [ "$status" = "completed" ]; then
+              test "$conclusion" = "success"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "Timed out waiting for backend deploy."
+          exit 1
+
+      - name: Upload support page
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          EXPECTED_SSH_HOST: 115.29.194.46
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          support_dir="/opt/yinnkhome-backend/server/public/support"
+          test "$SSH_HOST" != '47.114.87.69'
+          test "$SSH_HOST" != '118.178.123.31'
+          if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+            getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"
+          fi
+          test "$support_dir" = '/opt/yinnkhome-backend/server/public/support'
+
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          scp_opts=(-i ~/.ssh/deploy_key -P "$ssh_port" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          remote="$SSH_USER@$SSH_HOST"
+          remote_tar="/tmp/yinnkhome-support-${GITHUB_RUN_ID}.tar.gz"
+          tar -C server/public/support -czf /tmp/yinnkhome-support.tar.gz .
+          scp "${scp_opts[@]}" /tmp/yinnkhome-support.tar.gz "$remote:$remote_tar"
+          ssh "${ssh_opts[@]}" "$remote" \
+            "set -euo pipefail
+             runner=''
+             if [ \"\$(id -u)\" -ne 0 ]; then
+               sudo -n true
+               runner='sudo'
+             fi
+             remote_tmp='/tmp/yinnkhome-support-${GITHUB_RUN_ID}'
+             rm -rf \"\$remote_tmp\"
+             mkdir -p \"\$remote_tmp\"
+             tar -xzf '$remote_tar' -C \"\$remote_tmp\"
+             test -f \"\$remote_tmp/index.html\"
+             grep -q '装筱窝技术支持' \"\$remote_tmp/index.html\"
+             \$runner mkdir -p '$support_dir'
+             \$runner cp -a \"\$remote_tmp/.\" '$support_dir/'
+             rm -rf \"\$remote_tmp\"
+             rm -f '$remote_tar'
+             test -f '$support_dir/index.html'"
+
+      - name: Verify support page and FAQ API
+        run: |
+          set -euo pipefail
+          support_file="$(mktemp)"
+          faq_file="$(mktemp)"
+          curl -fsS https://yinnkhome.com/support/ -o "$support_file"
+          grep -q '装筱窝技术支持' "$support_file"
+          grep -q 'zxwsupport@yinnkhome.com' "$support_file"
+          curl -fsS https://yinnkhome.com/api/public/help-faqs -o "$faq_file"
+          python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("code") == 200; assert isinstance((d.get("data") or {}).get("faqs"), list)' "$faq_file"
