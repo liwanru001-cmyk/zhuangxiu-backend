@@ -29,6 +29,8 @@ jobs:
           grep -q 'zxwsupport@yinnkhome.com' server/public/support/index.html
           grep -q '/api/public/help-faqs' server/public/support/index.html
           grep -q '/privacy-policy/' server/public/support/index.html
+          grep -q '添加企业微信' server/public/support/index.html
+          test -f server/public/support/assets/wecom-contact-card.png
           test ! -f server/public/support/index.html.tmp
 
       - name: Wait for backend deploy on same commit
@@ -116,5 +118,7 @@ jobs:
           curl -fsS https://yinnkhome.com/support/ -o "$support_file"
           grep -q '装筱窝技术支持' "$support_file"
           grep -q 'zxwsupport@yinnkhome.com' "$support_file"
+          grep -q '添加企业微信' "$support_file"
+          curl -fsS https://yinnkhome.com/support/assets/wecom-contact-card.png -o /dev/null
           curl -fsS https://yinnkhome.com/api/public/help-faqs -o "$faq_file"
           python3 -c 'import json,sys; d=json.load(open(sys.argv[1])); assert d.get("code") == 200; assert isinstance((d.get("data") or {}).get("faqs"), list)' "$faq_file"
