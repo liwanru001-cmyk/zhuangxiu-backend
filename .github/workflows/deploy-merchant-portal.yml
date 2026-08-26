@@ -163,7 +163,8 @@ jobs:
           curl -fsS https://yinnkhome.com/merchant/ -o "$merchant_file"
           curl -fsS https://yinnkhome.com/downloads/ -o "$downloads_file"
           grep -q '下载桌面端软件' "$home_file"
-          grep -q '当前为未发布的试用版' "$downloads_file"
+          grep -q '在 Mac App Store 下载' "$downloads_file"
+          grep -q 'apps.apple.com/cn/app/' "$downloads_file"
           ! grep -q 'href="/merchant/"' "$home_file"
           grep -q '商家中心 - 装筱窝' "$merchant_file"
           curl -fsS 'https://yinnkhome.com/favicon.png?v=20260815' -o /dev/null
