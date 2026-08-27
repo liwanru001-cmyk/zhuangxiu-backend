@@ -5,7 +5,6 @@ const sharp = require('sharp');
 const { success, error } = require('../utils/response');
 const storageService = require('../services/storage.service');
 const {
-  hasActiveVerifiedMerchant,
   activeVerifiedMerchantExistsSql,
 } = require('../utils/verified-merchant');
 
@@ -98,8 +97,14 @@ function normalizeContentDelta(value) {
 }
 
 async function assertMerchant(req, res) {
-  if (!(await hasActiveVerifiedMerchant(req.user.id))) {
-    error(res, '未成为入驻商家，暂不能管理产品展示', 403);
+  const [rows] = await db.query(
+    `SELECT 1 FROM user_roles
+     WHERE user_id = ? AND role = 'merchant'
+     LIMIT 1`,
+    [req.user.id]
+  );
+  if (!rows[0]) {
+    error(res, '当前账号没有商家身份，暂不能管理产品', 403);
     return false;
   }
   return true;
