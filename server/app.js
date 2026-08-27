@@ -161,7 +161,7 @@ function desktopReleaseRow(row) {
     version_name: row.version_name,
     build_number: Number(row.build_number),
     package_url: row.package_url,
-    package_name: row.package_name,
+    package_name: normalizeUploadedFileName(row.package_name),
     package_size: Number(row.package_size),
     sha256: row.sha256,
     release_notes: row.release_notes || '',
@@ -172,6 +172,23 @@ function desktopReleaseRow(row) {
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+// Multer follows the multipart header's historical latin1 behaviour. Chinese
+// file names sent by some desktop clients therefore arrive as UTF-8 bytes
+// interpreted as latin1 (for example "è£..."), and older rows may already
+// contain that representation. Keep normal names unchanged and repair only a
+// lossless latin1 -> UTF-8 conversion that produces CJK characters.
+function normalizeUploadedFileName(fileName) {
+  const value = String(fileName || '').trim();
+  if (!value || /[\u4e00-\u9fff]/.test(value)) return value;
+  try {
+    const decoded = Buffer.from(value, 'latin1').toString('utf8');
+    if (!decoded.includes('\uFFFD') && /[\u4e00-\u9fff]/.test(decoded)) {
+      return decoded;
+    }
+  } catch (_) {}
+  return value;
 }
 
 function fileSha256(filePath) {
@@ -251,13 +268,39 @@ app.get('/api/admin/app-releases', adminAuth, async (req, res) => {
 const directReleasePartSize = 8 * 1024 * 1024;
 const directReleaseMaxSize = 1024 * 1024 * 1024;
 
+function duplicateReleaseMessage(platform, versionName, buildNumber) {
+  const platformName = { windows: 'Windows', macos: 'macOS', android: 'Android' }[platform] || platform;
+  return `${platformName} 版本 ${versionName}（Build ${buildNumber}）已存在，请直接发布现有草稿，或提高 Build 后重新上传`;
+}
+
+async function existingRelease(platform, versionName, buildNumber) {
+  const [rows] = await db.query(
+    `SELECT id, status FROM desktop_app_releases
+     WHERE platform = ? AND version_name = ? AND build_number = ? LIMIT 1`,
+    [platform, versionName, buildNumber]
+  );
+  return rows[0] || null;
+}
+
+function cleanupReleaseObjectLater(url, context) {
+  if (!url) return;
+  storageService.deleteStoredFile(url).catch((cleanupError) => {
+    console.error('Release upload cleanup failed', {
+      ...context,
+      message: cleanupError.message,
+    });
+  });
+}
+
 function validateReleaseMetadata(body) {
   const platform = String(body.platform || '').toLowerCase();
   const versionName = String(body.version_name || '').trim();
   const buildNumber = Number(body.build_number);
   const releaseNotes = String(body.release_notes || '').trim();
   const updateMode = String(body.update_mode || 'optional');
-  const originalName = path.basename(String(body.package_name || '').trim());
+  const originalName = normalizeUploadedFileName(
+    path.basename(String(body.package_name || '').trim())
+  );
   const fileSize = Number(body.package_size);
   const contentType = String(body.content_type || 'application/octet-stream').slice(0, 150);
   if (!releasePlatformAllowed(platform)) throw new Error('平台不正确');
@@ -311,6 +354,15 @@ app.post('/api/admin/app-releases/uploads/init', adminAuth, async (req, res) => 
   if (!storageService.useOss()) return error(res, '服务器尚未启用 OSS 直传', 503);
   let metadata;
   try { metadata = validateReleaseMetadata(req.body || {}); } catch (validationError) { return error(res, validationError.message); }
+  const duplicate = await existingRelease(metadata.platform, metadata.versionName, metadata.buildNumber);
+  if (duplicate) {
+    return error(
+      res,
+      duplicateReleaseMessage(metadata.platform, metadata.versionName, metadata.buildNumber),
+      409,
+      { existing_release_id: Number(duplicate.id), status: duplicate.status }
+    );
+  }
   const safeName = metadata.originalName.replace(/[^0-9A-Za-z._\-\u4e00-\u9fff]/g, '_');
   const sessionToken = crypto.randomUUID();
   const storageKey = `releases/${metadata.platform}/${metadata.versionName}/${metadata.buildNumber}-${sessionToken}-${safeName}`;
@@ -358,6 +410,22 @@ app.post('/api/admin/app-releases/uploads/:token/complete', adminAuth, async (re
   if (parts.length !== Number(session.part_count) || parts.some((part, index) => part.number !== index + 1 || !/^"?[0-9a-fA-F]{32}"?$/.test(part.etag))) {
     return error(res, '上传分片不完整');
   }
+  const duplicate = await existingRelease(session.platform, session.version_name, session.build_number);
+  if (duplicate) {
+    storageService.abortDirectMultipartUpload({ key: session.storage_key, uploadId: session.upload_id }).catch((cleanupError) => {
+      console.error('Release multipart abort failed', {
+        sessionId: Number(session.id),
+        message: cleanupError.message,
+      });
+    });
+    await db.query("UPDATE desktop_release_upload_sessions SET status = 'aborted' WHERE id = ? AND status = 'pending'", [session.id]);
+    return error(
+      res,
+      duplicateReleaseMessage(session.platform, session.version_name, session.build_number),
+      409,
+      { existing_release_id: Number(duplicate.id), status: duplicate.status }
+    );
+  }
   const completed = await storageService.completeDirectMultipartUpload({ key: session.storage_key, uploadId: session.upload_id, parts });
   if (completed.key !== session.storage_key || completed.size !== Number(session.file_size)) {
     await storageService.deleteStoredFile(completed.url).catch(() => {});
@@ -381,7 +449,15 @@ app.post('/api/admin/app-releases/uploads/:token/complete', adminAuth, async (re
     return success(res, desktopReleaseRow(rows[0]), '版本草稿已创建');
   } catch (completeError) {
     await connection.rollback();
-    await storageService.deleteStoredFile(completed.url).catch(() => {});
+    cleanupReleaseObjectLater(completed.url, { sessionId: Number(session.id) });
+    if (completeError?.code === 'ER_DUP_ENTRY') {
+      await db.query("UPDATE desktop_release_upload_sessions SET status = 'aborted' WHERE id = ? AND status = 'pending'", [session.id]);
+      return error(
+        res,
+        duplicateReleaseMessage(session.platform, session.version_name, session.build_number),
+        409
+      );
+    }
     throw completeError;
   } finally { connection.release(); }
 });
@@ -400,6 +476,7 @@ app.post(
   releaseUpload.single('package'),
   async (req, res) => {
     const file = req.file;
+    let stored;
     try {
       const platform = String(req.body.platform || '').toLowerCase();
       const versionName = String(req.body.version_name || '').trim();
@@ -414,14 +491,24 @@ app.post(
       if (!releaseNotes) return error(res, '请填写更新说明');
       if (!['optional', 'required'].includes(updateMode)) return error(res, '更新方式不正确');
       if (!file) return error(res, '请选择安装包');
-      if (!releaseExtensionAllowed(platform, file.originalname)) {
+      const originalName = normalizeUploadedFileName(file.originalname);
+      if (!releaseExtensionAllowed(platform, originalName)) {
         return error(res, releasePackageHint(platform));
+      }
+      const duplicate = await existingRelease(platform, versionName, buildNumber);
+      if (duplicate) {
+        return error(
+          res,
+          duplicateReleaseMessage(platform, versionName, buildNumber),
+          409,
+          { existing_release_id: Number(duplicate.id), status: duplicate.status }
+        );
       }
 
       const sha256 = await fileSha256(file.path);
-      const safeName = path.basename(file.originalname).replace(/[^0-9A-Za-z._\-\u4e00-\u9fff]/g, '_');
-      const storageKey = `releases/${platform}/${versionName}/${buildNumber}-${safeName}`;
-      const stored = await storageService.putFile({
+      const safeName = path.basename(originalName).replace(/[^0-9A-Za-z._\-\u4e00-\u9fff]/g, '_');
+      const storageKey = `releases/${platform}/${versionName}/${buildNumber}-${crypto.randomUUID()}-${safeName}`;
+      stored = await storageService.putFile({
         sourcePath: file.path,
         key: storageKey,
         req,
@@ -433,12 +520,21 @@ app.post(
           package_size, sha256, release_notes, update_mode, status, created_by)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'draft', ?)`,
         [
-          platform, versionName, buildNumber, stored.url, file.originalname,
+          platform, versionName, buildNumber, stored.url, originalName,
           file.size, sha256, releaseNotes, updateMode, req.admin?.role || 'admin',
         ]
       );
       const [rows] = await db.query('SELECT * FROM desktop_app_releases WHERE id = ?', [result.insertId]);
       return success(res, desktopReleaseRow(rows[0]), '版本草稿已创建');
+    } catch (uploadError) {
+      cleanupReleaseObjectLater(stored?.url, { route: 'legacy-release-upload' });
+      if (uploadError?.code === 'ER_DUP_ENTRY') {
+        const platform = String(req.body.platform || '').toLowerCase();
+        const versionName = String(req.body.version_name || '').trim();
+        const buildNumber = Number(req.body.build_number);
+        return error(res, duplicateReleaseMessage(platform, versionName, buildNumber), 409);
+      }
+      throw uploadError;
     } finally {
       if (file?.path) await fsPromises.rm(file.path, { force: true }).catch(() => {});
     }
