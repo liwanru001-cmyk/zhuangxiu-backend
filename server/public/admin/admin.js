@@ -737,7 +737,7 @@ function renderUserAccountsTab() {
           <thead>
             <tr>
               <th>ID</th><th>手机号</th><th>昵称</th><th>身份</th><th>登录方式</th><th>审核状态</th>
-              <th>城市</th><th>关注</th><th>获赞</th><th>注册时间</th><th>操作</th>
+              <th>城市</th><th>关注</th><th>获赞</th><th>最近设备</th><th>最近使用</th><th>注册时间</th><th>操作</th>
             </tr>
           </thead>
           <tbody id="user-body"></tbody>
@@ -912,7 +912,9 @@ function userRow(u) {
       <td>${esc(u.city) || '-'}</td>
       <td>${u.followers_count || 0}</td>
       <td>${u.likes_received || 0}</td>
-      <td>${fmtTime(u.created_at)}</td>
+      <td>${userDeviceCell(u)}</td>
+      <td>${userClientCell(u)}</td>
+      <td>${fmtMinute(u.created_at)}</td>
       <td>
         <div class="row-actions">
           ${status !== 'approved' ? `<button class="success-btn" onclick="reviewUser(${u.id}, 'approve')">通过</button>` : ''}
@@ -922,6 +924,20 @@ function userRow(u) {
       </td>
     </tr>
   `;
+}
+
+function userDeviceCell(u) {
+  const model = [u.last_device_brand, u.last_device_model].filter(Boolean).join(' · ');
+  const system = [u.last_os_name, u.last_os_version].filter(Boolean).join(' ');
+  if (!model && !system) return '<span class="muted">暂无记录</span>';
+  return `<strong>${esc(model || system)}</strong>${model && system ? `<div class="muted">${esc(system)}</div>` : ''}`;
+}
+
+function userClientCell(u) {
+  const labels = { ios: 'iOS App', macos: 'macOS App', android: 'Android App', windows: 'Windows App', miniprogram: '微信小程序', web: 'Web' };
+  if (!u.last_client_type && !u.last_client_at) return '<span class="muted">暂无记录</span>';
+  const version = [u.last_app_version, u.last_build_number ? `(${u.last_build_number})` : ''].filter(Boolean).join(' ');
+  return `<strong>${esc(labels[u.last_client_type] || u.last_client_type || '未知客户端')}${version ? ` · ${esc(version)}` : ''}</strong><div class="muted">${fmtMinute(u.last_client_at)}</div>`;
 }
 
 function loginMethodCell(u) {
@@ -3016,6 +3032,14 @@ function listLabel(value, fallback = '-') {
 
 function fmtTime(value) {
   return value ? new Date(value).toLocaleDateString('zh-CN') : '-';
+}
+
+function fmtMinute(value) {
+  if (!value) return '-';
+  return new Date(value).toLocaleString('zh-CN', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false,
+  }).replace(/\//g, '-');
 }
 
 function esc(value) {

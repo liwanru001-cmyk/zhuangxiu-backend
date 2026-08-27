@@ -11,6 +11,36 @@ function generateCode() {
   return crypto.randomInt(100000, 999999).toString();
 }
 
+function normalizeClientInfo(body = {}) {
+  const source = body.client_info && typeof body.client_info === 'object' ? body.client_info : body;
+  const clean = (key, max) => String(source[key] || '').trim().slice(0, max) || null;
+  const clientType = clean('client_type', 32);
+  const allowed = new Set(['ios', 'macos', 'android', 'windows', 'miniprogram', 'web']);
+  if (!clientType || !allowed.has(clientType)) return null;
+  return {
+    clientType,
+    deviceBrand: clean('device_brand', 64),
+    deviceModel: clean('device_model', 128),
+    osName: clean('os_name', 32),
+    osVersion: clean('os_version', 64),
+    appVersion: clean('app_version', 64),
+    buildNumber: clean('build_number', 32),
+  };
+}
+
+async function recordClientActivity(userId, body) {
+  const info = normalizeClientInfo(body);
+  if (!info || !userId) return false;
+  await db.query(
+    `UPDATE users SET last_client_type = ?, last_device_brand = ?, last_device_model = ?,
+       last_os_name = ?, last_os_version = ?, last_app_version = ?, last_build_number = ?,
+       last_client_at = NOW() WHERE id = ?`,
+    [info.clientType, info.deviceBrand, info.deviceModel, info.osName, info.osVersion,
+      info.appVersion, info.buildNumber, userId]
+  );
+  return true;
+}
+
 async function findUserByPhone(phone) {
   const [userRows] = await db.query(
     `SELECT id, phone, password_hash, nickname, avatar, bio, city, role,
@@ -231,6 +261,7 @@ async function verifySms(req, res) {
   const user = await createFormalUser(phone);
   const blocked = guardAdminStatus(res, user);
   if (blocked) return blocked;
+  await recordClientActivity(user.id, req.body);
   return success(res, await buildLoginResponse(user));
 }
 
@@ -259,6 +290,7 @@ async function passwordLogin(req, res) {
   if (!passwordMatches) {
     return error(res, '密码错误，请重新输入', 401);
   }
+  await recordClientActivity(user.id, req.body);
   return success(res, await buildLoginResponse(user));
 }
 
@@ -283,6 +315,7 @@ async function testLogin(req, res) {
   if (user.admin_status !== 'approved') {
     return error(res, '测试账号不存在或未审核', 403);
   }
+  await recordClientActivity(user.id, req.body);
   return success(res, await buildLoginResponse(user));
 }
 
@@ -465,8 +498,15 @@ async function wechatPhoneLogin(req, res) {
   if (!bindResult.ok) return error(res, bindResult.message, bindResult.statusCode);
 
   const loginResponse = await buildLoginResponse(user);
+  await recordClientActivity(user.id, req.body);
   loginResponse.is_new_user = isNewUser;
   return success(res, loginResponse);
+}
+
+async function clientActivity(req, res) {
+  const recorded = await recordClientActivity(req.user.id, req.body);
+  if (!recorded) return error(res, '客户端信息不完整');
+  return success(res, { recorded: true });
 }
 
 async function bindWechatMiniProgram(req, res) {
@@ -610,4 +650,5 @@ module.exports = {
   setPassword,
   resetPassword,
   registerPasswordAccount,
+  clientActivity,
 };

@@ -901,8 +901,10 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             (SELECT ur.verified_until FROM user_roles ur
              WHERE ur.user_id = users.id AND ur.role = 'merchant'
              LIMIT 1) AS verified_merchant_until,
-            followers_count, following_count,
-            likes_received, created_at, updated_at
+            followers_count, following_count, likes_received,
+            last_client_type, last_device_brand, last_device_model,
+            last_os_name, last_os_version, last_app_version, last_build_number,
+            last_client_at, created_at, updated_at
      FROM users WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
