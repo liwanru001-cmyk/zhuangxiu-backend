@@ -17,7 +17,8 @@ const menus = [
   { key: 'settings', label: '系统设置', icon: '⚙️', subtitle: '管理城市、风格、身份标签等配置' },
 ];
 
-let token = sessionStorage.getItem('admin_token') || '';
+const rememberedToken = localStorage.getItem('admin_remember_token') || '';
+let token = sessionStorage.getItem('admin_token') || rememberedToken;
 let activeMenu = window.location.pathname.includes('/admin/billing') ? 'billing' : 'overview';
 let page = 1;
 let total = 0;
@@ -71,12 +72,18 @@ document.getElementById('u-pass').addEventListener('keydown', e => {
   if (e.key === 'Enter') doLogin();
 });
 
+const rememberedUsername = localStorage.getItem('admin_remember_username') || '';
+if (rememberedUsername) document.getElementById('u-name').value = rememberedUsername;
+document.getElementById('remember-login').checked = Boolean(rememberedToken);
+if (token) sessionStorage.setItem('admin_token', token);
+
 renderNav();
 if (token) showMain();
 
 async function doLogin() {
   const username = document.getElementById('u-name').value.trim();
   const password = document.getElementById('u-pass').value;
+  const rememberLogin = document.getElementById('remember-login').checked;
   document.getElementById('login-err').textContent = '';
   try {
     const r = await fetch(`${API}/login`, {
@@ -91,6 +98,14 @@ async function doLogin() {
     }
     token = j.data.token;
     sessionStorage.setItem('admin_token', token);
+    if (rememberLogin) {
+      localStorage.setItem('admin_remember_token', token);
+      localStorage.setItem('admin_remember_username', username);
+    } else {
+      localStorage.removeItem('admin_remember_token');
+      localStorage.removeItem('admin_remember_username');
+    }
+    document.getElementById('u-pass').value = '';
     showMain();
   } catch (e) {
     document.getElementById('login-err').textContent = '网络错误';
@@ -107,7 +122,11 @@ async function showMain() {
 
 function logout() {
   sessionStorage.removeItem('admin_token');
+  localStorage.removeItem('admin_remember_token');
+  localStorage.removeItem('admin_remember_username');
   token = '';
+  document.getElementById('u-pass').value = '';
+  document.getElementById('remember-login').checked = false;
   document.getElementById('login-page').style.display = 'flex';
   document.getElementById('main-page').style.display = 'none';
 }
