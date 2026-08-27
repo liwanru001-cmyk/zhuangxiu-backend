@@ -221,21 +221,42 @@ async function openReport(id) {
   try {
     const j = await adminFetch(`/reports/${id}`);
     const data = j.data || {}; const report = data.report || {};
-    root.innerHTML = `<div class="card"><h2>举报 #${id}</h2>
-      <p><b>被举报账号：</b>${esc(report.reported_nickname || '-')} (#${report.reported_user_id})</p>
-      <p><b>对象：</b>${esc(report.target_type || '-')} · 会话 #${report.consultation_id || '-'} · 消息 #${report.message_id || '-'}</p>
-      <p><b>消息快照：</b></p><div class="share-content">${esc(report.message_snapshot || '无单条消息快照')}</div>
-      <p><b>补充说明：</b>${esc(report.latest_description || '无')}</p>
-      <div>${(data.evidence || []).map(e => `<a href="${esc(e.image_url)}" target="_blank" rel="noopener"><img src="${esc(e.image_url)}" style="width:120px;height:120px;object-fit:cover;margin:6px;border-radius:8px"></a>`).join('')}</div>
-      <h3>处理</h3><textarea id="reportActionNote" maxlength="1000" placeholder="处理备注"></textarea>
-      <div class="toolbar"><button class="ghost-btn" onclick="handleReport(${id},'ignore')">忽略</button>
-      ${report.message_id ? `<button class="danger-btn" onclick="handleReport(${id},'delete_message')">删除消息</button>` : ''}
-      <button class="ghost-btn" onclick="handleReport(${id},'warn')">警告</button>
-      <button class="danger-btn" onclick="handleReport(${id},'mute')">禁言 7 天</button>
-      <button class="danger-btn" onclick="handleReport(${id},'ban')">封禁账号</button></div>
-      <h3>举报明细</h3>${(data.occurrences || []).map(o => `<p>${esc(o.reporter_nickname || '-')} · ${reportCategoryLabel(o.category)} · ${esc(o.description || '无说明')} · ${esc(String(o.created_at || ''))}</p>`).join('')}
-      <h3>处理记录</h3>${(data.actions || []).map(a => `<p>${esc(a.admin_name)} · ${esc(a.action)} · ${esc(a.note || '')} · ${esc(String(a.created_at || ''))}</p>`).join('') || '<p>暂无</p>'}
-    </div>`;
+    const evidence = data.evidence || [];
+    const occurrences = data.occurrences || [];
+    const actions = data.actions || [];
+    root.innerHTML = `<section class="card report-detail-card">
+      <header class="report-detail-header">
+        <div><span class="report-eyebrow">举报详情</span><h2>举报 #${id}</h2></div>
+        <span class="badge status-${esc(report.status || 'pending')}">${reportStatusLabel(report.status)}</span>
+      </header>
+      <div class="report-summary-grid">
+        <div class="report-summary-item"><span>被举报账号</span><strong>${esc(report.reported_nickname || '-')}</strong><small>用户 ID：${report.reported_user_id || '-'}</small></div>
+        <div class="report-summary-item"><span>举报对象</span><strong>${reportTargetLabel(report.target_type)}</strong><small>会话 #${report.consultation_id || '-'} · 消息 #${report.message_id || '-'}</small></div>
+        <div class="report-summary-item"><span>最近原因</span><strong>${reportCategoryLabel(report.latest_category)}</strong><small>累计 ${report.report_count || 1} 次举报</small></div>
+      </div>
+      <div class="report-detail-columns">
+        <div class="report-main-column">
+          <section class="report-section"><h3>举报内容</h3>
+            <div class="report-field"><span>消息快照</span><div class="report-copy">${esc(report.message_snapshot || '无单条消息快照')}</div></div>
+            <div class="report-field"><span>补充说明</span><div class="report-copy">${esc(report.latest_description || '无补充说明')}</div></div>
+          </section>
+          <section class="report-section"><div class="report-section-title"><h3>图片凭证</h3><span>${evidence.length} 张</span></div>
+            ${evidence.length ? `<div class="report-evidence-grid">${evidence.map((item, index) => `<button class="report-evidence-button" type="button" data-url="${esc(item.image_url)}" onclick="previewReportEvidence(this.dataset.url, ${index + 1})"><img src="${esc(item.image_url)}" alt="举报凭证 ${index + 1}" loading="lazy"><span>点击预览</span></button>`).join('')}</div>` : '<div class="report-empty">未提交图片凭证</div>'}
+          </section>
+          <section class="report-section"><div class="report-section-title"><h3>举报明细</h3><span>${occurrences.length} 条</span></div>
+            <div class="report-record-list">${occurrences.map(o => `<div class="report-record"><div><strong>${esc(o.reporter_nickname || '-')}</strong><span class="badge status-pending">${reportCategoryLabel(o.category)}</span></div><p>${esc(o.description || '无补充说明')}</p><time>${formatReportTime(o.created_at)}</time></div>`).join('') || '<div class="report-empty">暂无举报明细</div>'}</div>
+          </section>
+        </div>
+        <aside class="report-action-column">
+          <section class="report-section report-action-panel"><h3>处理举报</h3><label for="reportActionNote">处理备注</label><textarea id="reportActionNote" maxlength="1000" placeholder="填写判断依据或处理说明"></textarea>
+            <div class="report-action-buttons"><button class="ghost-btn" onclick="handleReport(${id},'ignore')">忽略</button><button class="ghost-btn" onclick="handleReport(${id},'warn')">警告</button>${report.message_id ? `<button class="danger-btn" onclick="handleReport(${id},'delete_message')">删除消息</button>` : ''}<button class="danger-btn" onclick="handleReport(${id},'mute')">禁言 7 天</button><button class="danger-btn" onclick="handleReport(${id},'ban')">封禁账号</button></div>
+          </section>
+          <section class="report-section"><div class="report-section-title"><h3>处理记录</h3><span>${actions.length} 条</span></div>
+            <div class="report-record-list">${actions.map(a => `<div class="report-record"><div><strong>${esc(a.admin_name || '管理员')}</strong><span>${reportActionLabel(a.action)}</span></div><p>${esc(a.note || '无处理备注')}</p><time>${formatReportTime(a.created_at)}</time></div>`).join('') || '<div class="report-empty">暂无处理记录</div>'}</div>
+          </section>
+        </aside>
+      </div>
+    </section>`;
   } catch (e) { root.innerHTML = `<div class="card message error">${esc(e.message)}</div>`; }
 }
 
@@ -251,6 +272,31 @@ function reportCategoryLabel(value) {
   return { sexual:'色情低俗', fraud_gambling:'欺诈或赌博', illegal:'违法违规', harassment:'辱骂骚扰', advertising:'广告营销', impersonation:'冒充他人', privacy:'泄露个人隐私', other:'其他' }[value] || value || '-';
 }
 function reportStatusLabel(value) { return { pending:'待处理', processing:'处理中', resolved:'已处理' }[value] || value || '-'; }
+function reportTargetLabel(value) { return { user:'用户', conversation:'会话', message:'单条消息' }[value] || value || '-'; }
+function reportActionLabel(value) { return { ignore:'忽略', delete_message:'删除消息', warn:'警告', mute:'禁言', ban:'封禁账号' }[value] || value || '-'; }
+function formatReportTime(value) { return esc(String(value || '-').replace('T', ' ').replace('.000Z', '').slice(0, 19)); }
+
+function previewReportEvidence(url, index) {
+  let overlay = document.getElementById('reportEvidencePreview');
+  if (!overlay) {
+    overlay = document.createElement('div');
+    overlay.id = 'reportEvidencePreview';
+    overlay.className = 'report-preview-overlay';
+    overlay.innerHTML = '<div class="report-preview-dialog"><div class="report-preview-head"><strong id="reportPreviewTitle">图片凭证</strong><button type="button" aria-label="关闭预览" onclick="closeReportEvidencePreview()">×</button></div><div class="report-preview-stage"><img id="reportPreviewImage" alt="举报图片凭证"></div></div>';
+    overlay.addEventListener('click', (event) => { if (event.target === overlay) closeReportEvidencePreview(); });
+    document.body.appendChild(overlay);
+  }
+  document.getElementById('reportPreviewTitle').textContent = `图片凭证 ${index || ''}`;
+  document.getElementById('reportPreviewImage').src = url;
+  overlay.classList.add('show');
+  document.body.classList.add('preview-open');
+}
+
+function closeReportEvidencePreview() {
+  const overlay = document.getElementById('reportEvidencePreview');
+  if (overlay) overlay.classList.remove('show');
+  document.body.classList.remove('preview-open');
+}
 
 function renderSystemSettings() {
   const inDesktopApp = document.documentElement.classList.contains('xiaowo-desktop-app');
