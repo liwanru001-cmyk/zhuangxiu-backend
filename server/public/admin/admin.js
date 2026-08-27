@@ -184,7 +184,7 @@ let reportPage = 1;
 let reportStatus = 'pending';
 
 function renderReports() {
-  document.getElementById('content').innerHTML = `
+  document.getElementById('page-content').innerHTML = `
     <div class="toolbar">
       <select id="reportStatus" onchange="reportStatus=this.value;reportPage=1;loadReports()">
         <option value="pending">待处理</option><option value="processing">处理中</option>
