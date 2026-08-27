@@ -182,8 +182,12 @@ function refreshCurrent() {
 
 let reportPage = 1;
 let reportStatus = 'pending';
+let reportTotal = 0;
 
 function renderReports() {
+  const item = menus.find(menu => menu.key === 'reports');
+  document.getElementById('page-title').textContent = item.label;
+  document.getElementById('page-subtitle').textContent = item.subtitle;
   document.getElementById('page-content').innerHTML = `
     <div class="toolbar">
       <select id="reportStatus" onchange="reportStatus=this.value;reportPage=1;loadReports()">
@@ -192,39 +196,54 @@ function renderReports() {
       </select>
       <button class="ghost-btn" onclick="loadReports()">刷新</button>
     </div>
-    <div class="card"><div id="reportList"><div class="empty-state">正在加载举报记录…</div></div></div>
-    <div id="reportDetail"></div>`;
+    <div class="card">
+      <div id="reportList"><div class="empty-state">正在加载举报记录…</div></div>
+      <div class="pagination">
+        <span id="report-page-info"></span>
+        <button id="report-prev" onclick="loadReports(reportPage-1)">‹ 上一页</button>
+        <button id="report-next" onclick="loadReports(reportPage+1)">下一页 ›</button>
+      </div>
+    </div>`;
   document.getElementById('reportStatus').value = reportStatus;
   loadReports();
 }
 
-async function loadReports() {
+async function loadReports(nextPage = reportPage) {
+  reportPage = Math.max(1, Number(nextPage) || 1);
   const list = document.getElementById('reportList');
   if (!list) return;
   try {
-    const params = new URLSearchParams({ page: reportPage, pageSize: 20 });
+    const params = new URLSearchParams({ page: reportPage, pageSize: 10 });
     if (reportStatus) params.set('status', reportStatus);
     const j = await adminFetch(`/reports?${params}`);
     const items = j.data?.items || [];
+    reportTotal = Number(j.data?.total || 0);
+    const totalPages = Math.max(1, Math.ceil(reportTotal / 10));
+    if (reportPage > totalPages) return loadReports(totalPages);
     list.innerHTML = items.length ? `<table><thead><tr><th>ID</th><th>举报对象</th><th>类型</th><th>次数</th><th>状态</th><th>最近提交</th><th>操作</th></tr></thead><tbody>${items.map(item => `
       <tr><td>${item.id}</td><td>${esc(item.reported_nickname || '-')} (#${item.reported_user_id})</td>
       <td>${reportCategoryLabel(item.latest_category)}</td><td>${item.report_count}</td><td>${reportStatusLabel(item.status)}</td>
       <td>${esc(String(item.updated_at || '').replace('T',' ').slice(0,16))}</td>
       <td><button class="ghost-btn" onclick="openReport(${item.id})">查看处理</button></td></tr>`).join('')}</tbody></table>`
       : '<div class="empty-state">暂无符合条件的举报</div>';
+    document.getElementById('report-page-info').textContent = `共 ${reportTotal} 条 · ${reportPage}/${totalPages}`;
+    document.getElementById('report-prev').disabled = reportPage <= 1;
+    document.getElementById('report-next').disabled = reportPage >= totalPages;
   } catch (e) { list.innerHTML = `<div class="message error">${esc(e.message)}</div>`; }
 }
 
 async function openReport(id) {
-  const root = document.getElementById('reportDetail');
-  root.innerHTML = '<div class="card"><div class="empty-state">正在读取举报详情…</div></div>';
+  document.getElementById('page-title').textContent = `举报 #${id}`;
+  document.getElementById('page-subtitle').textContent = '查看举报内容、图片凭证与处理记录';
+  const root = document.getElementById('page-content');
+  root.innerHTML = `<div class="report-detail-toolbar"><button class="ghost-btn report-back-button" onclick="backToReportList()">‹ 返回举报列表</button></div><div class="card"><div class="empty-state">正在读取举报详情…</div></div>`;
   try {
     const j = await adminFetch(`/reports/${id}`);
     const data = j.data || {}; const report = data.report || {};
     const evidence = data.evidence || [];
     const occurrences = data.occurrences || [];
     const actions = data.actions || [];
-    root.innerHTML = `<section class="card report-detail-card">
+    root.innerHTML = `<div class="report-detail-toolbar"><button class="ghost-btn report-back-button" onclick="backToReportList()">‹ 返回举报列表</button></div><section class="card report-detail-card">
       <header class="report-detail-header">
         <div><span class="report-eyebrow">举报详情</span><h2>举报 #${id}</h2></div>
         <span class="badge status-${esc(report.status || 'pending')}">${reportStatusLabel(report.status)}</span>
@@ -257,7 +276,13 @@ async function openReport(id) {
         </aside>
       </div>
     </section>`;
-  } catch (e) { root.innerHTML = `<div class="card message error">${esc(e.message)}</div>`; }
+  } catch (e) {
+    root.innerHTML = `<div class="report-detail-toolbar"><button class="ghost-btn report-back-button" onclick="backToReportList()">‹ 返回举报列表</button></div><div class="card message error">${esc(e.message)}</div>`;
+  }
+}
+
+function backToReportList() {
+  renderReports();
 }
 
 async function handleReport(id, action) {
@@ -265,7 +290,7 @@ async function handleReport(id, action) {
   const duration = action === 'mute' ? 7 * 24 * 60 : null;
   if (!confirm('确认执行该处理操作？')) return;
   await adminFetch(`/reports/${id}/actions`, { method: 'POST', body: JSON.stringify({ action, note, duration_minutes: duration }) });
-  await loadReports(); await openReport(id);
+  await openReport(id);
 }
 
 function reportCategoryLabel(value) {
