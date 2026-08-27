@@ -403,6 +403,7 @@ function renderSystemSettings() {
               <button type="button" class="ghost-btn" onclick="toggleReleaseForm(false)">取消</button>
               <button id="release-submit" type="submit" class="primary-btn">上传并保存草稿</button>
             </div>
+            <div id="release-upload-status" class="muted" hidden></div>
           </form>
         </div>
         <div id="release-list" class="release-list"><div class="empty-editor">正在读取版本……</div></div>
@@ -477,21 +478,102 @@ async function createAppRelease(event) {
   event.preventDefault();
   const form = event.currentTarget;
   const submit = document.getElementById('release-submit');
+  const status = document.getElementById('release-upload-status');
+  const fields = new FormData(form);
+  const file = fields.get('package');
+  let sessionToken = '';
   submit.disabled = true;
-  submit.textContent = '正在上传……';
+  submit.textContent = '准备上传……';
+  if (status) {
+    status.hidden = false;
+    status.textContent = '正在计算安装包校验值……';
+  }
   try {
-    const j = await adminFetch('/app-releases', {
+    if (!(file instanceof File) || file.size <= 0) throw new Error('请选择安装包');
+    if (!window.crypto?.subtle) throw new Error('当前浏览器不支持安全文件校验，请升级浏览器后重试');
+
+    const digestPromise = crypto.subtle.digest('SHA-256', await file.arrayBuffer());
+    const initialized = await adminFetch('/app-releases/uploads/init', {
       method: 'POST',
-      body: new FormData(form),
-      timeoutMs: 30 * 60 * 1000,
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        platform: fields.get('platform'),
+        version_name: fields.get('version_name'),
+        build_number: fields.get('build_number'),
+        update_mode: fields.get('update_mode'),
+        release_notes: fields.get('release_notes'),
+        package_name: file.name,
+        package_size: file.size,
+        content_type: file.type || 'application/octet-stream',
+      }),
     });
-    if (j.code !== 200) throw new Error(j.message || '版本上传失败');
-    toast(j.message || '版本草稿已创建');
+    if (initialized.code !== 200) throw new Error(initialized.message || '无法创建上传会话');
+    sessionToken = initialized.data.session_token;
+    const partSize = Number(initialized.data.part_size);
+    const partCount = Number(initialized.data.part_count);
+    const parts = new Array(partCount);
+    let nextPart = 0;
+    let completedBytes = 0;
+
+    async function uploadWorker() {
+      while (nextPart < partCount) {
+        const index = nextPart++;
+        const number = index + 1;
+        const start = index * partSize;
+        const end = Math.min(start + partSize, file.size);
+        let lastError;
+        for (let attempt = 1; attempt <= 3; attempt += 1) {
+          try {
+            const signed = await adminFetch(`/app-releases/uploads/${sessionToken}/part-url`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ part_number: number }),
+            });
+            if (signed.code !== 200) throw new Error(signed.message || `无法上传第 ${number} 个分片`);
+            const response = await fetch(signed.data.upload_url, {
+              method: 'PUT',
+              body: file.slice(start, end),
+            });
+            if (!response.ok) throw new Error(`第 ${number} 个分片上传失败（HTTP ${response.status}）`);
+            const etag = response.headers.get('etag');
+            if (!etag) throw new Error('OSS 未返回 ETag，请检查存储跨域配置');
+            parts[index] = { number, etag };
+            completedBytes += end - start;
+            const percent = Math.min(100, completedBytes / file.size * 100).toFixed(1);
+            submit.textContent = `正在上传 ${percent}%`;
+            if (status) status.textContent = `正在直传 OSS · ${percent}%（${number}/${partCount}）`;
+            lastError = null;
+            break;
+          } catch (error) {
+            lastError = error;
+          }
+        }
+        if (lastError) throw lastError;
+      }
+    }
+
+    await Promise.all(Array.from({ length: Math.min(3, partCount) }, uploadWorker));
+    submit.textContent = '正在确认版本……';
+    if (status) status.textContent = '安装包上传完成，正在确认版本信息……';
+    const digest = Array.from(new Uint8Array(await digestPromise), (byte) => byte.toString(16).padStart(2, '0')).join('');
+    const completed = await adminFetch(`/app-releases/uploads/${sessionToken}/complete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sha256: digest, parts }),
+      timeoutMs: 60000,
+    });
+    if (completed.code !== 200) throw new Error(completed.message || '版本确认失败');
+    sessionToken = '';
+    toast(completed.message || '版本草稿已创建');
     form.reset();
     toggleReleaseForm(false);
     await loadAppReleases();
   } catch (e) {
+    if (sessionToken) {
+      await adminFetch(`/app-releases/uploads/${sessionToken}`, { method: 'DELETE' }).catch(() => {});
+    }
     toast(e.message || '版本上传失败');
+    if (status) status.textContent = e.message || '版本上传失败';
   } finally {
     submit.disabled = false;
     submit.textContent = '上传并保存草稿';
