@@ -159,6 +159,15 @@
   .modal .btns button { padding: 9px 18px; border-radius: 10px; border: 1px solid #e4e7ec; background: #fff; }
   .modal .btns button.primary { background: #4f6ef7; color: #fff; border-color: #4f6ef7; }
   .modal .btns button.danger-btn { background: #fff5f5; color: #b42318; border-color: #fecdca; }
+  .modal .btns button:disabled { opacity: .55; cursor: wait; }
+  .report-confirm-modal { width: min(460px, calc(100vw - 32px)); }
+  .report-confirm-icon { width: 42px; height: 42px; display: flex; align-items: center; justify-content: center; margin-bottom: 16px; border-radius: 50%; background: #fff4e5; color: #b54708; font-size: 22px; font-weight: 900; }
+  .report-confirm-modal h3 { margin-bottom: 8px; font-size: 20px; }
+  .report-confirm-description { margin-bottom: 16px; color: #667085; font-size: 14px; line-height: 1.6; }
+  .report-confirm-summary { display: grid; gap: 10px; margin-bottom: 14px; padding: 14px; border: 1px solid #edf0f3; border-radius: 12px; background: #fafbfc; }
+  .report-confirm-summary div { display: grid; grid-template-columns: 72px minmax(0, 1fr); gap: 10px; align-items: start; }
+  .report-confirm-summary span { color: #667085; font-size: 12px; }
+  .report-confirm-summary strong { min-width: 0; color: #344054; font-size: 13px; font-weight: 700; overflow-wrap: anywhere; }
   .billing-guide-modal { width: min(760px, calc(100vw - 40px)); padding: 0; }
   .billing-guide-title { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 22px 24px; border-bottom: 1px solid #edf0f3; }
   .billing-guide-title h3 { margin-bottom: 5px; }

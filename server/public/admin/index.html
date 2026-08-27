@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>装筱窝 · 管理后台</title>
 <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=20260815">
-<link rel="stylesheet" href="styles.css?v=20260827-reports-4">
+<link rel="stylesheet" href="styles.css?v=20260827-reports-5">
 </head>
 <body>
 
@@ -123,9 +123,26 @@
   </div>
 </div>
 
+<div class="modal-overlay" id="report-confirm-modal" onclick="if(event.target===this) closeReportActionModal()">
+  <div class="modal report-confirm-modal" role="dialog" aria-modal="true" aria-labelledby="report-confirm-title">
+    <div class="report-confirm-icon">!</div>
+    <h3 id="report-confirm-title">确认处理该举报？</h3>
+    <p class="report-confirm-description" id="report-confirm-description"></p>
+    <div class="report-confirm-summary">
+      <div><span>处理对象</span><strong id="report-confirm-target"></strong></div>
+      <div><span>处理备注</span><strong id="report-confirm-note"></strong></div>
+    </div>
+    <div id="report-confirm-error" class="field-error"></div>
+    <div class="btns">
+      <button onclick="closeReportActionModal()">取消</button>
+      <button id="report-confirm-submit" class="primary" onclick="submitReportAction()">确认处理</button>
+    </div>
+  </div>
+</div>
+
 <div class="toast" id="toast"></div>
 
 <script src="modules/billing.js?v=20260708-company-billing"></script>
-<script src="admin.js?v=20260827-reports-4"></script>
+<script src="admin.js?v=20260827-reports-5"></script>
 </body>
 </html>

@@ -183,6 +183,7 @@ function refreshCurrent() {
 let reportPage = 1;
 let reportStatus = 'pending';
 let reportTotal = 0;
+let pendingReportAction = null;
 
 function renderReports() {
   const item = menus.find(menu => menu.key === 'reports');
@@ -287,10 +288,55 @@ function backToReportList() {
 
 async function handleReport(id, action) {
   const note = document.getElementById('reportActionNote')?.value.trim() || '';
-  const duration = action === 'mute' ? 7 * 24 * 60 : null;
-  if (!confirm('确认执行该处理操作？')) return;
-  await adminFetch(`/reports/${id}/actions`, { method: 'POST', body: JSON.stringify({ action, note, duration_minutes: duration }) });
-  await openReport(id);
+  const config = reportActionConfig(action);
+  pendingReportAction = { id, action, note };
+  document.getElementById('report-confirm-title').textContent = config.title;
+  document.getElementById('report-confirm-description').textContent = config.description;
+  document.getElementById('report-confirm-target').textContent = `举报 #${id}`;
+  document.getElementById('report-confirm-note').textContent = note || '未填写处理备注';
+  const submit = document.getElementById('report-confirm-submit');
+  submit.textContent = config.button;
+  submit.className = config.danger ? 'danger-btn' : 'primary';
+  submit.disabled = false;
+  document.getElementById('report-confirm-error').textContent = '';
+  document.getElementById('report-confirm-modal').classList.add('show');
+}
+
+function reportActionConfig(action) {
+  return {
+    ignore: { title: '确认忽略该举报？', description: '该举报将标记为已处理，不会对被举报用户采取处罚。', button: '确认忽略', danger: false },
+    warn: { title: '确认警告该用户？', description: '系统将记录本次警告，并把举报标记为已处理。', button: '确认警告', danger: false },
+    delete_message: { title: '确认删除被举报消息？', description: '消息删除后将无法在会话中恢复，请确认举报内容和凭证无误。', button: '确认删除消息', danger: true },
+    mute: { title: '确认禁言 7 天？', description: '被举报用户在 7 天内将无法发送消息。', button: '确认禁言', danger: true },
+    ban: { title: '确认封禁该账号？', description: '账号封禁后将无法继续使用相关服务，请谨慎操作。', button: '确认封禁账号', danger: true },
+  }[action] || { title: '确认处理该举报？', description: '请核对处理内容后再提交。', button: '确认处理', danger: false };
+}
+
+function closeReportActionModal() {
+  document.getElementById('report-confirm-modal').classList.remove('show');
+  document.getElementById('report-confirm-error').textContent = '';
+  pendingReportAction = null;
+}
+
+async function submitReportAction() {
+  if (!pendingReportAction) return;
+  const current = pendingReportAction;
+  const submit = document.getElementById('report-confirm-submit');
+  submit.disabled = true;
+  submit.textContent = '提交中…';
+  document.getElementById('report-confirm-error').textContent = '';
+  try {
+    const duration = current.action === 'mute' ? 7 * 24 * 60 : null;
+    await adminFetch(`/reports/${current.id}/actions`, { method: 'POST', body: JSON.stringify({ action: current.action, note: current.note, duration_minutes: duration }) });
+    closeReportActionModal();
+    toast(`${reportActionLabel(current.action)}处理成功`);
+    await openReport(current.id);
+  } catch (e) {
+    document.getElementById('report-confirm-error').textContent = e.message || '提交失败，请稍后重试';
+    submit.disabled = false;
+    const config = reportActionConfig(current.action);
+    submit.textContent = config.button;
+  }
 }
 
 function reportCategoryLabel(value) {
