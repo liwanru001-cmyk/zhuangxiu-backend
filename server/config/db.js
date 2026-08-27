@@ -1,4 +1,6 @@
 const mysql = require('mysql2/promise');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 const { workItemTemplates } = require('./workItemTemplates');
 
@@ -521,6 +523,19 @@ async function ensureAppTables() {
       KEY idx_user_read (user_id, read_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await ensureContentReportTables();
+}
+
+async function ensureContentReportTables() {
+  const migrationPath = path.join(__dirname, '..', 'migrations', '20260827_content_reports.sql');
+  const statements = fs.readFileSync(migrationPath, 'utf8')
+    .split(';').map(item => item.trim()).filter(Boolean);
+  for (const statement of statements) {
+    try { await pool.query(statement); }
+    catch (migrationError) {
+      if (migrationError.code !== 'ER_DUP_FIELDNAME') throw migrationError;
+    }
+  }
 }
 
 async function ensureAccountDeletionRecordsTable() {

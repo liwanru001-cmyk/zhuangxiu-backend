@@ -9,10 +9,13 @@ module.exports = async (req, res, next) => {
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     const [rows] = await db.query(
-      'SELECT id, phone, nickname, avatar, city, role FROM users WHERE id = ?',
+      'SELECT id, phone, nickname, avatar, city, role, admin_status FROM users WHERE id = ?',
       [decoded.userId]
     );
     if (!rows[0]) return res.status(401).json({ code: 401, message: '用户不存在' });
+    if (rows[0].admin_status === 'rejected') {
+      return res.status(403).json({ code: 403, message: '账号已被封禁' });
+    }
     req.user = rows[0];
     next();
   } catch (err) {

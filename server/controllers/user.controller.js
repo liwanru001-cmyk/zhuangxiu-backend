@@ -1488,13 +1488,18 @@ async function getConsultationMessages(req, res) {
   );
 
   const [rows] = await db.query(
-    `SELECT m.id, m.consultation_id, m.sender_id, m.content, m.created_at,
+    `SELECT m.id, m.consultation_id, m.sender_id,
+            CASE WHEN m.deleted_at IS NULL THEN m.content ELSE '该消息已被平台删除' END AS content,
+            m.deleted_at, m.created_at,
             u.nickname AS sender_name, u.avatar AS sender_avatar
      FROM consultation_messages m
      JOIN users u ON u.id = m.sender_id
+     LEFT JOIN consultation_user_preferences preference
+       ON preference.consultation_id = m.consultation_id AND preference.user_id = ?
      WHERE m.consultation_id = ?
+       AND (preference.cleared_before IS NULL OR m.created_at > preference.cleared_before)
      ORDER BY m.created_at ASC, m.id ASC`,
-    [consultationId]
+    [req.user.id, consultationId]
   );
   return success(res, {
     consultation: {
@@ -1511,6 +1516,23 @@ async function sendConsultationMessage(req, res) {
   const consultationId = Number(req.params.id);
   const consultation = await getConsultationForUser(consultationId, req.user.id);
   if (!consultation) return error(res, '咨询不存在或无权限', 404);
+  const recipientId = Number(req.user.id) === Number(consultation.designer_id)
+    ? Number(consultation.user_id) : Number(consultation.designer_id);
+  const [[restriction]] = await db.query(
+    `SELECT restriction_type FROM user_moderation_restrictions
+     WHERE user_id = ? AND revoked_at IS NULL
+       AND (ends_at IS NULL OR ends_at > NOW())
+       AND restriction_type IN ('mute', 'ban')
+     ORDER BY id DESC LIMIT 1`, [req.user.id]
+  );
+  if (restriction) return error(res, restriction.restriction_type === 'ban' ? '账号已被封禁' : '账号当前处于禁言状态', 403);
+  const [[deliveryBlock]] = await db.query(
+    `SELECT
+       EXISTS(SELECT 1 FROM user_blocks WHERE blocker_user_id = ? AND blocked_user_id = ?) AS blocked,
+       EXISTS(SELECT 1 FROM consultation_user_preferences WHERE consultation_id = ? AND user_id = ? AND receive_messages = 0) AS stopped`,
+    [recipientId, req.user.id, consultationId, recipientId]
+  );
+  if (deliveryBlock?.blocked || deliveryBlock?.stopped) return error(res, '对方当前不接收你的消息', 403);
   const linkedProjectId = await getConsultationProjectContext(consultationId);
   const requestedProjectId = getRequestedConsultationProjectId(req);
   if (linkedProjectId && requestedProjectId && Number(linkedProjectId) !== Number(requestedProjectId)) {
@@ -1564,7 +1586,7 @@ async function sendConsultationMessage(req, res) {
       [result.insertId, req.user.id]
     );
     const senderIsTarget = Number(req.user.id) === Number(consultation.designer_id);
-    const recipientId = senderIsTarget
+    const notificationRecipientId = senderIsTarget
       ? Number(consultation.user_id)
       : Number(consultation.designer_id);
     const replyTitle = senderIsTarget
@@ -1579,7 +1601,7 @@ async function sendConsultationMessage(req, res) {
          (item_id, recipient_id, event_type, delivery_status, payload)
        VALUES (NULL, ?, 'consultation', 'pending', ?)`,
       [
-        recipientId,
+        notificationRecipientId,
         JSON.stringify({
           source: 'consultation',
           targetRole: consultation.target_role,

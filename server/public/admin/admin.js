@@ -145,6 +145,7 @@ function switchMenu(key) {
   else if (key === 'projectTips') renderProjectTips();
   else if (key === 'supportFeedback') renderSupportFeedback();
   else if (key === 'inspectionTemplates') renderInspectionTemplates();
+  else if (key === 'reports') renderReports();
   else if (key === 'projects') renderProgressLibrary();
   else if (key === 'settings') renderSystemSettings();
   else renderPlaceholder(item);
@@ -175,8 +176,81 @@ function refreshCurrent() {
   else if (activeMenu === 'inspectionTemplates') loadInspectionTemplates();
   else if (activeMenu === 'projects') loadProgressLibrary();
   else if (activeMenu === 'settings') loadAppReleases();
+  else if (activeMenu === 'reports') loadReports();
   else switchMenu(activeMenu);
 }
+
+let reportPage = 1;
+let reportStatus = 'pending';
+
+function renderReports() {
+  document.getElementById('content').innerHTML = `
+    <div class="toolbar">
+      <select id="reportStatus" onchange="reportStatus=this.value;reportPage=1;loadReports()">
+        <option value="pending">待处理</option><option value="processing">处理中</option>
+        <option value="resolved">已处理</option><option value="">全部</option>
+      </select>
+      <button class="ghost-btn" onclick="loadReports()">刷新</button>
+    </div>
+    <div class="card"><div id="reportList"><div class="empty-state">正在加载举报记录…</div></div></div>
+    <div id="reportDetail"></div>`;
+  document.getElementById('reportStatus').value = reportStatus;
+  loadReports();
+}
+
+async function loadReports() {
+  const list = document.getElementById('reportList');
+  if (!list) return;
+  try {
+    const params = new URLSearchParams({ page: reportPage, pageSize: 20 });
+    if (reportStatus) params.set('status', reportStatus);
+    const j = await adminFetch(`/reports?${params}`);
+    const items = j.data?.items || [];
+    list.innerHTML = items.length ? `<table><thead><tr><th>ID</th><th>举报对象</th><th>类型</th><th>次数</th><th>状态</th><th>最近提交</th><th>操作</th></tr></thead><tbody>${items.map(item => `
+      <tr><td>${item.id}</td><td>${esc(item.reported_nickname || '-')} (#${item.reported_user_id})</td>
+      <td>${reportCategoryLabel(item.latest_category)}</td><td>${item.report_count}</td><td>${reportStatusLabel(item.status)}</td>
+      <td>${esc(String(item.updated_at || '').replace('T',' ').slice(0,16))}</td>
+      <td><button class="ghost-btn" onclick="openReport(${item.id})">查看处理</button></td></tr>`).join('')}</tbody></table>`
+      : '<div class="empty-state">暂无符合条件的举报</div>';
+  } catch (e) { list.innerHTML = `<div class="message error">${esc(e.message)}</div>`; }
+}
+
+async function openReport(id) {
+  const root = document.getElementById('reportDetail');
+  root.innerHTML = '<div class="card"><div class="empty-state">正在读取举报详情…</div></div>';
+  try {
+    const j = await adminFetch(`/reports/${id}`);
+    const data = j.data || {}; const report = data.report || {};
+    root.innerHTML = `<div class="card"><h2>举报 #${id}</h2>
+      <p><b>被举报账号：</b>${esc(report.reported_nickname || '-')} (#${report.reported_user_id})</p>
+      <p><b>对象：</b>${esc(report.target_type || '-')} · 会话 #${report.consultation_id || '-'} · 消息 #${report.message_id || '-'}</p>
+      <p><b>消息快照：</b></p><div class="share-content">${esc(report.message_snapshot || '无单条消息快照')}</div>
+      <p><b>补充说明：</b>${esc(report.latest_description || '无')}</p>
+      <div>${(data.evidence || []).map(e => `<a href="${esc(e.image_url)}" target="_blank" rel="noopener"><img src="${esc(e.image_url)}" style="width:120px;height:120px;object-fit:cover;margin:6px;border-radius:8px"></a>`).join('')}</div>
+      <h3>处理</h3><textarea id="reportActionNote" maxlength="1000" placeholder="处理备注"></textarea>
+      <div class="toolbar"><button class="ghost-btn" onclick="handleReport(${id},'ignore')">忽略</button>
+      ${report.message_id ? `<button class="danger-btn" onclick="handleReport(${id},'delete_message')">删除消息</button>` : ''}
+      <button class="ghost-btn" onclick="handleReport(${id},'warn')">警告</button>
+      <button class="danger-btn" onclick="handleReport(${id},'mute')">禁言 7 天</button>
+      <button class="danger-btn" onclick="handleReport(${id},'ban')">封禁账号</button></div>
+      <h3>举报明细</h3>${(data.occurrences || []).map(o => `<p>${esc(o.reporter_nickname || '-')} · ${reportCategoryLabel(o.category)} · ${esc(o.description || '无说明')} · ${esc(String(o.created_at || ''))}</p>`).join('')}
+      <h3>处理记录</h3>${(data.actions || []).map(a => `<p>${esc(a.admin_name)} · ${esc(a.action)} · ${esc(a.note || '')} · ${esc(String(a.created_at || ''))}</p>`).join('') || '<p>暂无</p>'}
+    </div>`;
+  } catch (e) { root.innerHTML = `<div class="card message error">${esc(e.message)}</div>`; }
+}
+
+async function handleReport(id, action) {
+  const note = document.getElementById('reportActionNote')?.value.trim() || '';
+  const duration = action === 'mute' ? 7 * 24 * 60 : null;
+  if (!confirm('确认执行该处理操作？')) return;
+  await adminFetch(`/reports/${id}/actions`, { method: 'POST', body: JSON.stringify({ action, note, duration_minutes: duration }) });
+  await loadReports(); await openReport(id);
+}
+
+function reportCategoryLabel(value) {
+  return { sexual:'色情低俗', fraud_gambling:'欺诈或赌博', illegal:'违法违规', harassment:'辱骂骚扰', advertising:'广告营销', impersonation:'冒充他人', privacy:'泄露个人隐私', other:'其他' }[value] || value || '-';
+}
+function reportStatusLabel(value) { return { pending:'待处理', processing:'处理中', resolved:'已处理' }[value] || value || '-'; }
 
 function renderSystemSettings() {
   const inDesktopApp = document.documentElement.classList.contains('xiaowo-desktop-app');

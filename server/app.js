@@ -16,6 +16,7 @@ const entityRelationsRoutes = require('./routes/entity-relations.routes');
 const billingRoutes = require('./routes/billing.routes');
 const locationRoutes = require('./routes/location.routes');
 const publicRoutes = require('./routes/public.routes');
+const reportRoutes = require('./routes/report.routes');
 const billingService = require('./services/billing.service');
 const {
   startCompanyEvaluationScheduler,
@@ -109,6 +110,7 @@ app.use('/api/users', userRoutes);
 app.use('/api/renovation', renovationRoutes);
 app.use('/api', marketplaceRoutes);
 app.use('/api/consultations', consultationRoutes);
+app.use('/api/reports', reportRoutes);
 app.use('/api/projects', projectParticipantsRoutes);
 app.use('/api/entity-relations', entityRelationsRoutes);
 app.use('/api/billing', billingRoutes);
@@ -4255,6 +4257,105 @@ app.get('/api/admin/user-feedback', adminAuth, async (req, res) => {
     page: pageNo,
     pageSize,
   });
+});
+
+app.get('/api/admin/reports', adminAuth, async (req, res) => {
+  const page = Math.max(1, Number(req.query.page || 1));
+  const pageSize = Math.min(100, Math.max(10, Number(req.query.pageSize || 20)));
+  const status = String(req.query.status || '').trim();
+  const where = status ? 'WHERE r.status = ?' : '';
+  const params = status ? [status] : [];
+  const [[count]] = await db.query(`SELECT COUNT(*) AS total FROM content_reports r ${where}`, params);
+  const [rows] = await db.query(
+    `SELECT r.*, reported.nickname AS reported_nickname,
+            latest.reporter_user_id, reporter.nickname AS reporter_nickname
+     FROM content_reports r
+     JOIN users reported ON reported.id = r.reported_user_id
+     LEFT JOIN content_report_occurrences latest ON latest.id = (
+       SELECT o.id FROM content_report_occurrences o WHERE o.report_id = r.id ORDER BY o.id DESC LIMIT 1
+     )
+     LEFT JOIN users reporter ON reporter.id = latest.reporter_user_id
+     ${where} ORDER BY FIELD(r.status, 'pending', 'processing', 'resolved'), r.updated_at DESC
+     LIMIT ? OFFSET ?`, [...params, pageSize, (page - 1) * pageSize]
+  );
+  return success(res, { items: rows, total: Number(count.total || 0), page, pageSize });
+});
+
+app.get('/api/admin/reports/:id', adminAuth, async (req, res) => {
+  const id = Number(req.params.id || 0);
+  const [reports] = await db.query(
+    `SELECT r.*, u.nickname AS reported_nickname FROM content_reports r
+     JOIN users u ON u.id = r.reported_user_id WHERE r.id = ? LIMIT 1`, [id]);
+  if (!reports[0]) return error(res, '举报记录不存在', 404);
+  const [occurrences] = await db.query(
+    `SELECT o.*, u.nickname AS reporter_nickname FROM content_report_occurrences o
+     JOIN users u ON u.id = o.reporter_user_id WHERE o.report_id = ? ORDER BY o.created_at DESC`, [id]);
+  const occurrenceIds = occurrences.map(item => Number(item.id));
+  let evidence = [];
+  if (occurrenceIds.length) {
+    [evidence] = await db.query(
+      `SELECT * FROM content_report_evidence WHERE occurrence_id IN (${occurrenceIds.map(() => '?').join(',')}) ORDER BY sort_order`, occurrenceIds);
+  }
+  const [actions] = await db.query('SELECT * FROM content_report_actions WHERE report_id = ? ORDER BY created_at DESC', [id]);
+  return success(res, { report: reports[0], occurrences, evidence, actions });
+});
+
+app.post('/api/admin/reports/:id/actions', adminAuth, async (req, res) => {
+  const reportId = Number(req.params.id || 0);
+  const action = String(req.body.action || '');
+  const note = String(req.body.note || '').trim().slice(0, 1000) || null;
+  const durationMinutes = Math.max(0, Number(req.body.duration_minutes || 0)) || null;
+  const allowed = new Set(['ignore', 'delete_message', 'warn', 'mute', 'ban']);
+  if (!allowed.has(action)) return error(res, '处理方式不正确');
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [rows] = await connection.query('SELECT * FROM content_reports WHERE id = ? FOR UPDATE', [reportId]);
+    const report = rows[0];
+    if (!report) { await connection.rollback(); return error(res, '举报记录不存在', 404); }
+    const adminName = process.env.ADMIN_USERNAME || 'admin';
+    if (action === 'delete_message') {
+      if (!report.message_id) { await connection.rollback(); return error(res, '该举报没有关联消息'); }
+      await connection.query(
+        `UPDATE consultation_messages SET deleted_at = NOW(), deleted_by = ?, deletion_reason = ? WHERE id = ? AND deleted_at IS NULL`,
+        [adminName, note || '举报处理删除', report.message_id]);
+    }
+    if (action === 'mute' || action === 'ban') {
+      await connection.query(
+        `INSERT INTO user_moderation_restrictions
+          (user_id, restriction_type, reason, report_id, ends_at, created_by)
+         VALUES (?, ?, ?, ?, ${durationMinutes ? 'DATE_ADD(NOW(), INTERVAL ? MINUTE)' : 'NULL'}, ?)`,
+        durationMinutes
+          ? [report.reported_user_id, action, note, reportId, durationMinutes, adminName]
+          : [report.reported_user_id, action, note, reportId, adminName]
+      );
+      if (action === 'ban') {
+        await connection.query("UPDATE users SET admin_status = 'rejected' WHERE id = ?", [report.reported_user_id]);
+      }
+    }
+    if (action === 'warn') {
+      await connection.query(
+        `INSERT INTO project_action_notifications
+          (item_id, recipient_id, event_type, delivery_status, payload)
+         VALUES (NULL, ?, 'moderation_warning', 'pending', ?)`,
+        [report.reported_user_id, JSON.stringify({
+          title: '平台提醒', content: note || '你的站内消息收到举报，请遵守平台交流规则。',
+          route: 'notification_detail', entityType: 'report', entityId: reportId,
+        })]
+      );
+    }
+    await connection.query(
+      `INSERT INTO content_report_actions (report_id, admin_name, action, note, duration_minutes)
+       VALUES (?, ?, ?, ?, ?)`, [reportId, adminName, action, note, durationMinutes]);
+    await connection.query(
+      `UPDATE content_reports SET status = 'resolved', assigned_admin = ?, handled_at = NOW(), resolution = ?, resolution_note = ? WHERE id = ?`,
+      [adminName, action, note, reportId]);
+    await connection.commit();
+    return success(res, null, '举报已处理');
+  } catch (actionError) {
+    await connection.rollback();
+    throw actionError;
+  } finally { connection.release(); }
 });
 
 app.put('/api/admin/user-feedback/:id', adminAuth, async (req, res) => {
