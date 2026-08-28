@@ -102,6 +102,17 @@ const PROJECT_UPLOAD_QUOTAS = {
   materialImagesDailyLimit: 20,
 };
 
+function inspectionImageResponse(image) {
+  const thumbnailUrl = typeof storageService.signedImageThumbnailUrl === 'function'
+    ? storageService.signedImageThumbnailUrl(image.image_url, {
+        width: 320,
+        height: 320,
+        quality: 72,
+      })
+    : image.image_url;
+  return { ...image, thumbnail_url: thumbnailUrl };
+}
+
 async function countRows(sql, params, executor = db) {
   const [[row]] = await executor.query(sql, params);
   return Number(row?.total || 0);
@@ -9331,7 +9342,7 @@ async function getProjectInspections(req, res) {
   const imageMap = new Map();
   for (const image of images) {
     if (!imageMap.has(image.inspection_id)) imageMap.set(image.inspection_id, []);
-    imageMap.get(image.inspection_id).push(image);
+    imageMap.get(image.inspection_id).push(inspectionImageResponse(image));
   }
   const [designChecks] = await db.query(
     `SELECT id, inspection_id, design_handover_id, design_handover_item_id,
@@ -10570,7 +10581,7 @@ async function getProjectInspectionStepRecords(req, res) {
   const imageMap = new Map();
   for (const image of images) {
     if (!imageMap.has(image.record_id)) imageMap.set(image.record_id, []);
-    imageMap.get(image.record_id).push(image);
+    imageMap.get(image.record_id).push(inspectionImageResponse(image));
   }
   return success(
     res,

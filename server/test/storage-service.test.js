@@ -65,3 +65,41 @@ test('deep storage URL transforms preserve database date values', () => {
     '2026-08-11T03:04:05.000Z'
   );
 });
+
+test('creates a signed OSS image thumbnail URL', () => {
+  const previous = {
+    region: process.env.OSS_REGION,
+    bucket: process.env.OSS_BUCKET,
+    keyId: process.env.OSS_ACCESS_KEY_ID,
+    secret: process.env.OSS_ACCESS_KEY_SECRET,
+    endpoint: process.env.OSS_ENDPOINT,
+  };
+  process.env.OSS_REGION = 'oss-cn-hangzhou';
+  process.env.OSS_BUCKET = 'thumbnail-test-bucket';
+  process.env.OSS_ACCESS_KEY_ID = 'test-key';
+  process.env.OSS_ACCESS_KEY_SECRET = 'test-secret';
+  delete process.env.OSS_ENDPOINT;
+  try {
+    const signed = storage.signedImageThumbnailUrl(
+      'oss://thumbnail-test-bucket/uploads/site.jpg',
+      { width: 240, height: 240, quality: 70 }
+    );
+    const url = new URL(signed);
+    assert.equal(
+      url.searchParams.get('x-oss-process'),
+      'image/auto-orient,1/resize,m_fill,w_240,h_240/quality,q_70'
+    );
+  } finally {
+    for (const [key, value] of Object.entries(previous)) {
+      const envName = {
+        region: 'OSS_REGION',
+        bucket: 'OSS_BUCKET',
+        keyId: 'OSS_ACCESS_KEY_ID',
+        secret: 'OSS_ACCESS_KEY_SECRET',
+        endpoint: 'OSS_ENDPOINT',
+      }[key];
+      if (value === undefined) delete process.env[envName];
+      else process.env[envName] = value;
+    }
+  }
+});

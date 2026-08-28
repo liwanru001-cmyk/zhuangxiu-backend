@@ -100,6 +100,21 @@ function signedUrlForStorageUri(value, expires) {
   });
 }
 
+function signedImageThumbnailUrl(value, options = {}) {
+  const canonicalValue = canonicalStorageUri(value);
+  const object = parseOssStorageUri(canonicalValue);
+  if (!object || !hasOssConfig()) return value;
+  const config = requiredOssConfig();
+  if (object.bucket !== config.bucket) return value;
+  const width = Math.min(800, Math.max(80, Number(options.width) || 320));
+  const height = Math.min(800, Math.max(80, Number(options.height) || width));
+  const quality = Math.min(90, Math.max(40, Number(options.quality) || 72));
+  return getOssClient().signatureUrl(object.key, {
+    expires: Number(options.expires || process.env.OSS_SIGNED_URL_EXPIRES || 1800),
+    process: `image/auto-orient,1/resize,m_fill,w_${width},h_${height}/quality,q_${quality}`,
+  });
+}
+
 function signStorageUrisInString(value) {
   if (typeof value !== 'string' || !value.includes('oss://')) return value;
   if (value.startsWith('oss://') && parseOssStorageUri(value)) {
@@ -383,6 +398,7 @@ module.exports = {
   canonicalStorageUri,
   canonicalizeStorageUrisDeep,
   signedUrlForStorageUri,
+  signedImageThumbnailUrl,
   signStorageUrisDeep,
   storeDesignDocument,
 };
