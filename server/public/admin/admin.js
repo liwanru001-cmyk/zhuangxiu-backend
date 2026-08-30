@@ -555,7 +555,7 @@ async function createAppRelease(event) {
             });
             if (!response.ok) throw new Error(`第 ${number} 个分片上传失败（HTTP ${response.status}）`);
             const etag = response.headers.get('etag');
-            if (!etag) throw new Error('OSS 未返回 ETag，请检查存储跨域配置');
+            if (!etag) throw new Error('OSS 响应未暴露 ETag');
             parts[index] = { number, etag };
             completedBytes += end - start;
             const percent = Math.min(100, completedBytes / file.size * 100).toFixed(1);
@@ -564,7 +564,29 @@ async function createAppRelease(event) {
             lastError = null;
             break;
           } catch (error) {
-            lastError = error;
+            try {
+              if (status) status.textContent = `OSS 直传不可用，正在通过服务器上传第 ${number}/${partCount} 个分片……`;
+              const proxied = await adminFetch(`/app-releases/uploads/${sessionToken}/parts/${number}`, {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/octet-stream' },
+                body: file.slice(start, end),
+                timeoutMs: 180000,
+              });
+              if (proxied.code !== 200 || !proxied.data?.etag) {
+                throw new Error(proxied.message || `第 ${number} 个分片服务器上传失败`);
+              }
+              parts[index] = { number, etag: proxied.data.etag };
+              completedBytes += end - start;
+              const percent = Math.min(100, completedBytes / file.size * 100).toFixed(1);
+              submit.textContent = `正在上传 ${percent}%`;
+              if (status) status.textContent = `正在通过服务器上传 · ${percent}%（${number}/${partCount}）`;
+              lastError = null;
+              break;
+            } catch (proxyError) {
+              lastError = new Error(
+                `第 ${number} 个分片上传失败：${proxyError.message || error.message || '网络错误'}`
+              );
+            }
           }
         }
         if (lastError) throw lastError;
