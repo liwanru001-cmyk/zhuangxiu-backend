@@ -3,10 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="description" content="在 Mac App Store 获取装筱窝 macOS 版，或下载 Windows、Android 客户端。">
+  <meta name="description" content="在 Mac App Store、华为应用市场获取装筱窝，或下载 Windows 客户端。">
   <meta name="theme-color" content="#f7f4ee">
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png?v=20260815">
-  <title>下载桌面端软件 - 装筱窝</title>
+  <title>下载装筱窝客户端 - 装筱窝</title>
   <style>
     :root { --ink:#302a25; --muted:#786f67; --soft:#9b9188; --line:#e5ddd4; --paper:#f7f4ee; --white:#fff; --clay:#b76549; --clay-dark:#8f432d; --clay-soft:#f4e4dc; --sage:#67836f; --sage-soft:#e7eee8; --shadow:0 22px 60px rgba(83,65,52,.12); }
     * { box-sizing:border-box; }
@@ -42,6 +42,8 @@
     .actions { margin-top:30px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
     .download-button { min-height:48px; padding:0 22px; display:inline-flex; align-items:center; justify-content:center; border-radius:9px; color:#fff; background:var(--clay); font-weight:850; }
     .download-button:hover { background:var(--clay-dark); }
+    .download-button.secondary { color:var(--clay-dark); border:1px solid #d8b3a4; background:#fff; }
+    .download-button.secondary:hover { background:var(--clay-soft); }
     .download-button[aria-disabled="true"] { pointer-events:none; opacity:.5; }
     .file-name { color:var(--soft); font-size:12px; overflow-wrap:anywhere; }
     .status { min-height:230px; display:grid; place-items:center; color:var(--muted); text-align:center; line-height:1.7; }
@@ -58,25 +60,26 @@
     </div>
   </nav>
   <main>
-    <div class="eyebrow">装筱窝桌面端</div>
-    <h1>下载桌面端软件</h1>
+    <div class="eyebrow">装筱窝客户端</div>
+    <h1>下载装筱窝客户端</h1>
     <p class="lead">选择你的操作系统，获取适合你的装筱窝客户端。</p>
-    <div class="store-notice" role="note">macOS 版现已在 Mac App Store 正式发布。</div>
+    <div class="store-notice" role="note">macOS 版已上架 Mac App Store；Android 版已上架华为应用商店，其他应用市场陆续发布中。</div>
 
     <div class="download-shell">
       <div class="platform-tabs" role="tablist" aria-label="选择操作系统">
         <button class="platform-tab" type="button" role="tab" aria-selected="true" data-platform="macos"><b>macOS</b><span>通过 Mac App Store 安装</span></button>
         <button class="platform-tab" type="button" role="tab" aria-selected="false" data-platform="windows"><b>Windows</b><span>支持 .exe / .msix</span></button>
-        <button class="platform-tab" type="button" role="tab" aria-selected="false" data-platform="android"><b>Android</b><span>支持 .apk</span></button>
+        <button class="platform-tab" type="button" role="tab" aria-selected="false" data-platform="android"><b>Android</b><span>华为已上架 / APK</span></button>
       </div>
       <section class="release-card" aria-live="polite" id="release-card"><div class="status">正在获取最新版本…</div></section>
     </div>
-    <p class="footnote">macOS 版通过 Mac App Store 获取并更新；其他平台仅提供已正式发布的最新版本。</p>
+    <p class="footnote">Android 用户可从已上架的应用商店安装，或直接下载后台已发布的 APK 安装包。</p>
   </main>
   <script>
     const tabs = Array.from(document.querySelectorAll('[data-platform]'));
     const card = document.getElementById('release-card');
     const releases = new Map();
+    const huaweiAppGalleryUrl = 'https://url.cloud.huawei.com/BSpZw0Kbv2';
     let currentPlatform = /Android/i.test(navigator.userAgent)
       ? 'android'
       : /Windows/i.test(navigator.userAgent) ? 'windows' : 'macos';
@@ -108,6 +111,21 @@
         <div class="notes"><h3>正式发布</h3><p>装筱窝 macOS 版现已上架 Mac App Store。通过商店安装可获得更安全、便捷的更新体验。</p></div>
         <div class="actions"><a class="download-button" href="https://apps.apple.com/cn/app/%E8%A3%85%E7%AD%B1%E7%AA%9D/id6793124506" target="_blank" rel="noopener noreferrer">在 Mac App Store 下载</a></div>`;
     }
+    function renderHuaweiAppGallery(release) {
+      const apkAction = release
+        ? `<a class="download-button secondary" href="${escapeHtml(release.download_url)}">直接下载 APK</a><span class="file-name">${escapeHtml(release.package_name)} · ${formatSize(release.package_size)}</span>`
+        : '';
+      const apkStatusText = release
+        ? '你也可以选择直接下载后台已发布的 APK 安装包。'
+        : '后台 APK 安装包发布后，这里会同时提供直接下载入口。';
+      card.innerHTML = `
+        <div class="release-head">
+          <div class="system-mark" aria-hidden="true">安卓</div>
+          <div class="release-title"><h2>装筱窝 Android 版</h2><div class="release-meta">应用商店与 APK 安装包均可选择</div></div>
+        </div>
+        <div class="notes"><h3>发布进度</h3><p>目前已上架华为应用商店，其他应用市场陆续发布中。${apkStatusText}</p></div>
+        <div class="actions"><a class="download-button" href="${huaweiAppGalleryUrl}">在华为应用市场下载</a>${apkAction}</div>`;
+    }
     function renderRelease(release) {
       const platformName = { macos:'macOS', windows:'Windows', android:'Android' }[release.platform] || release.platform;
       const mark = { macos:'mac', windows:'win', android:'apk' }[release.platform] || 'app';
@@ -123,16 +141,28 @@
       currentPlatform = platform;
       tabs.forEach((tab) => tab.setAttribute('aria-selected', tab.dataset.platform === platform ? 'true' : 'false'));
       if (platform === 'macos') { renderMacAppStore(); return; }
-      if (!refresh && releases.has(platform)) { renderRelease(releases.get(platform)); return; }
+      if (!refresh && releases.has(platform)) {
+        if (platform === 'android') renderHuaweiAppGallery(releases.get(platform));
+        else renderRelease(releases.get(platform));
+        return;
+      }
       renderLoading();
       try {
         const response = await fetch(`/api/app-releases/latest?platform=${encodeURIComponent(platform)}`, { headers:{ Accept:'application/json' } });
         const body = await response.json().catch(() => null);
         if (!response.ok || !body || body.code !== 200) throw new Error(body?.message || `请求失败（${response.status}）`);
-        if (!body.data) { renderEmpty(platform); return; }
+        if (!body.data) {
+          if (platform === 'android') renderHuaweiAppGallery(null);
+          else renderEmpty(platform);
+          return;
+        }
         releases.set(platform, body.data);
-        renderRelease(body.data);
-      } catch (error) { renderError(error.message || '请稍后重试'); }
+        if (platform === 'android') renderHuaweiAppGallery(body.data);
+        else renderRelease(body.data);
+      } catch (error) {
+        if (platform === 'android') renderHuaweiAppGallery(null);
+        else renderError(error.message || '请稍后重试');
+      }
     }
     tabs.forEach((tab) => tab.addEventListener('click', () => loadRelease(tab.dataset.platform)));
     loadRelease(currentPlatform);

@@ -210,22 +210,6 @@ function signedMultipartPartUrl({ key, uploadId, partNumber, expires = 900 }) {
   });
 }
 
-async function uploadDirectMultipartPart({ key, uploadId, partNumber, body }) {
-  if (!useOss()) throw new Error('仅 OSS 存储支持分片上传');
-  if (!Buffer.isBuffer(body) || body.length === 0) throw new Error('上传分片为空');
-  const result = await getOssClient().uploadPart(
-    key,
-    uploadId,
-    partNumber,
-    body,
-    0,
-    body.length
-  );
-  const etag = String(result?.etag || result?.res?.headers?.etag || '');
-  if (!etag) throw new Error('OSS 未返回分片校验值');
-  return { number: partNumber, etag };
-}
-
 async function completeDirectMultipartUpload({ key, uploadId, parts }) {
   if (!useOss()) throw new Error('仅 OSS 存储支持客户端直传');
   await getOssClient().completeMultipartUpload(key, uploadId, parts);
@@ -403,7 +387,6 @@ module.exports = {
   putFile,
   initDirectMultipartUpload,
   signedMultipartPartUrl,
-  uploadDirectMultipartPart,
   completeDirectMultipartUpload,
   abortDirectMultipartUpload,
   listIncompleteMultipartUploads,

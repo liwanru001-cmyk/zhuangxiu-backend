@@ -401,46 +401,6 @@ app.post('/api/admin/app-releases/uploads/:token/part-url', adminAuth, async (re
   return success(res, { part_number: partNumber, upload_url: uploadUrl, expires_in: 900 });
 });
 
-// Browsers can PUT to the signed OSS URL when the bucket CORS policy permits it.
-// Keep this same-origin proxy as a fallback so release uploads do not fail with
-// the browser-only "Failed to fetch" error when that policy is missing or stale.
-app.put(
-  '/api/admin/app-releases/uploads/:token/parts/:partNumber',
-  adminAuth,
-  express.raw({ type: 'application/octet-stream', limit: directReleasePartSize }),
-  async (req, res) => {
-    const session = await directUploadSession(req.params.token);
-    if (!session) return error(res, '上传会话不存在或已过期', 404);
-    const partNumber = Number(req.params.partNumber);
-    if (!Number.isInteger(partNumber) || partNumber < 1 || partNumber > Number(session.part_count)) {
-      return error(res, '分片编号不正确');
-    }
-    const expectedSize = Math.min(
-      Number(session.part_size),
-      Number(session.file_size) - ((partNumber - 1) * Number(session.part_size))
-    );
-    if (!Buffer.isBuffer(req.body) || req.body.length !== expectedSize) {
-      return error(res, `分片大小不正确，应为 ${expectedSize} 字节`, 400);
-    }
-    try {
-      const uploaded = await storageService.uploadDirectMultipartPart({
-        key: session.storage_key,
-        uploadId: session.upload_id,
-        partNumber,
-        body: req.body,
-      });
-      return success(res, uploaded);
-    } catch (uploadError) {
-      console.error('Release part proxy upload failed', {
-        sessionId: Number(session.id),
-        partNumber,
-        message: uploadError.message,
-      });
-      return error(res, `OSS 分片上传失败：${uploadError.message}`, 503);
-    }
-  }
-);
-
 app.post('/api/admin/app-releases/uploads/:token/complete', adminAuth, async (req, res) => {
   const session = await directUploadSession(req.params.token);
   if (!session) return error(res, '上传会话不存在或已过期', 404);

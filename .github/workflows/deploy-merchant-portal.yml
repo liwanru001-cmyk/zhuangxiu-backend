@@ -165,6 +165,8 @@ jobs:
           grep -q '下载桌面端软件' "$home_file"
           grep -q '在 Mac App Store 下载' "$downloads_file"
           grep -q 'apps.apple.com/cn/app/' "$downloads_file"
+          grep -q '在华为应用市场下载' "$downloads_file"
+          grep -q 'url.cloud.huawei.com/BSpZw0Kbv2' "$downloads_file"
           ! grep -q 'href="/merchant/"' "$home_file"
           grep -q '商家中心 - 装筱窝' "$merchant_file"
           curl -fsS 'https://yinnkhome.com/favicon.png?v=20260815' -o /dev/null
