@@ -161,3 +161,4 @@ jobs:
           admin_file="$(mktemp)"
           curl -fsS https://yinnkhome.com/admin/ -o "$admin_file"
           grep -q '商户管理操作说明' "$admin_file"
+          grep -q 'admin.js?v=20260830-release-upload-timeout-2' "$admin_file"

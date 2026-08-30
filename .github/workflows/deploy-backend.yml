@@ -485,3 +485,75 @@ jobs:
 
             echo "Backend health check failed after waiting."
             exit 1
+
+      - name: Configure Nginx release upload timeouts
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -euo pipefail
+
+            runner=''
+            if [ "$(id -u)" -ne 0 ]; then
+              if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                runner='sudo'
+              else
+                echo 'Deployment user needs root or passwordless sudo to configure Nginx.'
+                exit 1
+              fi
+            fi
+
+            nginx_conf_dir='/etc/nginx/conf.d'
+            nginx_conf="$nginx_conf_dir/yinnkhome-upload-timeouts.conf"
+            nginx_backup="${nginx_conf}.previous"
+            nginx_tmp='/tmp/yinnkhome-upload-timeouts.conf'
+
+            test -d "$nginx_conf_dir"
+            command -v nginx >/dev/null 2>&1
+
+            printf '%s\n' \
+              '# Managed by deploy-backend.yml for large release package uploads.' \
+              'client_max_body_size 1g;' \
+              'client_body_timeout 1200s;' \
+              'proxy_connect_timeout 30s;' \
+              'proxy_send_timeout 1200s;' \
+              'proxy_read_timeout 1200s;' \
+              'send_timeout 1200s;' > "$nginx_tmp"
+
+            had_previous='false'
+            if $runner test -f "$nginx_conf"; then
+              had_previous='true'
+              $runner cp -p "$nginx_conf" "$nginx_backup"
+            fi
+            $runner install -m 644 "$nginx_tmp" "$nginx_conf"
+            rm -f "$nginx_tmp"
+
+            restore_nginx_conf() {
+              if [ "$had_previous" = 'true' ]; then
+                $runner mv "$nginx_backup" "$nginx_conf"
+              else
+                $runner rm -f "$nginx_conf"
+              fi
+            }
+
+            if ! $runner nginx -t; then
+              restore_nginx_conf
+              $runner nginx -t
+              exit 1
+            fi
+            if ! $runner nginx -T 2>&1 | grep -F "configuration file $nginx_conf" >/dev/null; then
+              echo "$nginx_conf is not included by the active Nginx configuration."
+              restore_nginx_conf
+              $runner nginx -t
+              exit 1
+            fi
+
+            if command -v systemctl >/dev/null 2>&1; then
+              $runner systemctl reload nginx
+            else
+              $runner nginx -s reload
+            fi
+            $runner rm -f "$nginx_backup"

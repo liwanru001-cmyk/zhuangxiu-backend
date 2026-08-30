@@ -498,6 +498,7 @@ async function createAppRelease(event) {
   const form = event.currentTarget;
   const submit = document.getElementById('release-submit');
   const status = document.getElementById('release-upload-status');
+  let uploadStateUncertain = false;
   submit.disabled = true;
   submit.textContent = '正在上传……';
   if (status) {
@@ -517,11 +518,19 @@ async function createAppRelease(event) {
     toggleReleaseForm(false);
     await loadAppReleases();
   } catch (e) {
-    toast(e.message || '版本上传失败');
-    if (status) status.textContent = e.message || '版本上传失败';
+    const message = e.message || '版本上传失败';
+    if (/\b504\b|Gateway Time-out/i.test(message)) {
+      uploadStateUncertain = true;
+      const timeoutMessage = '服务器等待超时，但安装包可能仍在后台处理中。请勿重复上传，请等待约 1 分钟后刷新版本列表，确认相同版本和 Build 是否已生成。';
+      toast(timeoutMessage);
+      if (status) status.textContent = timeoutMessage;
+    } else {
+      toast(message);
+      if (status) status.textContent = message;
+    }
   } finally {
-    submit.disabled = false;
-    submit.textContent = '上传并保存草稿';
+    submit.disabled = uploadStateUncertain;
+    submit.textContent = uploadStateUncertain ? '请先刷新版本列表' : '上传并保存草稿';
   }
 }
 
