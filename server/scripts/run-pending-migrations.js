@@ -5,6 +5,8 @@ const mysql = require('mysql2/promise');
 
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
+const independentSchema = require('../services/independent-project-schema');
+
 const baseline = '20260802_project_progress_change_requests.sql';
 
 async function main() {
@@ -38,7 +40,10 @@ async function main() {
         'SELECT checksum FROM schema_migrations WHERE name = ? LIMIT 1',
         [name]
       );
-      if (existing[0]) continue;
+      if (existing[0]) {
+        if (name === independentSchema.migrationName) await independentSchema.assertSchema(connection);
+        continue;
+      }
 
       if (name <= baseline) {
         await connection.query(
@@ -49,7 +54,8 @@ async function main() {
         continue;
       }
 
-      await connection.query(sql);
+      if (name === independentSchema.migrationName) await independentSchema.migrate(connection);
+      else await connection.query(sql);
       await connection.query(
         'INSERT INTO schema_migrations (name, checksum) VALUES (?, ?)',
         [name, checksum]

@@ -4683,10 +4683,13 @@ app.use((err, req, res, next) => {
   res.status(500).json({ code: 500, message: '服务器内部错误' });
 });
 
-app.listen(PORT, () => {
+require('./config/db').schemaReady.then(() => app.listen(PORT, () => {
   console.log(`🚀 装筱窝后端启动: http://localhost:${PORT}`);
   console.log(`📋 管理后台: http://localhost:${PORT}/admin/`);
   startCompanyEvaluationScheduler();
+})).catch(err => {
+  console.error('Backend startup refused: database migration is not ready.', err.message);
+  process.exit(1);
 });
 
 module.exports = app;

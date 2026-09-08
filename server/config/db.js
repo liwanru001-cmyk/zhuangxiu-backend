@@ -61,17 +61,17 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-pool.getConnection()
-  .then(conn => {
+pool.schemaReady = pool.getConnection()
+  .then(async conn => {
+    try { await require('../services/independent-project-schema').assertSchema(conn); }
+    finally { conn.release(); }
     console.log('✅ MySQL connected:', process.env.DB_NAME);
-    conn.release();
     ensureAppTables().catch(err => {
       console.error('❌ App table init failed:', err.message);
     });
-  })
-  .catch(err => {
-    console.error('❌ MySQL connection failed:', err.message);
   });
+// Attach a rejection handler immediately; app.js also refuses to listen on failure.
+pool.schemaReady.catch(err => console.error('❌ Database readiness failed:', err.message));
 
 async function ensureAppTables() {
   await ensureSmsCodesTable();

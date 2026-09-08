@@ -170,6 +170,8 @@ test('consultation reply creates notification for the other participant', async 
         assert.deepEqual(params, [88]);
         return [[{ project_id: 3 }]];
       }
+      if (/FROM user_moderation_restrictions/.test(sql)) return [[]];
+      if (/FROM user_blocks/.test(sql) && /consultation_user_preferences/.test(sql)) return [[{ blocked: 0, stopped: 0 }]];
       if (/COUNT\(\*\) AS total FROM consultation_messages/.test(sql)) {
         assert.deepEqual(params, [42]);
         return [[{ total: 0 }]];
@@ -266,6 +268,8 @@ test('consultation reply enforces unanswered continuous message quota', async ()
         assert.deepEqual(params, [88]);
         return [[{ project_id: 3 }]];
       }
+      if (/FROM user_moderation_restrictions/.test(sql)) return [[]];
+      if (/FROM user_blocks/.test(sql) && /consultation_user_preferences/.test(sql)) return [[{ blocked: 0, stopped: 0 }]];
       if (/COUNT\(\*\) AS total FROM consultation_messages/.test(sql)) {
         assert.deepEqual(params, [7]);
         return [[{ total: 0 }]];

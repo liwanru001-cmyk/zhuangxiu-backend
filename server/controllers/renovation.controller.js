@@ -1,3 +1,4 @@
+const { legacyProjectFilter } = require('../services/independent-project-rollout');
 const db = require('../config/db');
 const { success, error } = require('../utils/response');
 const crypto = require('crypto');
@@ -6,6 +7,11 @@ const path = require('path');
 const storageService = require('../services/storage.service');
 const { ProjectEventType, emitProjectEvent } = require('../services/project-event.service');
 const { requireProjectContext } = require('../utils/project-context');
+const { canManageProjectPreparation, isIndependentProjectManager } = require('../services/independent-project-policy');
+
+async function canEditPreparation(projectId, userId) {
+  return (await requireProjectOwner(projectId, userId)) || canManageProjectPreparation(db, projectId, userId);
+}
 const {
   recomputeProjectProgressDerivedDates,
 } = require('../services/progress-derived-dates');
@@ -437,12 +443,13 @@ function deriveProgressFromTasks(tasks, fallbackStage, fallbackStatus) {
   };
 }
 
-async function findProject(userId) {
+async function findProject(userId, req) {
   const [rows] = await db.query(
     `SELECT p.*, u.nickname AS designer_name
      FROM renovation_projects p
      LEFT JOIN users u ON p.designer_id = u.id
      WHERE p.user_id = ?
+       ${legacyProjectFilter(req)}
        AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY p.created_at DESC, p.id DESC
      LIMIT 1`,
@@ -474,6 +481,11 @@ async function calendarForProject(project) {
   return {
     project: {
       id: project.id,
+      created_by: project.created_by || null,
+      creation_source: project.creation_source || 'owner',
+      preparation_stage: project.preparation_stage || 'construction',
+      client_name: project.client_name || null,
+      owner_joined: Boolean(project.user_id),
       project_code: project.project_code,
       project_name: normalizeProjectName(project.project_name),
       house_area: Number(project.house_area),
@@ -561,6 +573,7 @@ async function setup(req, res) {
       : await connection.query(
           `SELECT id FROM renovation_projects
            WHERE user_id = ?
+             ${legacyProjectFilter(req, '')}
              AND COALESCE(lifecycle_status, 'active') = 'active'
            ORDER BY created_at DESC, id DESC
            LIMIT 1 FOR UPDATE`,
@@ -573,6 +586,7 @@ async function setup(req, res) {
       await connection.query(
         `UPDATE renovation_projects
          SET project_name = ?, house_area = ?, start_date = ?, current_stage = ?, status = 1,
+             preparation_stage = 'construction',
              project_type = ?, house_layout = ?, floor_plan_image = ?,
              renovation_method = ?
          WHERE id = ?`,
@@ -658,7 +672,7 @@ async function setup(req, res) {
     connection.release();
   }
 
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   return success(res, await calendarForProject(project), '建档成功');
 }
 
@@ -676,13 +690,13 @@ async function uploadFloorPlan(req, res) {
 }
 
 async function getCalendar(req, res) {
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return success(res, null);
   return success(res, await calendarForProject(project));
 }
 
 async function getStageDetail(req, res) {
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return error(res, '装修档案不存在', 404);
   const [tasks] = await db.query(
     `SELECT id, stage_id, task_name, is_key, planned_start, planned_end,
@@ -710,7 +724,7 @@ async function completeStage(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
 
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return error(res, '装修档案不存在', 404);
   const stageId = Number(req.params.stageId);
   const nextStage = Math.min(stageId + 1, stages.length);
@@ -726,7 +740,7 @@ async function updateInfo(req, res) {
   const projectContext = await requireProjectContext(req, res);
   if (!projectContext.ok) return projectContext.response;
 
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return error(res, '装修档案不存在', 404);
   const area = req.body.house_area === undefined ? project.house_area : Number(req.body.house_area);
   const startDate = req.body.start_date || project.start_date;
@@ -736,7 +750,7 @@ async function updateInfo(req, res) {
     'UPDATE renovation_projects SET house_area = ?, start_date = ? WHERE id = ?',
     [area, startDate, project.id]
   );
-  const updated = await findProject(req.user.id);
+  const updated = await findProject(req.user.id, req);
   return success(res, await calendarForProject(updated));
 }
 
@@ -745,8 +759,8 @@ async function updateProjectInfo(req, res) {
   if (!projectContext.ok) return projectContext.response;
 
   const projectId = Number(req.params.id);
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
-    return error(res, '只有业主可以修改项目信息', 403);
+  if (!(await canEditPreparation(projectId, req.user.id))) {
+    return error(res, '无项目信息管理权限', 403);
   }
   const [projects] = await db.query(
     'SELECT * FROM renovation_projects WHERE id = ?',
@@ -817,6 +831,8 @@ function buildProjectInfoValues(project, body) {
       : String(body.special_needs || '').trim().slice(0, 1000) || null;
 
   return {
+    clientName: body.client_name === undefined ? project.client_name : String(body.client_name || '').trim().slice(0, 80),
+    allowUnknownArea: project.preparation_stage === 'preparation',
     projectName,
     area,
     houseLayout,
@@ -833,7 +849,7 @@ function buildProjectInfoValues(project, body) {
 
 function validateProjectInfoValues(values) {
   if (!values.projectName) return '请输入项目名称';
-  if (!Number.isFinite(Number(values.area)) || Number(values.area) <= 0) {
+  if (!Number.isFinite(Number(values.area)) || (values.allowUnknownArea ? Number(values.area) < 0 : Number(values.area) <= 0)) {
     return '房屋面积不正确';
   }
   return null;
@@ -844,7 +860,7 @@ async function applyProjectInfoValues(projectId, values, connection = db) {
     `UPDATE renovation_projects
      SET project_name = ?, house_area = ?, house_layout = ?, floor_plan_image = ?,
          budget_range = ?, expected_move_in_date = ?, resident_info = ?,
-         lifestyle_notes = ?, style_preference = ?, key_spaces = ?, special_needs = ?
+         lifestyle_notes = ?, style_preference = ?, key_spaces = ?, special_needs = ?, client_name = ?
      WHERE id = ?`,
     [
       values.projectName,
@@ -858,6 +874,7 @@ async function applyProjectInfoValues(projectId, values, connection = db) {
       values.stylePreference,
       values.keySpaces,
       values.specialNeeds,
+      values.clientName || null,
       projectId,
     ]
   );
@@ -865,6 +882,7 @@ async function applyProjectInfoValues(projectId, values, connection = db) {
 
 function projectInfoRequestPayload(body) {
   const allowed = [
+    'client_name',
     'project_name',
     'house_area',
     'house_layout',
@@ -1335,6 +1353,7 @@ async function createProjectInfoChangeRequest(req, res) {
   const role = await getProjectMemberRole(projectId, req.user.id);
   if (!role) return error(res, '项目不存在或无权限', 404);
   if (isOwnerSideRole(role)) return error(res, '业主方可以直接修改项目档案');
+  if (await canManageProjectPreparation(db, projectId, req.user.id)) return updateProjectInfo(req, res);
   const payload = projectInfoRequestPayload(req.body);
   if (Object.keys(payload).length === 0) return error(res, '没有可提交的修改内容');
   const [projects] = await db.query(
@@ -1423,7 +1442,7 @@ async function handleProjectInfoChangeRequest(req, res) {
 }
 
 async function resetProject(req, res) {
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return error(res, '装修档案不存在', 404);
   const blockers = await projectDeletionBlockers(project.id, req.user.id);
   if (blockers.length) {
@@ -1703,13 +1722,14 @@ async function unbindDesigner(req, res) {
        JOIN renovation_projects p ON p.id = pm.project_id
        SET pm.status = 2, pm.updated_at = NOW()
        WHERE p.user_id = ? AND pm.role = 'designer' AND pm.status = 1
+         AND COALESCE(p.creation_source, 'owner') <> 'designer'
          AND COALESCE(p.lifecycle_status, 'active') = 'active'`,
       [req.user.id]
     );
     await connection.query(
       `UPDATE renovation_projects
        SET designer_id = NULL
-       WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
+       WHERE user_id = ? AND COALESCE(creation_source, 'owner') <> 'designer' AND COALESCE(lifecycle_status, 'active') = 'active'`,
       [req.user.id]
     );
     await connection.commit();
@@ -1732,14 +1752,16 @@ async function getMyProjects(req, res) {
     : 'designer';
   const [rows] = await db.query(
     `SELECT p.id, p.project_code, p.project_name, p.house_area, p.start_date, p.total_days,
-            p.current_stage, p.status, p.lifecycle_status,
+            p.current_stage, p.status, p.lifecycle_status, p.created_by, p.creation_source,
+            p.preparation_stage, p.client_name, (p.user_id IS NOT NULL) AS owner_joined,
             u.nickname AS owner_nickname, u.phone AS owner_phone,
             u.city AS owner_city, pm.role AS member_role,
             pm.status AS member_status
      FROM project_members pm
      JOIN renovation_projects p ON p.id = pm.project_id
-     JOIN users u ON p.user_id = u.id
+     LEFT JOIN users u ON p.user_id = u.id
      WHERE pm.user_id = ? AND pm.role = ? AND pm.status IN (1, 2)
+       ${legacyProjectFilter(req)}
        AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
      ORDER BY p.updated_at DESC`,
     [req.user.id, memberRole]
@@ -1951,7 +1973,7 @@ async function createProjectSpace(req, res) {
   if (!(await canAccessProject(projectId, req.user.id))) {
     return error(res, '项目不存在或无权限', 404);
   }
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
+  if (!(await canEditPreparation(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'create_space', {
       name,
     });
@@ -2005,7 +2027,7 @@ async function updateProjectSpace(req, res) {
     [spaceId, projectId]
   );
   if (!spaces[0]) return error(res, '空间不存在', 404);
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
+  if (!(await canEditPreparation(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'rename_space', {
       space_id: spaceId,
       name,
@@ -2062,7 +2084,7 @@ async function deleteProjectSpace(req, res) {
   } catch (spaceError) {
     return error(res, spaceError.message || '空间内还有资料');
   }
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
+  if (!(await canEditPreparation(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'delete_space', {
       space_id: spaceId,
     });
@@ -2130,7 +2152,7 @@ async function uploadProjectSpaceImages(req, res) {
       `/uploads/project-spaces/${file.filename}`
     )
   );
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
+  if (!(await canEditPreparation(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'upload_images', {
       space_id: spaceId,
       image_type: imageType,
@@ -2228,7 +2250,7 @@ async function setDefaultProjectSpaceImage(req, res) {
     [imageId, spaceId, projectId]
   );
   if (!rows[0]) return error(res, '效果图不存在', 404);
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
+  if (!(await canEditPreparation(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'set_default', {
       space_id: spaceId,
       image_id: imageId,
@@ -2270,7 +2292,7 @@ async function deleteProjectSpaceImage(req, res) {
     [imageId, spaceId, projectId]
   );
   if (!rows[0]) return error(res, '图片不存在', 404);
-  if (!(await requireProjectOwner(projectId, req.user.id))) {
+  if (!(await canEditPreparation(projectId, req.user.id))) {
     await createProjectSpaceChangeRequest(projectId, req.user.id, 'delete_image', {
       space_id: spaceId,
       image_id: imageId,
@@ -3047,7 +3069,7 @@ async function inviteProjectOwner(req, res) {
 
   const [projects] = await db.query(
     `SELECT id, designer_id FROM renovation_projects
-     WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
+     WHERE user_id = ? AND COALESCE(creation_source, 'owner') <> 'designer' AND COALESCE(lifecycle_status, 'active') = 'active'`,
     [ownerId]
   );
   if (!projects[0]) return error(res, '该用户还没有创建装修档案', 404);
@@ -3195,7 +3217,7 @@ async function handleProjectInvitation(req, res) {
         const [result] = await connection.query(
           `UPDATE renovation_projects
            SET designer_id = COALESCE(designer_id, ?)
-           WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
+           WHERE user_id = ? AND COALESCE(creation_source, 'owner') <> 'designer' AND COALESCE(lifecycle_status, 'active') = 'active'`,
           [rows[0].designer_id, req.user.id]
         );
         if (result.affectedRows === 0) {
@@ -3205,7 +3227,7 @@ async function handleProjectInvitation(req, res) {
       }
       const [projects] = await connection.query(
         `SELECT id FROM renovation_projects
-         WHERE user_id = ? AND COALESCE(lifecycle_status, 'active') = 'active'`,
+         WHERE user_id = ? AND COALESCE(creation_source, 'owner') <> 'designer' AND COALESCE(lifecycle_status, 'active') = 'active'`,
         [req.user.id]
       );
       if (!projects.length) {
@@ -3339,6 +3361,7 @@ async function getProjects(req, res) {
      FROM renovation_projects p
      LEFT JOIN users u ON p.designer_id = u.id
      WHERE p.user_id = ?
+       ${legacyProjectFilter(req)}
        AND COALESCE(p.lifecycle_status, 'active') = 'active'
      ORDER BY p.created_at DESC, p.id DESC`,
     [req.user.id]
@@ -3346,6 +3369,11 @@ async function getProjects(req, res) {
   return success(res, {
     projects: projects.map((project) => ({
       id: project.id,
+      created_by: project.created_by || null,
+      creation_source: project.creation_source || 'owner',
+      preparation_stage: project.preparation_stage || 'construction',
+      client_name: project.client_name || null,
+      owner_joined: Boolean(project.user_id),
       project_code: project.project_code,
       project_name: normalizeProjectName(project.project_name),
       house_area: Number(project.house_area),
@@ -3383,13 +3411,15 @@ async function getAccessibleProjects(req, res) {
             p.renovation_method, p.budget_range, p.expected_move_in_date,
             p.resident_info, p.lifestyle_notes, p.style_preference,
             p.key_spaces, p.special_needs, p.lifecycle_status, p.archived_at,
-            p.created_at, pm.role AS member_role,
+            p.created_at, p.created_by, p.creation_source, p.preparation_stage, p.client_name,
+            (p.user_id IS NOT NULL) AS owner_joined, pm.role AS member_role,
             owner.nickname AS owner_nickname, owner.phone AS owner_phone,
             owner.city AS owner_city
      FROM project_members pm
      JOIN renovation_projects p ON p.id = pm.project_id
-     JOIN users owner ON owner.id = p.user_id
+     LEFT JOIN users owner ON owner.id = p.user_id
      WHERE pm.user_id = ? AND pm.status = 1
+       ${legacyProjectFilter(req)}
        AND COALESCE(p.lifecycle_status, 'active') != 'deleted'
        AND (
          COALESCE(p.lifecycle_status, 'active') = 'active'
@@ -3426,6 +3456,8 @@ async function getProjectDetail(req, res) {
   if (!rows[0]) return error(res, '项目不存在', 404);
   const calendar = await calendarForProject(rows[0]);
   const role = await getProjectMemberRole(projectId, req.user.id);
+  calendar.project.member_role = role;
+  calendar.project.can_manage_preparation = isIndependentProjectManager(rows[0], req.user.id, role);
   calendar.access = {
     role,
     read_only: role === companyAdminViewerRole,
@@ -4762,6 +4794,7 @@ async function getProjectDesignDocuments(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   const ownerSide = await isOwnerSide(projectId, req.user.id);
+  const preparationManager = !ownerSide && await canManageProjectPreparation(db, projectId, req.user.id);
   const [rows] = await db.query(
     `SELECT doc.id, doc.project_id, doc.upload_batch_id, doc.upload_batch_title,
             doc.version_group_id, doc.version_no,
@@ -4896,7 +4929,8 @@ async function getProjectDesignDocuments(req, res) {
       return {
         ...row,
         uploaded_by_me: Number(row.uploaded_by) === Number(req.user.id),
-        delete_mode: ownerSide
+        delete_mode: preparationManager && Number(row.uploaded_by) === Number(req.user.id)
+          ? 'direct' : ownerSide
           ? Number(row.uploaded_by) === Number(req.user.id)
             ? 'direct'
             : 'owner_review'
@@ -5281,18 +5315,21 @@ async function canDeleteDesignDocument(documentId, connection = db) {
   return { canDelete: true, reason: null };
 }
 
-async function deleteDesignDocumentBatch(connection, projectId, document) {
+async function deleteDesignDocumentBatch(connection, projectId, document, uploaderId = null) {
   const [batchDocuments] = document.upload_batch_id
     ? await connection.query(
-        `SELECT id, status FROM project_design_documents
+        `SELECT id, status, uploaded_by FROM project_design_documents
          WHERE project_id = ? AND upload_batch_id = ? FOR UPDATE`,
         [projectId, document.upload_batch_id]
       )
     : await connection.query(
-        `SELECT id, status FROM project_design_documents
+        `SELECT id, status, uploaded_by FROM project_design_documents
          WHERE project_id = ? AND id = ? FOR UPDATE`,
         [projectId, document.id]
       );
+  if (uploaderId != null && batchDocuments.some(item => Number(item.uploaded_by) !== Number(uploaderId))) {
+    return { error: '同批资料包含其他成员上传的文件，请先申请复核' };
+  }
   for (const item of batchDocuments) {
     const guard = await canDeleteDesignDocument(item.id, connection);
     if (!guard.canDelete) return { error: guard.reason };
@@ -5438,7 +5475,7 @@ async function deleteProjectDesignDocument(req, res) {
   const document = documents[0];
   if (!document) return error(res, '设计资料不存在', 404);
   const ownerSide = await isOwnerSide(projectId, req.user.id);
-  if (!ownerSide) {
+  if (!ownerSide && !(await canManageProjectPreparation(db, projectId, req.user.id))) {
     return error(res, '请先提交删除申请，等待业主复核确认', 403);
   }
   const uploadedByCurrentOwner =
@@ -5450,7 +5487,7 @@ async function deleteProjectDesignDocument(req, res) {
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
-    const result = await deleteDesignDocumentBatch(connection, projectId, document);
+    const result = await deleteDesignDocumentBatch(connection, projectId, document, req.user.id);
     if (result.error) {
       await connection.rollback();
       return error(res, result.error, 409);
@@ -11203,7 +11240,7 @@ async function resubmitProjectInspection(req, res) {
 
 // GET /api/renovation/stages/:id/tasks - 获取某阶段下的任务
 async function getStageTasks(req, res) {
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return error(res, '装修档案不存在', 404);
   const stageId = Number(req.params.id);
 
@@ -11220,7 +11257,7 @@ async function getStageTasks(req, res) {
 
 // GET /api/renovation/checklist - 装修检查清单
 async function getChecklist(req, res) {
-  const project = await findProject(req.user.id);
+  const project = await findProject(req.user.id, req);
   if (!project) return error(res, '装修档案不存在', 404);
 
   const stageId = req.query.stage_id ? Number(req.query.stage_id) : null;

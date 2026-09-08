@@ -1,3 +1,4 @@
+const { supportsIndependentProjects } = require('../services/independent-project-rollout');
 const db = require('../config/db');
 const { error } = require('./response');
 
@@ -25,7 +26,7 @@ function isProjectSource(req) {
 
 async function findProjectAccess(projectId, userId) {
   const [rows] = await db.query(
-    `SELECT p.id, p.user_id, p.lifecycle_status, pm.role
+    `SELECT p.id, p.user_id, p.lifecycle_status, pm.role, p.creation_source
      FROM renovation_projects p
      LEFT JOIN project_members pm
        ON pm.project_id = p.id AND pm.user_id = ? AND pm.status = 1
@@ -63,6 +64,10 @@ async function resolveProjectContext(req, res, options = {}) {
       ok: false,
       response: error(res, '项目不存在或无权限', 404),
     };
+  }
+
+  if (project.creation_source === 'designer' && !supportsIndependentProjects(req)) {
+    return { ok: false, response: error(res, '此项目需要使用新版桌面客户端打开', 409) };
   }
 
   const context = {
@@ -105,6 +110,7 @@ async function getConsultationProjectContext(consultationId) {
 }
 
 module.exports = {
+  extractProjectId,
   resolveProjectContext,
   requireProjectContext,
   linkConsultationToProject,

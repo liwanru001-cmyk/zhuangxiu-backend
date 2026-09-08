@@ -1,6 +1,8 @@
 const assert = require('node:assert/strict');
-const { after, test } = require('node:test');
-const db = require('../config/db');
+const { test } = require('node:test');
+// These tests inject executors and must never connect to a developer/production DB.
+const dbPath = require.resolve('../config/db');
+require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {} };
 
 const {
   ProjectEventType,
@@ -11,9 +13,6 @@ const {
   requiredColumns,
 } = require('../services/runtime-schema.service');
 
-after(async () => {
-  await db.end();
-});
 
 test('project notification failure does not fail the completed business action', async () => {
   const executor = {

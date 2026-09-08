@@ -1,6 +1,7 @@
 const db = require('../config/db');
 
 const requiredColumns = Object.freeze({
+  ...require('./independent-project-schema').requiredColumns,
   project_action_notifications: ['item_id', 'event_type', 'payload'],
   project_inspection_step_records: [
     'task_id',

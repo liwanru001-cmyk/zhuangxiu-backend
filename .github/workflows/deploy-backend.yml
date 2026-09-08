@@ -12,6 +12,10 @@ on:
       - '!server/public_backup_*/**'
   workflow_dispatch:
 
+concurrency:
+  group: production-backend-deploy
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -21,115 +25,31 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Recover backend if unhealthy
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Validate backend before touching production
+        run: |
+          npm ci --prefix server
+          npm test --prefix server
+
+      # Do not switch/recover services before migration has been validated.
+      - name: Check current backend without changing it
         uses: appleboy/ssh-action@v1.0.3
-        env:
-          APP_DIR: ${{ secrets.APP_DIR }}
-          SSH_HOST: ${{ secrets.SSH_HOST }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR,SSH_HOST
           script: |
-            set -euo pipefail
-
-            APP_DIR="${APP_DIR:-/opt/yinnkhome-backend}"
-            if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
-              echo "Refusing recovery on stale or unrelated host: $SSH_HOST"
-              exit 1
-            fi
-
-            case "$APP_DIR" in
-              /opt/yinnkhome-backend) ;;
-              /*) ;;
-              *)
-                echo "APP_DIR must be an absolute path, got: $APP_DIR"
-                exit 1
-                ;;
-            esac
-
-            case "$APP_DIR" in
-              /|/var|/var/www|/var/www/*|*/server/public|*/server/public/*|*/public|*/public/*)
-                echo "Refusing dangerous APP_DIR: $APP_DIR"
-                exit 1
-                ;;
-            esac
-
-            app_workdir() {
-              if [ -f "$1/ecosystem.config.cjs" ]; then
-                printf '%s\n' "$1"
-              elif [ -f "$1/server/ecosystem.config.cjs" ]; then
-                printf '%s\n' "$1/server"
-              else
-                return 1
-              fi
-            }
-
-            app_port() {
-              candidate_env=""
-              if [ -f "$1/.env" ]; then
-                candidate_env="$1/.env"
-              elif [ -f "$1/server/.env" ]; then
-                candidate_env="$1/server/.env"
-              fi
-              if [ -n "$candidate_env" ]; then
-                awk -F= '/^PORT=/{print $2; exit}' "$candidate_env" | tr -d '"'\'"'"' ' || true
-              fi
-            }
-
-            health_ok() {
-              candidate_port="$(app_port "$APP_DIR")"
-              candidate_port="${candidate_port:-3001}"
-              curl -fsS "http://127.0.0.1:${candidate_port}/health" >/dev/null 2>&1
-            }
-
-            start_candidate() {
-              candidate="$1"
-              workdir="$(app_workdir "$candidate")" || return 1
-              candidate_port="$(app_port "$candidate")"
-              candidate_port="${candidate_port:-3001}"
-              cd "$workdir"
-              pm2 delete yinnkhome-backend || true
-              PORT="$candidate_port" pm2 startOrReload ecosystem.config.cjs --env production --update-env
-              sleep 3
-              health_ok
-            }
-
-            if health_ok; then
-              echo "Backend is already healthy."
-              exit 0
-            fi
-
-            echo "Backend is unhealthy; trying backups."
-            failed_dir="${APP_DIR}.failed.$(date +%Y%m%d_%H%M%S)"
-            if [ -d "$APP_DIR" ]; then
-              mv "$APP_DIR" "$failed_dir"
-              echo "Moved unhealthy app to $failed_dir"
-            fi
-
-            for candidate in $(ls -dt "${APP_DIR}".backup.* 2>/dev/null || true); do
-              [ -d "$candidate" ] || continue
-              echo "Trying recovery candidate: $candidate"
-              rm -rf "$APP_DIR"
-              mv "$candidate" "$APP_DIR"
-              if start_candidate "$APP_DIR"; then
-                pm2 save
-                echo "Recovered backend from $candidate"
-                exit 0
-              fi
-              mv "$APP_DIR" "${candidate}.failed.$(date +%Y%m%d_%H%M%S)"
-            done
-
-            if [ -d "$failed_dir" ]; then
-              mv "$failed_dir" "$APP_DIR"
-            fi
-            echo "Backend recovery failed; no healthy backup found."
-            exit 1
+            set -eu
+            curl --max-time 15 -fsS http://127.0.0.1:3001/health
 
       - name: Upload backend over SSH
-        if: ${{ !contains(github.event.head_commit.message, 'recover backend only') }}
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
@@ -215,7 +135,6 @@ jobs:
           ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'" < /tmp/yinnkhome-backend.tar.gz
 
       - name: Deploy backend over SSH
-        if: ${{ !contains(github.event.head_commit.message, 'recover backend only') }}
         uses: appleboy/ssh-action@v1.0.3
         env:
           APP_DIR: ${{ secrets.APP_DIR }}
@@ -393,9 +312,13 @@ jobs:
               --no-tablespaces \
               "$DB_NAME" | gzip -c > "$db_backup_file"
             test -s "$db_backup_file"
+            gzip -t "$db_backup_file"
 
             echo "Applying recorded pending migrations before smoke test."
             node scripts/run-pending-migrations.js
+            node scripts/check-independent-project-schema.js
+            echo "Checking original backend after migration, before service cutover."
+            curl --max-time 15 -fsS "http://127.0.0.1:${PORT:-3001}/health"
 
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
@@ -446,8 +369,8 @@ jobs:
             . ./.env
             set +a
 
-            # Migrations are recorded once and applied in filename order.
-            node scripts/run-pending-migrations.js
+            # Read-only verification after activation; all DDL completed before cutover.
+            node scripts/check-independent-project-schema.js
 
             # Abort only old OSS multipart uploads that are not referenced by
             # an active, unexpired release upload session.

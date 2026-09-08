@@ -1,6 +1,8 @@
 const express = require('express');
 const auth = require('../middleware/auth');
 const controller = require('../controllers/renovation.controller');
+const rollout = require('../services/independent-project-rollout');
+const independentProjects = require('../controllers/independent-projects.controller');
 const projectContentSharesController = require('../controllers/project-content-shares.controller');
 const asyncHandler = require('../utils/async-handler');
 const { requireProjectContext } = require('../utils/project-context');
@@ -21,7 +23,7 @@ function inspectionKbGate(req, res, next) {
   }
   next();
 }
-const protectedRoute = [asyncHandler(auth)];
+const protectedRoute = [asyncHandler(auth), asyncHandler(rollout.legacyProjectGate)];
 
 async function projectContextGate(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next();
@@ -311,6 +313,12 @@ const materialNoteMediaUpload = multer({
 // 公开/基础
 router.get('/stages', asyncHandler(controller.getStages));
 
+// Independent project creation does not require an existing project context.
+router.get('/features', ...protectedRoute, rollout.features);
+router.post('/independent-projects', ...protectedRoute, rollout.featureGate, asyncHandler(independentProjects.create));
+router.get('/owner-invitations', ...protectedRoute, (req, res, next) => rollout.supportsIndependentProjects(req) ? next() : res.json({ code: 200, message: 'success', data: [] }), asyncHandler(independentProjects.listInvitations));
+router.put('/owner-invitations/:invitationId', ...protectedRoute, rollout.featureGate, asyncHandler(independentProjects.respondInvitation));
+
 // 业主 - 装修档案
 router.get('/projects', ...protectedRoute, asyncHandler(controller.getProjects));
 router.get(
@@ -341,6 +349,7 @@ router.use(
     return controller.requireProjectActiveRoute(req, res, next);
   })
 );
+router.post('/projects/:id/owner-invitations', ...protectedRoute, rollout.featureGate, asyncHandler(independentProjects.inviteOwner));
 router.put('/projects/:id/info', ...protectedRoute, asyncHandler(controller.updateProjectInfo));
 router.get(
   '/projects/:id/info-change-requests',
