@@ -186,3 +186,33 @@ test('timeout during response-body reading preserves model timeout diagnostics',
     }) }),
   }), error => error.code === 'PRESENTATION_MODEL_TIMEOUT' && !error.message.includes('secret-not-for-errors'));
 });
+
+test('outline prompt uses a scalar type and repairs an invalid array type once', async () => {
+  let calls = 0;
+  const result = await service.generateOutline(sourceFixture(), settingsFixture(), {
+    env: { PRESENTATION_AI_API_KEY: 'test-key', PRESENTATION_AI_MODEL: 'qwen3.8-max' },
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      const instruction = JSON.parse(body.messages[1].content);
+      assert.equal(instruction.output_example.slides[0].type, 'cover');
+      assert.ok(instruction.output_rules.slide_type.allowed_values.includes('space_solution'));
+      const outline = outlineFixture();
+      if (calls++ === 0) outline.slides[0].type = ['cover', 'ending'];
+      else assert.match(body.messages.at(-1).content, /第1页类型不正确/);
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(outline) } }] }) };
+    },
+  });
+  assert.equal(calls, 2); assert.equal(result.outline.slides[0].type, 'cover');
+});
+test('invalid types remain rejected after one repair attempt', async () => {
+  let calls = 0;
+  await assert.rejects(service.generateOutline(sourceFixture(), settingsFixture(), {
+    env: { PRESENTATION_AI_API_KEY: 'test-key' },
+    fetch: async () => {
+      calls++;
+      const outline = outlineFixture(); outline.slides[0].type = 'unknown';
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(outline) } }] }) };
+    },
+  }), /模型目录格式校验失败/);
+  assert.equal(calls, 2);
+});

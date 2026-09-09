@@ -358,10 +358,10 @@ function promptMessages(source, settings) {
     missing_information: ['string'],
     slides: [{
       id: 'unique-string',
-      type: [...allowedSlideTypes],
+      type: 'cover',
       title: 'string',
       subtitle: 'string',
-      space_id: 'integer-or-null',
+      space_id: null,
       source_refs: ['existing-source-reference'],
       narrative: 'string',
     }],
@@ -375,7 +375,12 @@ function promptMessages(source, settings) {
       role: 'user',
       content: JSON.stringify({
         task: '生成可供设计师向业主汇报的PPT逐页结构',
-        output_schema: schema,
+        output_example: schema,
+        output_rules: {
+          slide_type: { type: 'string', allowed_values: [...allowedSlideTypes], instruction: '每页只填写一个枚举字符串，禁止填写数组、中文类型名或自创类型。第一页必须为 cover。' },
+          space_id: 'space_solution 页必须填写 source 中真实的空间数字 id；其他页面填写 null。',
+          slides: '返回 2 至 80 页，每页 id 必须唯一；示例只展示单页字段形状，不代表页数。',
+        },
         settings,
         source: sourceForModel(source, settings),
       }),
@@ -444,33 +449,44 @@ async function generateOutline(source, rawSettings, options = {}) {
   const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0 ? requestedTimeout : 90000;
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    const response = await fetchImpl(`${config.base_url}${text(env.PRESENTATION_AI_ENDPOINT, 120) || '/chat/completions'}`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${text(env.PRESENTATION_AI_API_KEY, 1000)}` },
-      body: JSON.stringify({
-        model: config.model,
-        // Qwen's thinking default can substantially delay a single JSON response.
-        ...(config.model.startsWith('qwen3') ? { enable_thinking: false } : {}),
-        stream: false,
-        messages: promptMessages(source, settings),
-        temperature: 0.2,
-        max_tokens: Number(env.PRESENTATION_AI_MAX_OUTPUT_TOKENS || 6000),
-        response_format: { type: 'json_object' },
-      }),
-      signal: controller.signal,
-    });
-    const result = await response.json().catch(error => {
-      if (controller.signal.aborted) throw error;
-      return {};
-    });
-    if (!response.ok) {
-      const error = new Error(`大模型服务调用失败：${result.error?.message || response.status}`);
-      error.status = 502;
-      error.code = 'PRESENTATION_MODEL_REQUEST_FAILED';
-      throw error;
+    const messages = promptMessages(source, settings);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const response = await fetchImpl(`${config.base_url}${text(env.PRESENTATION_AI_ENDPOINT, 120) || '/chat/completions'}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${text(env.PRESENTATION_AI_API_KEY, 1000)}` },
+        body: JSON.stringify({
+          model: config.model,
+          // Qwen's thinking default can substantially delay a single JSON response.
+          ...(config.model.startsWith('qwen3') ? { enable_thinking: false } : {}),
+          stream: false,
+          messages,
+          temperature: 0.2,
+          max_tokens: Number(env.PRESENTATION_AI_MAX_OUTPUT_TOKENS || 6000),
+          response_format: { type: 'json_object' },
+        }),
+        signal: controller.signal,
+      });
+      const result = await response.json().catch(error => {
+        if (controller.signal.aborted) throw error;
+        return {};
+      });
+      if (!response.ok) {
+        const error = new Error(`大模型服务调用失败：${result.error?.message || response.status}`);
+        error.status = 502;
+        error.code = 'PRESENTATION_MODEL_REQUEST_FAILED';
+        throw error;
+      }
+      const content = result.choices?.[0]?.message?.content;
+      try {
+        return { settings, outline: normalizeOutline(parseModelJson(content), source, settings) };
+      } catch (validationError) {
+        if (attempt === 1) throw new Error(`模型目录格式校验失败：${validationError.message}`);
+        messages.push(
+          { role: 'assistant', content: String(content || '').slice(0, 60000) },
+          { role: 'user', content: `上一份 JSON 未通过校验：${validationError.message}。请只修正格式并返回完整 JSON，不要更改输入事实。slides[].type 必须为单个字符串，允许值：${[...allowedSlideTypes].join(', ')}；第一页为 cover，禁止将所有类型作为数组填入 type。` },
+        );
+      }
     }
-    const content = result.choices?.[0]?.message?.content;
-    return { settings, outline: normalizeOutline(parseModelJson(content), source, settings) };
   } catch (error) {
     if (controller.signal.aborted) {
       const timeoutError = new Error(`模型服务在 ${Math.round(timeoutMs / 1000)} 秒内未完成生成（${config.model}），请稍后重试`);
