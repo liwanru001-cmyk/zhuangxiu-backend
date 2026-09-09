@@ -185,6 +185,8 @@ async function loadPresentationSource(projectId, options = {}) {
   }
   const docsBySpace = new Map();
   const wholeHouseDocuments = [];
+  const wholeHouseRenderings = [];
+  const renderingBySpace = new Map();
   for (const row of documents) {
     const item = {
       id: Number(row.id),
@@ -196,11 +198,14 @@ async function loadPresentationSource(projectId, options = {}) {
       status: row.status,
       version_no: Number(row.version_no || 1),
     };
-    if (row.space_key === 'whole_house') wholeHouseDocuments.push(item);
+    if (row.space_key === 'whole_house') {
+      (row.category === 'rendering' ? wholeHouseRenderings : wholeHouseDocuments).push(item);
+    }
     else {
       const spaceId = Number(row.space_key);
-      if (!docsBySpace.has(spaceId)) docsBySpace.set(spaceId, []);
-      docsBySpace.get(spaceId).push(item);
+      const target = row.category === 'rendering' ? renderingBySpace : docsBySpace;
+      if (!target.has(spaceId)) target.set(spaceId, []);
+      target.get(spaceId).push(item);
     }
   }
   if (project.floor_plan_image) {
@@ -215,7 +220,6 @@ async function loadPresentationSource(projectId, options = {}) {
       version_no: 1,
     });
   }
-  const renderingBySpace = new Map();
   for (const row of renderings) {
     if (!renderingBySpace.has(Number(row.space_id))) renderingBySpace.set(Number(row.space_id), []);
     renderingBySpace.get(Number(row.space_id)).push({
@@ -256,6 +260,7 @@ async function loadPresentationSource(projectId, options = {}) {
     },
     missing_fields: missingFields,
     whole_house_documents: wholeHouseDocuments,
+    whole_house_renderings: wholeHouseRenderings,
     spaces: spaces.map(space => ({
       id: Number(space.id),
       name: space.name,
@@ -273,7 +278,7 @@ async function loadPresentationSource(projectId, options = {}) {
     design_documents: documents.length,
     whole_house_plans: wholeHouseDocuments.length,
     spaces: source.spaces.length,
-    renderings: renderings.length,
+    renderings: renderings.length + documents.filter(row => row.category === 'rendering').length,
     products: productRows.length,
   };
   return expandLocalUrlsDeep(
@@ -562,6 +567,7 @@ function buildRenderPlan(source, rawSettings, rawOutline) {
       template_id: settings.template_id,
     },
     whole_house_documents: settings.sections.whole_house_plan ? source.whole_house_documents : [],
+    whole_house_renderings: settings.sections.whole_house_plan ? (source.whole_house_renderings || []) : [],
     spaces,
     outline: outline.slides,
   };

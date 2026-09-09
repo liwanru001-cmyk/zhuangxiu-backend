@@ -216,3 +216,30 @@ test('invalid types remain rejected after one repair attempt', async () => {
   }), /模型目录格式校验失败/);
   assert.equal(calls, 2);
 });
+
+test('design-document renderings are counted and routed separately from plans', async () => {
+  const db = { query: async sql => {
+    if (sql.includes('FROM renovation_projects')) return [[{ id: 3, project_name: '测试' }]];
+    if (sql.includes('FROM project_spaces')) return [[{ id: 31, name: '户外' }]];
+    if (sql.includes('FROM project_design_documents')) return [[
+      { id: 1, category: 'layout_plan', space_key: '31', file_url: 'https://example.com/plan.png' },
+      { id: 2, category: 'rendering', space_key: '31', file_url: 'https://example.com/render.png' },
+      { id: 3, category: 'rendering', space_key: 'whole_house', file_url: 'https://example.com/whole.png' },
+    ]];
+    if (sql.includes('FROM project_space_images')) return [[{ id: 4, space_id: 31, image_url: 'https://example.com/legacy.png' }]];
+    if (sql.includes('FROM project_scheme_products')) return [[]];
+    throw new Error(sql);
+  } };
+  const source = await service.loadPresentationSource(3, { db });
+  assert.equal(source.spaces[0].plan_count, 1);
+  assert.equal(source.spaces[0].rendering_count, 2);
+  assert.equal(source.counts.renderings, 3);
+  assert.equal(source.whole_house_documents.length, 0);
+  assert.equal(source.whole_house_renderings.length, 1);
+  const settings = settingsFixture(); settings.spaces[0].show_rendering = true;
+  const plan = service.buildRenderPlan(source, settings, outlineFixture());
+  assert.deepEqual(plan.spaces[0].documents.map(item => item.id), [1]);
+  assert.deepEqual(plan.spaces[0].renderings.map(item => item.id), [2, 4]);
+  settings.spaces[0].show_rendering = false;
+  assert.equal(service.buildRenderPlan(source, settings, outlineFixture()).spaces[0].renderings.length, 0);
+});

@@ -319,6 +319,9 @@ async function generateFromPlan(plan, outputPath) {
         for (const document of plan.whole_house_documents || []) {
           slides.push(addDocumentSlide(pptx, item.title || '全屋平面方案', item.narrative || document.title, await imageFor(document)));
         }
+        for (const rendering of plan.whole_house_renderings || []) {
+          slides.push(addDocumentSlide(pptx, '全屋效果表现', rendering.title || '', await imageFor(rendering)));
+        }
       } else if (item.type === 'space_solution') {
         const space = plan.spaces.find(value => Number(value.id) === Number(item.space_id));
         if (!space) continue;
