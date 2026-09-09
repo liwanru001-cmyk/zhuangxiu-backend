@@ -196,8 +196,17 @@ jobs:
                   exit 1
                 fi
               fi
-              $runner apt-get update
-              $runner apt-get install -y poppler-utils
+              if command -v apt-get >/dev/null 2>&1; then
+                $runner apt-get update
+                $runner apt-get install -y poppler-utils
+              elif command -v dnf >/dev/null 2>&1; then
+                $runner dnf install -y poppler-utils
+              elif command -v yum >/dev/null 2>&1; then
+                $runner yum install -y poppler-utils
+              else
+                echo 'No supported package manager was found for installing Poppler.'
+                exit 1
+              fi
             fi
 
             staging_dir="${APP_DIR}.deploy-tmp"
