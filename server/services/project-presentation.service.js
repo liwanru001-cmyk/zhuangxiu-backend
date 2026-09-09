@@ -440,13 +440,18 @@ async function generateOutline(source, rawSettings, options = {}) {
   }
   const fetchImpl = options.fetch || fetch;
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), Number(env.PRESENTATION_AI_TIMEOUT_MS || 90000));
+  const requestedTimeout = Number(options.timeoutMs ?? env.PRESENTATION_AI_TIMEOUT_MS ?? 90000);
+  const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0 ? requestedTimeout : 90000;
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const response = await fetchImpl(`${config.base_url}${text(env.PRESENTATION_AI_ENDPOINT, 120) || '/chat/completions'}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${text(env.PRESENTATION_AI_API_KEY, 1000)}` },
       body: JSON.stringify({
         model: config.model,
+        // Qwen's thinking default can substantially delay a single JSON response.
+        ...(config.model.startsWith('qwen3') ? { enable_thinking: false } : {}),
+        stream: false,
         messages: promptMessages(source, settings),
         temperature: 0.2,
         max_tokens: Number(env.PRESENTATION_AI_MAX_OUTPUT_TOKENS || 6000),
@@ -454,7 +459,10 @@ async function generateOutline(source, rawSettings, options = {}) {
       }),
       signal: controller.signal,
     });
-    const result = await response.json().catch(() => ({}));
+    const result = await response.json().catch(error => {
+      if (controller.signal.aborted) throw error;
+      return {};
+    });
     if (!response.ok) {
       const error = new Error(`大模型服务调用失败：${result.error?.message || response.status}`);
       error.status = 502;
@@ -463,6 +471,14 @@ async function generateOutline(source, rawSettings, options = {}) {
     }
     const content = result.choices?.[0]?.message?.content;
     return { settings, outline: normalizeOutline(parseModelJson(content), source, settings) };
+  } catch (error) {
+    if (controller.signal.aborted) {
+      const timeoutError = new Error(`模型服务在 ${Math.round(timeoutMs / 1000)} 秒内未完成生成（${config.model}），请稍后重试`);
+      timeoutError.code = 'PRESENTATION_MODEL_TIMEOUT';
+      timeoutError.status = 504;
+      throw timeoutError;
+    }
+    throw error;
   } finally {
     clearTimeout(timeout);
   }

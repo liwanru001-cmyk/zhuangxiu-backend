@@ -87,7 +87,9 @@ async function runNext(deps = {}) {
     const settings = parse(job.settings_json);
     const source = job.source_json ? parse(job.source_json) : await model.loadPresentationSource(job.project_id, { baseUrl: settings._asset_base_url });
     await ownedUpdate("source_json = ?, phase = 'outline'", [JSON.stringify(source)]);
-    const outline = job.outline_json ? parse(job.outline_json) : (await model.generateOutline(source, settings)).outline;
+    const outline = job.outline_json ? parse(job.outline_json) : (await model.generateOutline(source, settings, {
+      timeoutMs: Number(process.env.PRESENTATION_JOB_MODEL_TIMEOUT_MS || 300000),
+    })).outline;
     if (leaseLost) return true;
     await ownedUpdate("outline_json = ?, phase = 'rendering'", [JSON.stringify(outline)]);
     const plan = model.buildRenderPlan(source, settings, outline);

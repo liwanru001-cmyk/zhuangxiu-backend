@@ -153,3 +153,36 @@ test('validated project data and outline render to a temporary PPTX', async () =
   assert.ok(stat.size > 10000);
   await fs.rm(directory, { recursive: true, force: true });
 });
+
+test('Qwen outline explicitly disables thinking and requests non-streaming JSON', async () => {
+  await service.generateOutline(sourceFixture(), settingsFixture(), {
+    env: { PRESENTATION_AI_API_KEY: 'test-key', PRESENTATION_AI_MODEL: 'qwen3.8-max' },
+    fetch: async (url, options) => {
+      const body = JSON.parse(options.body);
+      assert.equal(body.enable_thinking, false);
+      assert.equal(body.stream, false);
+      assert.deepEqual(body.response_format, { type: 'json_object' });
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(outlineFixture()) } }] }) };
+    },
+  });
+});
+test('background model budget overrides legacy 90-second configuration', async () => {
+  await service.generateOutline(sourceFixture(), settingsFixture(), {
+    env: { PRESENTATION_AI_API_KEY: 'test-key', PRESENTATION_AI_TIMEOUT_MS: '1' },
+    timeoutMs: 1000,
+    fetch: async (url, options) => {
+      await new Promise(resolve => setTimeout(resolve, 20));
+      assert.equal(options.signal.aborted, false);
+      return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(outlineFixture()) } }] }) };
+    },
+  });
+});
+test('timeout during response-body reading preserves model timeout diagnostics', async () => {
+  await assert.rejects(service.generateOutline(sourceFixture(), settingsFixture(), {
+    env: { PRESENTATION_AI_API_KEY: 'secret-not-for-errors', PRESENTATION_AI_MODEL: 'qwen3.8-max' },
+    timeoutMs: 5,
+    fetch: async (url, options) => ({ ok: true, json: () => new Promise((resolve, reject) => {
+      options.signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    }) }),
+  }), error => error.code === 'PRESENTATION_MODEL_TIMEOUT' && !error.message.includes('secret-not-for-errors'));
+});
