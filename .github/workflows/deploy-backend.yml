@@ -312,6 +312,14 @@ jobs:
             fi
 
             if [ -f .env ]; then
+              # Independent designer projects are a released desktop feature.
+              # Persist the production rollout while retaining the protocol
+              # header gate that protects older clients.
+              if grep -q '^FEATURE_INDEPENDENT_PROJECTS=' .env; then
+                sed -i 's/^FEATURE_INDEPENDENT_PROJECTS=.*/FEATURE_INDEPENDENT_PROJECTS=true/' .env
+              else
+                printf '\nFEATURE_INDEPENDENT_PROJECTS=true\n' >> .env
+              fi
               set -a
               . ./.env
               set +a
