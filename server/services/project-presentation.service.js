@@ -289,17 +289,15 @@ function expandLocalUrlsDeep(value, baseUrl) {
 }
 
 function modelConfiguration(env = process.env) {
-  const baseUrl = text(env.PRESENTATION_AI_BASE_URL, 500).replace(/\/$/, '');
+  const baseUrl = text(env.PRESENTATION_AI_BASE_URL, 500).replace(/\/$/, '') || 'https://api.deepseek.com';
   const apiKey = text(env.PRESENTATION_AI_API_KEY, 1000);
-  const model = text(env.PRESENTATION_AI_MODEL, 120);
+  const model = text(env.PRESENTATION_AI_MODEL, 120) || 'deepseek-v4-flash';
   const missing = [
-    ifMissing(baseUrl, 'PRESENTATION_AI_BASE_URL'),
     ifMissing(apiKey, 'PRESENTATION_AI_API_KEY'),
-    ifMissing(model, 'PRESENTATION_AI_MODEL'),
   ].filter(Boolean);
   return {
     configured: missing.length === 0,
-    provider: text(env.PRESENTATION_AI_PROVIDER, 80) || 'openai-compatible',
+    provider: text(env.PRESENTATION_AI_PROVIDER, 80) || 'deepseek',
     base_url: baseUrl,
     model,
     missing,
@@ -438,7 +436,7 @@ async function generateOutline(source, rawSettings, options = {}) {
   try {
     const response = await fetchImpl(`${config.base_url}${text(env.PRESENTATION_AI_ENDPOINT, 120) || '/chat/completions'}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${env.PRESENTATION_AI_API_KEY}` },
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${text(env.PRESENTATION_AI_API_KEY, 1000)}` },
       body: JSON.stringify({
         model: config.model,
         messages: promptMessages(source, settings),

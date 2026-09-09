@@ -106,12 +106,11 @@ function outlineFixture() {
   };
 }
 
-test('model configuration reports the exact missing server values', () => {
-  assert.deepEqual(service.modelConfiguration({}).missing, [
-    'PRESENTATION_AI_BASE_URL',
-    'PRESENTATION_AI_API_KEY',
-    'PRESENTATION_AI_MODEL',
-  ]);
+test('default DeepSeek configuration leaves only the API key missing', () => {
+  const configuration = service.modelConfiguration({});
+  assert.equal(configuration.base_url, 'https://api.deepseek.com');
+  assert.equal(configuration.model, 'deepseek-v4-flash');
+  assert.deepEqual(configuration.missing, ['PRESENTATION_AI_API_KEY']);
 });
 
 test('outline generation uses an OpenAI-compatible API and validates its JSON', async () => {
