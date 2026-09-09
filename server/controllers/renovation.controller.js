@@ -2051,6 +2051,11 @@ async function applyRenameProjectSpace(projectId, spaceId, name, connection = db
 }
 
 async function assertProjectSpaceIsEmpty(projectId, spaceId, connection = db) {
+  const [products] = await connection.query(
+    'SELECT id FROM project_scheme_products WHERE project_id = ? AND space_id = ? LIMIT 1',
+    [projectId, spaceId]
+  );
+  if (products[0]) throw new Error('请先移除本空间产品再删除空间');
   const [images] = await connection.query(
     'SELECT id FROM project_space_images WHERE space_id = ? LIMIT 1',
     [spaceId]
@@ -7062,6 +7067,79 @@ async function submitProjectActionItemFeedback(req, res) {
   }
 }
 
+async function deleteProjectActionItem(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+
+  const projectId = Number(req.params.id);
+  const itemId = Number(req.params.itemId);
+  const [items] = await db.query(
+    `SELECT id, created_by
+     FROM project_action_items
+     WHERE id = ? AND project_id = ?
+     LIMIT 1`,
+    [itemId, projectId]
+  );
+  const item = items[0];
+  if (!item) return error(res, '待办事项不存在或已删除', 404);
+  if (Number(item.created_by) !== Number(req.user.id)) {
+    return error(res, '只有事项创建人可以删除', 403);
+  }
+
+  const [media] = await db.query(
+    'SELECT media_url FROM project_action_item_media WHERE item_id = ?',
+    [itemId]
+  );
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    await connection.query(
+      'DELETE FROM project_action_notifications WHERE item_id = ?',
+      [itemId]
+    );
+    await connection.query(
+      'DELETE FROM project_action_item_media WHERE item_id = ?',
+      [itemId]
+    );
+    await connection.query(
+      'DELETE FROM project_action_item_feedback WHERE item_id = ?',
+      [itemId]
+    );
+    await connection.query(
+      'DELETE FROM project_action_item_assignees WHERE item_id = ?',
+      [itemId]
+    );
+    const [deleted] = await connection.query(
+      `DELETE FROM project_action_items
+       WHERE id = ? AND project_id = ? AND created_by = ?`,
+      [itemId, projectId, req.user.id]
+    );
+    if (!deleted.affectedRows) {
+      const deleteError = new Error('待办事项不存在或无权删除');
+      deleteError.statusCode = 409;
+      throw deleteError;
+    }
+    await connection.commit();
+  } catch (deleteError) {
+    await connection.rollback();
+    throw deleteError;
+  } finally {
+    connection.release();
+  }
+
+  await Promise.allSettled(
+    media.map(async (attachment) => {
+      const removedFromStorage = await storageService.deleteStoredFile(
+        attachment.media_url
+      );
+      if (removedFromStorage) return;
+      const filePath = uploadPathFromUrl(attachment.media_url, 'action-items');
+      if (filePath) await fs.unlink(filePath);
+    })
+  );
+  return success(res, null, '待办事项已删除');
+}
+
 // GET /api/renovation/projects/:id/progress - 获取项目进度
 async function getProjectProgress(req, res) {
   const projectId = Number(req.params.id);
@@ -7110,7 +7188,7 @@ async function getProjectProgress(req, res) {
        SUM(CASE WHEN status = 2 THEN 1 ELSE 0 END) AS completed,
        SUM(CASE WHEN status = 1 THEN 1 ELSE 0 END) AS in_progress,
        SUM(CASE WHEN status = 3 OR (status != 2 AND planned_end < CURDATE())
-                THEN 1 ELSE 0 END) AS delayed,
+                THEN 1 ELSE 0 END) AS \`delayed\`,
        MAX(planned_end) AS expected_end
      FROM renovation_tasks WHERE project_id = ?`,
     [projectId]
@@ -11408,6 +11486,7 @@ module.exports = {
   getProjectTodos,
   createProjectActionItem,
   submitProjectActionItemFeedback,
+  deleteProjectActionItem,
   getProjectProgress,
   getProgressProposal,
   submitProgressProposal,

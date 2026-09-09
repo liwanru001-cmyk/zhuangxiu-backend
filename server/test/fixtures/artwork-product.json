@@ -1,0 +1,59 @@
+{
+  "schema_version": 1,
+  "product_kind": "artwork",
+  "model": "R01",
+  "source_url": "",
+  "configurations": [
+    {
+      "id": "cream-rug",
+      "name": "米白羊毛款",
+      "shape": "artwork",
+      "dimensions": {
+        "width": 40,
+        "height": 60
+      },
+      "dimension_unit": "cm",
+      "parts": [
+        {
+          "part": "毯面",
+          "material": "羊毛混纺",
+          "color": "米白",
+          "code": "R-01",
+          "swatch_url": ""
+        }
+      ],
+      "unit": "套",
+      "price_state": "known",
+      "price": 200,
+      "includes": "不含防滑垫",
+      "artwork_specs": {
+        "form": "reproduction",
+        "frame": "included",
+        "piece_count": 2,
+        "composition": "两幅各40×60cm，间距10cm",
+        "outer_width": 44,
+        "outer_height": 64,
+        "thickness": 3,
+        "creator": "",
+        "technique": "微喷",
+        "substrate": "纸",
+        "frame_material": "铝合金",
+        "frame_color": "黑色",
+        "mounting": "卡纸装裱",
+        "glazing": "",
+        "edition_note": "",
+        "installation": "含挂件"
+      }
+    }
+  ],
+  "customization": {
+    "enabled": true,
+    "fields": [
+      "size",
+      "frame"
+    ],
+    "limits": "异形需确认轮廓图",
+    "pricing_note": "定制加工另报价"
+  },
+  "artwork_type": "painting"
+}

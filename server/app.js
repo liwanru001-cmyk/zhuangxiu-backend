@@ -927,6 +927,19 @@ async function ensureAdminHelpTables() {
       KEY idx_user_feedback_user (user_id, created_at)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS user_feedback_images (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      feedback_id BIGINT UNSIGNED NOT NULL,
+      image_url VARCHAR(1000) NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_user_feedback_images_feedback (feedback_id, sort_order, id),
+      CONSTRAINT fk_user_feedback_images_feedback
+        FOREIGN KEY (feedback_id) REFERENCES user_feedback(id) ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
   const [[row]] = await db.query('SELECT COUNT(*) AS total FROM help_faqs');
   if (Number(row.total) === 0) {
     await db.query(
@@ -4349,6 +4362,25 @@ app.get('/api/admin/user-feedback', adminAuth, async (req, res) => {
     `SELECT COUNT(*) AS total FROM user_feedback f WHERE ${where}`,
     params
   );
+  if (rows.length > 0) {
+    const ids = rows.map((item) => item.id);
+    const [imageRows] = await db.query(
+      `SELECT feedback_id, image_url
+       FROM user_feedback_images
+       WHERE feedback_id IN (${ids.map(() => '?').join(', ')})
+       ORDER BY sort_order ASC, id ASC`,
+      ids
+    );
+    const imagesByFeedback = new Map();
+    imageRows.forEach((image) => {
+      const list = imagesByFeedback.get(Number(image.feedback_id)) || [];
+      list.push(image.image_url);
+      imagesByFeedback.set(Number(image.feedback_id), list);
+    });
+    rows.forEach((item) => {
+      item.images = imagesByFeedback.get(Number(item.id)) || [];
+    });
+  }
   return success(res, {
     feedback: rows,
     total: countRow.total,

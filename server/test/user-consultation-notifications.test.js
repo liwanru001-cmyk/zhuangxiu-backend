@@ -170,8 +170,10 @@ test('consultation reply creates notification for the other participant', async 
         assert.deepEqual(params, [88]);
         return [[{ project_id: 3 }]];
       }
-      if (/FROM user_moderation_restrictions/.test(sql)) return [[]];
-      if (/FROM user_blocks/.test(sql) && /consultation_user_preferences/.test(sql)) return [[{ blocked: 0, stopped: 0 }]];
+      if (/FROM user_moderation_restrictions/.test(sql)) return [[undefined]];
+      if (/FROM user_blocks/.test(sql) && /consultation_user_preferences/.test(sql)) {
+        return [[{ blocked: 0, stopped: 0 }]];
+      }
       if (/COUNT\(\*\) AS total FROM consultation_messages/.test(sql)) {
         assert.deepEqual(params, [42]);
         return [[{ total: 0 }]];
@@ -268,8 +270,10 @@ test('consultation reply enforces unanswered continuous message quota', async ()
         assert.deepEqual(params, [88]);
         return [[{ project_id: 3 }]];
       }
-      if (/FROM user_moderation_restrictions/.test(sql)) return [[]];
-      if (/FROM user_blocks/.test(sql) && /consultation_user_preferences/.test(sql)) return [[{ blocked: 0, stopped: 0 }]];
+      if (/FROM user_moderation_restrictions/.test(sql)) return [[undefined]];
+      if (/FROM user_blocks/.test(sql) && /consultation_user_preferences/.test(sql)) {
+        return [[{ blocked: 0, stopped: 0 }]];
+      }
       if (/COUNT\(\*\) AS total FROM consultation_messages/.test(sql)) {
         assert.deepEqual(params, [7]);
         return [[{ total: 0 }]];
@@ -297,9 +301,9 @@ test('consultation reply enforces unanswered continuous message quota', async ()
 test('feedback enforces daily quota', async () => {
   const dbMock = {
     async query(sql, params) {
-      if (/COUNT\(\*\) AS total FROM user_feedback/.test(sql)) {
-        assert.deepEqual(params, [7]);
-        return [[{ total: 3 }]];
+      if (/AS today_total/.test(sql)) {
+        assert.deepEqual(params, ['这里需要优化', 60, 7]);
+        return [[{ today_total: 3, hour_total: 0, duplicate_total: 0, cooldown_seconds: 0, day_retry_seconds: 1200 }]];
       }
       throw new Error(`unexpected query: ${sql}`);
     },
@@ -313,7 +317,110 @@ test('feedback enforces daily quota', async () => {
   }, res);
 
   assert.equal(res.statusCode, 429);
+  assert.equal(res.payload.data.retry_after, 1200);
   assert.match(res.payload.message, /最多提交 3 条反馈/);
+});
+
+test('feedback enforces a 60 second cooldown and returns retry_after', async () => {
+  const controller = loadController({
+    async query(sql) {
+      if (/AS today_total/.test(sql)) {
+        return [[{ today_total: 1, hour_total: 1, duplicate_total: 0, cooldown_seconds: 37 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  });
+  const res = mockResponse();
+
+  await controller.submitFeedback({
+    user: { id: 7 },
+    body: { content: '新的反馈' },
+  }, res);
+
+  assert.equal(res.statusCode, 429);
+  assert.equal(res.payload.data.retry_after, 37);
+  assert.match(res.payload.message, /37 秒后/);
+});
+
+test('feedback rejects duplicate content submitted within 24 hours', async () => {
+  const controller = loadController({
+    async query(sql) {
+      if (/AS today_total/.test(sql)) {
+        return [[{ today_total: 1, hour_total: 1, duplicate_total: 1, cooldown_seconds: 0 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  });
+  const res = mockResponse();
+
+  await controller.submitFeedback({
+    user: { id: 7 },
+    body: { content: '重复的反馈' },
+  }, res);
+
+  assert.equal(res.statusCode, 409);
+  assert.match(res.payload.message, /24 小时内/);
+});
+
+test('feedback enforces hourly quota', async () => {
+  const controller = loadController({
+    async query(sql) {
+      if (/AS today_total/.test(sql)) {
+        return [[{ today_total: 2, hour_total: 2, duplicate_total: 0, cooldown_seconds: 0, hour_retry_seconds: 1800 }]];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  });
+  const res = mockResponse();
+
+  await controller.submitFeedback({
+    user: { id: 7 },
+    body: { content: '第三条不同的反馈' },
+  }, res);
+
+  assert.equal(res.statusCode, 429);
+  assert.equal(res.payload.data.retry_after, 1800);
+  assert.match(res.payload.message, /每小时最多提交 2 条/);
+});
+
+test('feedback stores uploaded image urls in display order', async () => {
+  const writes = [];
+  const dbMock = {
+    async query(sql, params) {
+      if (/AS today_total/.test(sql)) {
+        return [[{ today_total: 0, hour_total: 0, duplicate_total: 0, cooldown_seconds: 0 }]];
+      }
+      if (/INSERT INTO user_feedback \(/.test(sql)) {
+        writes.push({ sql, params });
+        return [{ insertId: 42 }];
+      }
+      if (/INSERT INTO user_feedback_images/.test(sql)) {
+        writes.push({ sql, params });
+        return [{ affectedRows: 2 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const res = mockResponse();
+
+  await controller.submitFeedback({
+    user: { id: 7 },
+    protocol: 'https',
+    get: () => 'api.example.com',
+    body: { content: '图片显示有问题' },
+    files: [
+      { filename: 'first.jpg', storageUrl: 'https://cdn.example.com/first.jpg' },
+      { filename: 'second.jpg', storageUrl: 'https://cdn.example.com/second.jpg' },
+    ],
+  }, res);
+
+  assert.equal(res.payload.code, 200);
+  assert.equal(writes.length, 2);
+  assert.deepEqual(writes[1].params, [
+    42, 'https://cdn.example.com/first.jpg', 0,
+    42, 'https://cdn.example.com/second.jpg', 1,
+  ]);
 });
 
 test('avatar upload enforces monthly change quota', async () => {

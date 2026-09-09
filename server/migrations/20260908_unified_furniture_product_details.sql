@@ -1,0 +1,16 @@
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='personal_products' AND COLUMN_NAME='product_details')=0, 'ALTER TABLE personal_products ADD COLUMN product_details JSON DEFAULT NULL', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='merchant_products' AND COLUMN_NAME='product_group')=0, 'ALTER TABLE merchant_products ADD COLUMN product_group VARCHAR(30) DEFAULT NULL', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='merchant_products' AND COLUMN_NAME='product_type')=0, 'ALTER TABLE merchant_products ADD COLUMN product_type VARCHAR(30) DEFAULT NULL', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;
+SET @ddl = IF((SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA=DATABASE() AND TABLE_NAME='merchant_products' AND COLUMN_NAME='product_details')=0, 'ALTER TABLE merchant_products ADD COLUMN product_details JSON DEFAULT NULL', 'SELECT 1');
+PREPARE stmt FROM @ddl;
+EXECUTE stmt;
+DEALLOCATE PREPARE stmt;

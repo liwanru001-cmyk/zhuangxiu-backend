@@ -526,6 +526,7 @@ async function ensureAppTables() {
   await ensureContentReportTables();
 }
 
+
 async function ensureContentReportTables() {
   const migrationPath = path.join(__dirname, '..', 'migrations', '20260827_content_reports.sql');
   const statements = fs.readFileSync(migrationPath, 'utf8')
@@ -2238,6 +2239,19 @@ async function ensureHelpFeedbackTables() {
       PRIMARY KEY (id),
       KEY idx_user_feedback_status_time (status, created_at),
       KEY idx_user_feedback_user (user_id, created_at)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS user_feedback_images (
+      id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+      feedback_id BIGINT UNSIGNED NOT NULL,
+      image_url VARCHAR(1000) NOT NULL,
+      sort_order INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      PRIMARY KEY (id),
+      KEY idx_user_feedback_images_feedback (feedback_id, sort_order, id),
+      CONSTRAINT fk_user_feedback_images_feedback
+        FOREIGN KEY (feedback_id) REFERENCES user_feedback(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
   `);
   const [[row]] = await pool.query('SELECT COUNT(*) AS total FROM help_faqs');

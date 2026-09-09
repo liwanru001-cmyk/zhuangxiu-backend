@@ -25,7 +25,7 @@ async function loadEntity(type, id) {
     const [rows] = await db.query(
       `SELECT mp.user_id AS entity_id, COALESCE(NULLIF(mp.shop_name, ''), u.nickname, '商家店铺') AS title,
               mp.logo_url AS image_url, mp.brand_intro AS summary, u.city,
-              mp.user_id AS merchant_user_id
+              mp.user_id AS merchant_user_id, mp.consultation_enabled
        FROM merchant_profiles mp
        JOIN users u ON u.id = mp.user_id
        WHERE mp.user_id = ?

@@ -19,6 +19,8 @@ const USER_INTERACTION_QUOTAS = {
   dailyConsultationPerTargetLimit: 3,
   hourlyConsultationMessageLimit: 10,
   unansweredMessageLimit: 3,
+  feedbackCooldownSeconds: 60,
+  hourlyFeedbackLimit: 2,
   dailyFeedbackLimit: 3,
 };
 
@@ -1357,6 +1359,17 @@ async function getDesignerConsultations(req, res) {
             c.content, c.project_city,
             c.renovation_stage, c.has_project, c.status,
             c.created_at, c.updated_at,
+            COALESCE(last_msg.content, c.content) AS last_message,
+            COALESCE(last_msg.created_at, c.created_at) AS last_message_at,
+            (
+              SELECT COUNT(*) FROM consultation_messages unread_msg
+              LEFT JOIN consultation_message_reads read_state
+                ON read_state.message_id = unread_msg.id
+               AND read_state.user_id = ?
+              WHERE unread_msg.consultation_id = c.id
+                AND unread_msg.sender_id != ?
+                AND read_state.message_id IS NULL
+            ) AS unread_count,
             u.nickname AS user_nickname, u.avatar AS user_avatar,
             u.city AS user_city,
             product.name AS product_name
@@ -1365,10 +1378,18 @@ async function getDesignerConsultations(req, res) {
      LEFT JOIN merchant_products product
        ON product.id = c.product_id
       AND product.merchant_user_id = c.designer_id
+     LEFT JOIN consultation_messages last_msg
+       ON last_msg.id = (
+         SELECT latest_msg.id
+         FROM consultation_messages latest_msg
+         WHERE latest_msg.consultation_id = c.id
+         ORDER BY latest_msg.created_at DESC, latest_msg.id DESC
+         LIMIT 1
+       )
      WHERE c.designer_id = ?
-     ORDER BY c.created_at DESC, c.id DESC
+     ORDER BY last_message_at DESC, c.id DESC
      LIMIT 100`,
-    [req.user.id]
+    [req.user.id, req.user.id, req.user.id]
   );
   return success(
     res,
@@ -1384,6 +1405,17 @@ async function getMyConsultations(req, res) {
     `SELECT c.id, c.designer_id, c.target_role, c.user_id, c.content, c.project_city,
             c.renovation_stage, c.has_project, c.status,
             c.created_at, c.updated_at,
+            COALESCE(last_msg.content, c.content) AS last_message,
+            COALESCE(last_msg.created_at, c.created_at) AS last_message_at,
+            (
+              SELECT COUNT(*) FROM consultation_messages unread_msg
+              LEFT JOIN consultation_message_reads read_state
+                ON read_state.message_id = unread_msg.id
+               AND read_state.user_id = ?
+              WHERE unread_msg.consultation_id = c.id
+                AND unread_msg.sender_id != ?
+                AND read_state.message_id IS NULL
+            ) AS unread_count,
             designer.nickname AS designer_nickname,
             designer.avatar AS designer_avatar,
             designer.city AS designer_city,
@@ -1406,10 +1438,17 @@ async function getMyConsultations(req, res) {
        ON target.target_type = 'company' AND company.id = target.target_id
      LEFT JOIN merchant_profiles merchant
        ON c.target_role = 'merchant' AND merchant.user_id = c.designer_id
+     LEFT JOIN consultation_messages last_msg
+       ON last_msg.id = (
+         SELECT message_latest.id FROM consultation_messages message_latest
+         WHERE message_latest.consultation_id = c.id
+         ORDER BY message_latest.created_at DESC, message_latest.id DESC
+         LIMIT 1
+       )
      WHERE c.user_id = ?
-     ORDER BY c.created_at DESC, c.id DESC
+     ORDER BY last_message_at DESC, c.id DESC
      LIMIT 100`,
-    [req.user.id]
+    [req.user.id, req.user.id, req.user.id]
   );
   return success(
     res,
@@ -2244,19 +2283,72 @@ async function submitFeedback(req, res) {
     ? String(req.body.contact).trim().slice(0, 80)
     : null;
   if (!content) return error(res, '请先填写反馈内容');
-  const todayFeedback = await countRows(
-    `SELECT COUNT(*) AS total FROM user_feedback
-     WHERE user_id = ? AND created_at >= CURDATE()`,
-    [req.user.id]
+  const [[feedbackUsage]] = await db.query(
+    `SELECT
+       SUM(created_at >= CURDATE()) AS today_total,
+       SUM(created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)) AS hour_total,
+       SUM(created_at >= DATE_SUB(NOW(), INTERVAL 24 HOUR) AND content = ?) AS duplicate_total,
+       GREATEST(0, ? - TIMESTAMPDIFF(SECOND, MAX(created_at), NOW())) AS cooldown_seconds,
+       GREATEST(1, 3600 - TIMESTAMPDIFF(
+         SECOND,
+         MIN(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR) THEN created_at END),
+         NOW()
+       )) AS hour_retry_seconds,
+       TIMESTAMPDIFF(SECOND, NOW(), DATE_ADD(CURDATE(), INTERVAL 1 DAY)) AS day_retry_seconds
+     FROM user_feedback
+     WHERE user_id = ?
+       AND created_at >= LEAST(CURDATE(), DATE_SUB(NOW(), INTERVAL 24 HOUR))`,
+    [content, USER_INTERACTION_QUOTAS.feedbackCooldownSeconds, req.user.id]
   );
-  if (todayFeedback >= USER_INTERACTION_QUOTAS.dailyFeedbackLimit) {
-    return error(res, `今天最多提交 ${USER_INTERACTION_QUOTAS.dailyFeedbackLimit} 条反馈，请明天再试`, 429);
+  const cooldownSeconds = Math.max(0, Number(feedbackUsage?.cooldown_seconds || 0));
+  if (cooldownSeconds > 0) {
+    res.set?.('Retry-After', String(cooldownSeconds));
+    return error(
+      res,
+      `提交过于频繁，请 ${cooldownSeconds} 秒后再试`,
+      429,
+      { retry_after: cooldownSeconds }
+    );
   }
-  await db.query(
+  if (Number(feedbackUsage?.duplicate_total || 0) > 0) {
+    return error(res, '24 小时内已提交过相同内容，请勿重复发送', 409);
+  }
+  if (Number(feedbackUsage?.hour_total || 0) >= USER_INTERACTION_QUOTAS.hourlyFeedbackLimit) {
+    const retryAfter = Math.max(1, Number(feedbackUsage?.hour_retry_seconds || 3600));
+    const retryMinutes = Math.max(1, Math.ceil(retryAfter / 60));
+    res.set?.('Retry-After', String(retryAfter));
+    return error(
+      res,
+      `每小时最多提交 ${USER_INTERACTION_QUOTAS.hourlyFeedbackLimit} 条反馈，请 ${retryMinutes} 分钟后再试`,
+      429,
+      { retry_after: retryAfter }
+    );
+  }
+  if (Number(feedbackUsage?.today_total || 0) >= USER_INTERACTION_QUOTAS.dailyFeedbackLimit) {
+    const retryAfter = Math.max(1, Number(feedbackUsage?.day_retry_seconds || 1));
+    res.set?.('Retry-After', String(retryAfter));
+    return error(
+      res,
+      `今天最多提交 ${USER_INTERACTION_QUOTAS.dailyFeedbackLimit} 条反馈，请明天再试`,
+      429,
+      { retry_after: retryAfter }
+    );
+  }
+  const [result] = await db.query(
     `INSERT INTO user_feedback (user_id, content, contact)
      VALUES (?, ?, ?)`,
     [req.user.id, content, contact]
   );
+  const images = (req.files || []).map((file) =>
+    storageService.uploadedFileUrl(req, file, `/uploads/feedback/${file.filename}`)
+  );
+  if (images.length > 0) {
+    await db.query(
+      `INSERT INTO user_feedback_images (feedback_id, image_url, sort_order)
+       VALUES ${images.map(() => '(?, ?, ?)').join(', ')}`,
+      images.flatMap((imageUrl, index) => [result.insertId, imageUrl, index])
+    );
+  }
   return success(res, null, '反馈已记录，感谢你的建议');
 }
 

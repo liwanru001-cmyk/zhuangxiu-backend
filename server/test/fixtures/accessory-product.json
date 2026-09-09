@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "product_kind": "accessories",
+  "model": "R01",
+  "source_url": "",
+  "configurations": [
+    {
+      "id": "cream-rug",
+      "name": "米白羊毛款",
+      "shape": "round",
+      "dimensions": {
+        "diameter": 20,
+        "height": 35
+      },
+      "dimension_unit": "cm",
+      "parts": [
+        {
+          "part": "毯面",
+          "material": "羊毛混纺",
+          "color": "米白",
+          "code": "R-01",
+          "swatch_url": ""
+        }
+      ],
+      "unit": "套",
+      "price_state": "known",
+      "price": 200,
+      "includes": "不含防滑垫",
+      "accessory_specs": {
+        "piece_count": 2,
+        "composition": "大花瓶直径20高35cm、小花瓶直径15高25cm各1只",
+        "technique": "陶瓷烧制",
+        "finish": "哑光釉",
+        "usage": "室内摆放",
+        "care": "软布清洁",
+        "installation": "平稳台面"
+      }
+    }
+  ],
+  "customization": {
+    "enabled": true,
+    "fields": [
+      "size",
+      "color"
+    ],
+    "limits": "异形需确认轮廓图",
+    "pricing_note": "定制加工另报价"
+  },
+  "accessory_type": "vase"
+}

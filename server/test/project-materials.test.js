@@ -254,3 +254,41 @@ test('material supplement uploader can delete own record', async () => {
   assert.equal(res.statusCode, 200);
   assert.equal(res.payload.message, '补充资料已删除');
 });
+
+test('material archive delete is soft and can be restored', async () => {
+  const updates = [];
+  const dbMock = {
+    async query(sql, params) {
+      if (/FROM renovation_projects p/.test(sql)) {
+        return [[{ id: 9, user_id: 7, lifecycle_status: 'active', role: 'owner' }]];
+      }
+      if (/SELECT id, created_by, deleted_at FROM project_material_items/.test(sql)) {
+        return [[{ id: 51, created_by: 8, deleted_at: updates.length ? '2026-08-14' : null }]];
+      }
+      if (/SELECT role FROM project_members/.test(sql)) return [[{ role: 'owner' }]];
+      if (/UPDATE project_material_items/.test(sql)) {
+        updates.push({ sql, params });
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`unexpected query: ${sql}`);
+    },
+  };
+  const controller = loadController(dbMock);
+  const deleteRes = mockResponse();
+  await controller.moveProjectArchiveItemToTrash({
+    user: { id: 7 },
+    params: { id: '9', itemType: 'material', itemId: '51' },
+    body: { project_id: 9 },
+  }, deleteRes);
+  assert.equal(deleteRes.statusCode, 200);
+  assert.match(updates[0].sql, /SET deleted_at = NOW\(\), deleted_by = \?/);
+
+  const restoreRes = mockResponse();
+  await controller.restoreProjectArchiveItem({
+    user: { id: 7 },
+    params: { id: '9', itemType: 'material', itemId: '51' },
+    body: { project_id: 9 },
+  }, restoreRes);
+  assert.equal(restoreRes.statusCode, 200);
+  assert.match(updates[1].sql, /SET deleted_at = NULL, deleted_by = NULL/);
+});

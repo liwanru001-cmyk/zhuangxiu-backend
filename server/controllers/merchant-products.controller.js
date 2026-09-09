@@ -1,3 +1,5 @@
+const { validateReferences, hydrateProducts } = require('../services/merchant-materials');
+const { catalogFields, readDetails, validateSourceMerchant } = require('../services/product-details');
 const db = require('../config/db');
 const fs = require('fs/promises');
 const path = require('path');
@@ -123,6 +125,9 @@ function mapCategory(row) {
 
 function mapProduct(row) {
   return {
+    product_group: row.product_group || null,
+    product_type: row.product_type || null,
+    product_details: readDetails(row.product_details),
     id: Number(row.id),
     merchant_user_id: Number(row.merchant_user_id),
     category_id: row.category_id ? Number(row.category_id) : null,
@@ -282,7 +287,7 @@ async function listProductsForMerchant(merchantUserId, activeOnly = false) {
      ORDER BY p.sort_order ASC, p.id DESC`,
     [merchantUserId]
   );
-  return rows.map(mapProduct);
+  return hydrateProducts(db, rows.map(mapProduct));
 }
 
 async function getProductForMerchant(productId, merchantUserId) {
@@ -297,10 +302,14 @@ async function getProductForMerchant(productId, merchantUserId) {
      WHERE p.id = ? AND p.merchant_user_id = ?`,
     [productId, merchantUserId]
   );
-  return rows[0] ? mapProduct(rows[0]) : null;
+  return rows[0] ? (await hydrateProducts(db, [mapProduct(rows[0])]))[0] : null;
 }
 
-async function normalizeProductPayload(body, merchantUserId) {
+async function normalizeProductPayload(body, merchantUserId, existing = null) {
+  let catalog;
+  try { catalog = catalogFields(body); } catch (e) { return { error: e.message }; }
+  try { if (catalog.product_details != null) { const enriched = await validateSourceMerchant(db, catalog.product_details); if (enriched) catalog.product_details = enriched; } } catch (e) { return { error: e.message }; }
+  try { if(catalog.product_details != null) catalog.product_details = await validateReferences(db, catalog.product_details, merchantUserId, existing?.product_details); } catch(e) { return {error:e.message}; }
   const categoryId = Number(body.category_id || 0) || null;
   if (categoryId) {
     const category = await getCategoryForMerchant(categoryId, merchantUserId);
@@ -320,6 +329,7 @@ async function normalizeProductPayload(body, merchantUserId) {
   }
   return {
     value: {
+      catalog,
       categoryId,
       name,
       coverUrl,
@@ -361,8 +371,8 @@ async function createProduct(req, res) {
     `INSERT INTO merchant_products
      (merchant_user_id, category_id, name, cover_url, image_urls, summary,
       description, content_delta, case_link_title, case_link_url,
-      brand, spec, price_text, sort_order, status)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      brand, spec, price_text, sort_order, status${Object.keys(item.catalog).map(k => `, ${k}`).join('')})
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?${Object.keys(item.catalog).map(() => ', ?').join('')})`,
     [
       req.user.id,
       item.categoryId,
@@ -379,6 +389,7 @@ async function createProduct(req, res) {
       item.priceText || null,
       item.sortOrder,
       item.status,
+      ...Object.values(item.catalog),
     ]
   );
   return success(res, await getProductForMerchant(result.insertId, req.user.id), '产品已创建');
@@ -389,14 +400,18 @@ async function updateProduct(req, res) {
   const productId = Number(req.params.id);
   const existing = await getProductForMerchant(productId, req.user.id);
   if (!existing) return error(res, '产品不存在', 404);
-  const payload = await normalizeProductPayload({ ...existing, ...req.body }, req.user.id);
+  const merged = { ...existing, ...req.body };
+  for (const key of ['product_group', 'product_type', 'product_details']) {
+    if (merged[key] == null && !Object.prototype.hasOwnProperty.call(req.body, key)) delete merged[key];
+  }
+  const payload = await normalizeProductPayload(merged, req.user.id, existing);
   if (payload.error) return error(res, payload.error);
   const item = payload.value;
   await db.query(
     `UPDATE merchant_products
      SET category_id = ?, name = ?, cover_url = ?, image_urls = ?, summary = ?,
          description = ?, content_delta = ?, case_link_title = ?, case_link_url = ?,
-         brand = ?, spec = ?, price_text = ?, sort_order = ?, status = ?
+         brand = ?, spec = ?, price_text = ?, sort_order = ?, status = ?${Object.keys(item.catalog).map(k => `, ${k} = ?`).join('')}
      WHERE id = ? AND merchant_user_id = ?`,
     [
       item.categoryId,
@@ -413,6 +428,7 @@ async function updateProduct(req, res) {
       item.priceText || null,
       item.sortOrder,
       item.status,
+      ...Object.values(item.catalog),
       productId,
       req.user.id,
     ]
@@ -487,7 +503,7 @@ async function getPublicProduct(req, res) {
   const row = await getActivePublicProduct(productId);
   if (!row) return error(res, '产品不存在或已下架', 404);
   return success(res, {
-    product: mapProduct(row),
+    product: (await hydrateProducts(db, [mapProduct(row)]))[0],
     merchant: {
       user_id: Number(row.merchant_user_id),
       shop_name: row.merchant_name || row.merchant_nickname || '商家店铺',
@@ -563,7 +579,7 @@ async function listFavoriteProducts(req, res) {
     [req.user.id]
   );
   return success(res, {
-    items: rows.map(mapFavoriteProduct),
+    items: (await Promise.all(rows.map(async row => ({...mapFavoriteProduct(row), product: (await hydrateProducts(db, [mapProduct(row)]))[0]})))),
     total: Number(countRow.total || 0),
     page,
     pageSize,

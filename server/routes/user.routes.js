@@ -1,5 +1,7 @@
+const merchantMaterialsController = require('../controllers/merchant-materials.controller');
 const express = require('express');
 const router = express.Router();
+router.use('/personal-products', require('./personal-products.routes'));
 const userController = require('../controllers/user.controller');
 const merchantProductsController = require('../controllers/merchant-products.controller');
 const entityFavoritesController = require('../controllers/entity-favorites.controller');
@@ -28,6 +30,25 @@ const merchantProductsDir = ensureUploadDir(
 const merchantCasesDir = ensureUploadDir(
   path.join(__dirname, '..', 'uploads', 'merchant-cases')
 );
+const feedbackImagesDir = ensureUploadDir(
+  path.join(__dirname, '..', 'uploads', 'feedback')
+);
+
+const feedbackImageUpload = multer({
+  storage: multer.diskStorage({
+    destination: feedbackImagesDir,
+    filename: (req, file, callback) => {
+      const extension = path.extname(file.originalname).toLowerCase() || '.jpg';
+      callback(null, `feedback-user-${req.user.id}-${Date.now()}-${randomUUID()}${extension}`);
+    },
+  }),
+  limits: { fileSize: 8 * 1024 * 1024, files: 3 },
+  fileFilter: (req, file, callback) => {
+    const extension = path.extname(file.originalname).toLowerCase();
+    const allowedExtensions = new Set(['.jpg', '.jpeg', '.png', '.webp', '.gif', '.heic', '.heif']);
+    callback(null, file.mimetype.startsWith('image/') || allowedExtensions.has(extension));
+  },
+});
 
 const avatarUpload = multer({
   storage: multer.diskStorage({
@@ -191,6 +212,9 @@ router.get('/merchant-product-categories', asyncHandler(auth), asyncHandler(merc
 router.post('/merchant-product-categories', asyncHandler(auth), asyncHandler(merchantProductsController.createCategory));
 router.put('/merchant-product-categories/:id', asyncHandler(auth), asyncHandler(merchantProductsController.updateCategory));
 router.delete('/merchant-product-categories/:id', asyncHandler(auth), asyncHandler(merchantProductsController.deleteCategory));
+router.get('/merchant-materials', asyncHandler(auth), asyncHandler(merchantMaterialsController.list));
+router.post('/merchant-materials', asyncHandler(auth), asyncHandler(merchantMaterialsController.save));
+router.put('/merchant-materials/:id', asyncHandler(auth), asyncHandler(merchantMaterialsController.save));
 router.get('/merchant-products', asyncHandler(auth), asyncHandler(merchantProductsController.listMyProducts));
 router.post('/merchant-products', asyncHandler(auth), asyncHandler(merchantProductsController.createProduct));
 router.get('/merchant-products/favorites', asyncHandler(auth), asyncHandler(merchantProductsController.listFavoriteProducts));
@@ -235,7 +259,27 @@ router.get('/notifications', asyncHandler(auth), asyncHandler(userController.get
 router.post('/notifications/:id/read', asyncHandler(auth), asyncHandler(userController.markNotificationRead));
 router.delete('/notifications/:id', asyncHandler(auth), asyncHandler(userController.deleteNotification));
 router.get('/help/faqs', asyncHandler(auth), asyncHandler(userController.getHelpFaqs));
-router.post('/help/feedback', asyncHandler(auth), asyncHandler(userController.submitFeedback));
+router.post(
+  '/help/feedback',
+  asyncHandler(auth),
+  (req, res, next) => {
+    feedbackImageUpload.array('images', 3)(req, res, (err) => {
+      if (!err) return next();
+      if (err instanceof multer.MulterError) {
+        const message = err.code === 'LIMIT_FILE_SIZE'
+          ? '单张图片不能超过 8MB'
+          : err.code === 'LIMIT_FILE_COUNT' || err.code === 'LIMIT_UNEXPECTED_FILE'
+          ? '最多上传 3 张图片'
+          : '图片上传失败';
+        return res.status(400).json({ code: 400, message });
+      }
+      return next(err);
+    });
+  },
+  setUploadedFilePermissions,
+  persistUploadedFiles('uploads/feedback'),
+  asyncHandler(userController.submitFeedback)
+);
 router.get('/consultations/:id/messages', asyncHandler(auth), asyncHandler(userController.getConsultationMessages));
 router.post('/consultations/:id/messages', asyncHandler(auth), asyncHandler(userController.sendConsultationMessage));
 router.put('/profile', asyncHandler(auth), asyncHandler(userController.updateProfile));

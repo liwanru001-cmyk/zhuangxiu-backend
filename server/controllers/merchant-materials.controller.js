@@ -1,0 +1,9 @@
+const db=require('../config/db');const {success,error}=require('../utils/response');const {materialPayload,mapMaterial}=require('../services/merchant-materials');
+async function allowed(req,res){const [rows]=await db.query("SELECT 1 FROM user_roles WHERE user_id=? AND role='merchant' LIMIT 1",[req.user.id]);if(!rows.length){error(res,'仅商家可管理自己的材质库',403);return false;}return true;}
+async function list(req,res){if(!await allowed(req,res))return;const [rows]=await db.query('SELECT * FROM merchant_materials WHERE merchant_user_id=? ORDER BY brand,kind,series,id DESC',[req.user.id]);return success(res,rows.map(mapMaterial));}
+async function save(req,res){if(!await allowed(req,res))return;let value;try{value=materialPayload(req.body||{});}catch(e){return error(res,e.message);}
+ const id=req.params.id;let old;if(id){const [rows]=await db.query('SELECT * FROM merchant_materials WHERE id=? AND merchant_user_id=?',[id,req.user.id]);old=rows[0];if(!old)return error(res,'材质不存在或无权限',404);if(Number(req.body.revision)!==Number(old.revision))return error(res,'材质已被更新，请重新打开后编辑',409);}
+ const columns=Object.keys(value),values=columns.map(k=>k==='image_urls'?JSON.stringify(value[k]):value[k]);let result;
+ try {if(id){[result]=await db.query(`UPDATE merchant_materials SET ${columns.map(k=>`${k}=?`).join(',')},revision=revision+1 WHERE id=? AND merchant_user_id=? AND revision=?`,[...values,id,req.user.id,old.revision]);if(!result.affectedRows)return error(res,'材质已被更新，请重新打开后编辑',409);}else{[result]=await db.query(`INSERT INTO merchant_materials (${columns.join(',')},merchant_user_id) VALUES (${columns.map(()=>'?').join(',')},?)`,[...values,req.user.id]);}}catch(e){if(e.code==='ER_DUP_ENTRY')return error(res,'本商家同品牌下的材质编号已存在',409);throw e;}
+ const [[row]]=await db.query('SELECT * FROM merchant_materials WHERE id=? AND merchant_user_id=?',[id||result.insertId,req.user.id]);return success(res,mapMaterial(row),'材质已保存');}
+module.exports={list,save};

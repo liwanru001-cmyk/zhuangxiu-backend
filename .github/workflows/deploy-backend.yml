@@ -186,6 +186,20 @@ jobs:
               npm install -g pm2
             fi
 
+            if ! command -v pdftoppm >/dev/null 2>&1; then
+              runner=''
+              if [ "$(id -u)" -ne 0 ]; then
+                if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                  runner='sudo'
+                else
+                  echo 'Poppler is required to render PDF plans and the deployment user has no passwordless sudo.'
+                  exit 1
+                fi
+              fi
+              $runner apt-get update
+              $runner apt-get install -y poppler-utils
+            fi
+
             staging_dir="${APP_DIR}.deploy-tmp"
             backup_dir="${APP_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
             activated="false"

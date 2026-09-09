@@ -3,6 +3,8 @@ const auth = require('../middleware/auth');
 const controller = require('../controllers/renovation.controller');
 const rollout = require('../services/independent-project-rollout');
 const independentProjects = require('../controllers/independent-projects.controller');
+const spaceProducts = require('../controllers/project-space-products.controller');
+const projectPresentations = require('../controllers/project-presentations.controller');
 const projectContentSharesController = require('../controllers/project-content-shares.controller');
 const asyncHandler = require('../utils/async-handler');
 const { requireProjectContext } = require('../utils/project-context');
@@ -350,6 +352,13 @@ router.use(
   })
 );
 router.post('/projects/:id/owner-invitations', ...protectedRoute, rollout.featureGate, asyncHandler(independentProjects.inviteOwner));
+router.get('/projects/:id/spaces/:spaceId/products', ...protectedRoute, asyncHandler(spaceProducts.list));
+router.post('/projects/:id/spaces/:spaceId/products', ...protectedRoute, asyncHandler(spaceProducts.save));
+router.put('/projects/:id/spaces/:spaceId/products/:itemId', ...protectedRoute, asyncHandler(spaceProducts.save));
+router.delete('/projects/:id/spaces/:spaceId/products/:itemId', ...protectedRoute, asyncHandler(spaceProducts.remove));
+router.get('/projects/:id/presentation-source', ...protectedRoute, asyncHandler(projectPresentations.source));
+router.post('/projects/:id/presentations/outline', ...protectedRoute, asyncHandler(projectPresentations.outline));
+router.post('/projects/:id/presentations/export', ...protectedRoute, asyncHandler(projectPresentations.exportPptx));
 router.put('/projects/:id/info', ...protectedRoute, asyncHandler(controller.updateProjectInfo));
 router.get(
   '/projects/:id/info-change-requests',
@@ -387,6 +396,11 @@ router.post(
   setUploadedFilePermissions,
   persistUploadedFiles('uploads/action-items'),
   asyncHandler(controller.submitProjectActionItemFeedback)
+);
+router.delete(
+  '/projects/:id/action-items/:itemId',
+  ...protectedRoute,
+  asyncHandler(controller.deleteProjectActionItem)
 );
 router.get('/projects/:id/progress', ...protectedRoute, asyncHandler(controller.getProjectProgress));
 router.get(

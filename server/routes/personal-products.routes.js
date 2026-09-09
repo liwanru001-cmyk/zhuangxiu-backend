@@ -1,0 +1,14 @@
+const router = require('express').Router();
+const auth = require('../middleware/auth');
+const asyncHandler = require('../utils/async-handler');
+const controller = require('../controllers/personal-products.controller');
+const upload = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 8 * 1024 * 1024, files: 1 } });
+router.use(asyncHandler(auth));
+router.get('/', asyncHandler(controller.list));
+router.post('/', asyncHandler(controller.save));
+router.post('/document', upload.single('document'), asyncHandler(controller.uploadDocument));
+router.post('/image', upload.single('image'), asyncHandler(controller.upload));
+router.get('/:id', asyncHandler(controller.get));
+router.put('/:id', asyncHandler(controller.save));
+router.delete('/:id', asyncHandler(controller.remove));
+module.exports = router;
