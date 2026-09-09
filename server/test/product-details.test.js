@@ -1,6 +1,21 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const { catalogFields, normalizeDetails, validateSourceMerchant } = require('../services/product-details');
+const { canonicalizeStorageUrisDeep } = require('../services/storage.service');
+test('configuration images, swatches and drawings accept canonicalized uploads', (t) => {
+  const previous = process.env.OSS_BUCKET;
+  process.env.OSS_BUCKET = 'catalog-test';
+  t.after(() => { if (previous === undefined) delete process.env.OSS_BUCKET; else process.env.OSS_BUCKET = previous; });
+  const data = fixture();
+  const base = 'https://catalog-test.oss-cn-hangzhou.aliyuncs.com/uploads/';
+  data.configurations[0].image_url = `${base}image.webp?Signature=test`;
+  data.configurations[0].drawing_url = `${base}drawing.pdf?Signature=test`;
+  data.configurations[0].parts[0].swatch_url = `${base}swatch.webp?Signature=test`;
+  const result = normalizeDetails(canonicalizeStorageUrisDeep(data)).configurations[0];
+  assert.equal(result.image_url, 'oss://catalog-test/uploads/image.webp');
+  assert.equal(result.drawing_url, 'oss://catalog-test/uploads/drawing.pdf');
+  assert.equal(result.parts[0].swatch_url, 'oss://catalog-test/uploads/swatch.webp');
+});
 const fixture = () => ({schema_version:1,furniture_type:'chair',model:'C01',source_url:'',source_merchant_id:null,configurations:[{id:'chair-cream',name:'米白布艺 / 胡桃木架',code:'C01-A',shape:'box',dimensions:{width:520,depth:null,height:'820'},dimension_unit:'mm',dimension_note:'座高450',parts:[{part:'坐面',material:'布艺',color:'米白',code:'A01',swatch_url:'https://example.com/sw.jpg'},{part:'椅架',material:'实木',color:'胡桃木',code:'',swatch_url:''}],image_url:'',drawing_url:'',unit:'把',price_state:'quote',price:null,includes:''}],customization:{enabled:true,fields:['material','color'],limits:'尺寸固定',pricing_note:'需询价'}});
 test('both sources use one schema; unknown dimension and pending price stay null', () => {
   const data=fixture(); const personal=catalogFields({product_group:'soft_furnishings',product_type:'furniture',product_details:data});

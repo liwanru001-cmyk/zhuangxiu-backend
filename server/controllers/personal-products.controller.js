@@ -7,6 +7,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const storage = require('../services/storage.service');
+const { isProductUrl } = require('../services/product-url');
 
 function payload(body) {
   const limits = { name: 120, cover_url: 1000, brand: 120, spec: 500, price_text: 80, source_url: 1000, description: 2000 };
@@ -20,8 +21,9 @@ function payload(body) {
   rejectPersonalReferences(value.product_details);
   for (const key of ['cover_url', 'source_url']) {
     if (!value[key]) continue;
-    let url; try { url = new URL(value[key]); } catch (_) { throw new Error('图片和来源链接须为 http/https 地址'); }
-    if (!['https:', 'http:'].includes(url.protocol) || url.username || url.password) throw new Error('链接格式不正确');
+    if (!isProductUrl(value[key])) throw new Error(key === 'cover_url'
+      ? '产品主图地址无效，请重新上传图片'
+      : '来源链接格式不正确，请填写有效的 http/https 地址');
   }
   return value;
 }

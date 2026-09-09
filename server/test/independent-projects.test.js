@@ -215,6 +215,40 @@ test('creator can save partial needs without an area or owner and cannot alter i
   assert.equal(res.body.data.project.created_by, 7);
 });
 
+test('project city and address survive saving and reopening project details', async () => {
+  const project = { id: 91, user_id: null, created_by: 7, creation_source: 'designer', preparation_stage: 'preparation', project_name: '准备项目', house_area: 0, current_stage: 1, status: 1 };
+  const db = { async query(sql, params) {
+    if (sql.includes('SELECT p.id, p.user_id, p.lifecycle_status')) return [[{ ...project, role: 'designer' }]];
+    if (sql.includes('SELECT id FROM project_members')) return [[{ id: 1 }]];
+    if (sql.includes('SELECT role FROM project_members')) return [[{ role: 'designer' }]];
+    if (sql.includes('SELECT p.created_by')) return [[{ ...project, role: 'designer' }]];
+    if (sql.includes('SELECT * FROM renovation_projects') || sql.includes('SELECT p.*, u.nickname AS designer_name')) return [[{ ...project }]];
+    if (sql.includes('UPDATE renovation_projects')) {
+      const columns = sql.split('SET')[1].split('WHERE')[0].split(',').map(value => value.split('=')[0].trim());
+      columns.forEach((column, index) => { project[column] = params[index]; });
+      return [{ affectedRows: 1 }];
+    }
+    if (sql.includes('FROM renovation_tasks')) return [[]];
+    throw new Error(`Unexpected SQL: ${sql}`);
+  } };
+  const controller = load('../controllers/renovation.controller', db);
+  const request = { originalUrl: '/api/renovation/projects/91/info', headers: { 'x-zxw-projects': 'independent-desktop-v1' }, user: { id: 7 }, params: { id: '91' } };
+  for (const [city, address] of [[' 杭州 ', ' 西湖区 '], ['', '']]) {
+    const saved = response();
+    await controller.updateProjectInfo({ ...request, body: { project_city: city, project_address: address } }, saved);
+    assert.equal(saved.statusCode, 200);
+    assert.equal(project.project_city, city.trim() || null);
+    assert.equal(project.project_address, address.trim() || null);
+    const reopened = response();
+    await controller.getProjectDetail(request, reopened);
+    assert.equal(reopened.statusCode, 200);
+    for (const result of [saved, reopened]) {
+      assert.equal(result.body.data.project.project_city, city.trim() || null);
+      assert.equal(result.body.data.project.project_address, address.trim() || null);
+    }
+  }
+});
+
 test('independent creator cannot confirm documents as the client', async () => {
   const db = { async query(sql) {
     if (sql.includes('SELECT p.id, p.user_id, p.lifecycle_status')) return [[{ id: 91, user_id: null, role: 'designer' }]];

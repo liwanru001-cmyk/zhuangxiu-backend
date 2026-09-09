@@ -1,6 +1,7 @@
 // Shared catalog contract for designer and merchant products. Project selections
 // and customer quotes deliberately remain outside this source document.
 const { randomUUID } = require('crypto');
+const { isProductUrl } = require('./product-url');
 const GROUPS = ['soft_furnishings', 'building_materials', 'woodwork'];
 const TYPES = ['furniture', 'curtains', 'rugs', 'lighting', 'artwork', 'accessories'];
 const has = (o, k) => Object.prototype.hasOwnProperty.call(o, k);
@@ -11,8 +12,7 @@ function text(v, max = 120) {
 }
 function url(v) {
   const s = text(v, 1000); if (!s) return '';
-  let u; try { u = new URL(s); } catch (_) { throw new Error('图片和来源须为有效链接'); }
-  if (!['http:', 'https:'].includes(u.protocol) || u.username || u.password) throw new Error('图片和来源须为 http/https 链接');
+  if (!isProductUrl(s)) throw new Error('图片或来源链接无效，请重新上传图片或填写有效的 http/https 地址');
   return s;
 }
 function number(v, max, decimals) {

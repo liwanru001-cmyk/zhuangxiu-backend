@@ -5,6 +5,26 @@ const path = require('node:path');
 const test = require('node:test');
 
 const { generate, generateFromPlan, safeFileName } = require('../scripts/generate-ppt-from-plan');
+const { fetchFile } = require('../scripts/generate-ppt-from-plan');
+const storage = require('../services/storage.service');
+
+test('PPT downloads stored OSS images through freshly signed HTTPS URLs', async (t) => {
+  const directory = await fs.mkdtemp(path.join(os.tmpdir(), 'zxw-ppt-oss-test-'));
+  t.after(() => fs.rm(directory, { recursive: true, force: true }));
+  const uri = 'oss://test-bucket/uploads/image.webp';
+  const signed = 'https://test-bucket.oss-cn-hangzhou.aliyuncs.com/uploads/image.webp?Signature=fresh';
+  t.mock.method(storage, 'signedUrlForStorageUri', value => {
+    assert.equal(value, uri);
+    return signed;
+  });
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(url.toString(), signed);
+    return { ok: true, arrayBuffer: async () => Buffer.from('image bytes') };
+  });
+  const output = path.join(directory, 'image.webp');
+  await fetchFile(uri, output);
+  assert.equal(await fs.readFile(output, 'utf8'), 'image bytes');
+});
 
 test('safeFileName removes characters that are invalid in exported file names', () => {
   assert.equal(safeFileName('海景花园 / 方案:v1?'), '海景花园-方案-v1');

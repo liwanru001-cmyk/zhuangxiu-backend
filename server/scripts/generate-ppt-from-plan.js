@@ -8,6 +8,7 @@ const { execFile } = require('child_process');
 const { promisify } = require('util');
 const PptxGenJS = require('pptxgenjs');
 const sharp = require('sharp');
+const storage = require('../services/storage.service');
 
 const execFileAsync = promisify(execFile);
 const colors = {
@@ -35,7 +36,7 @@ function safeFileName(value) {
 }
 
 async function fetchFile(url, destination) {
-  const parsed = new URL(url);
+  const parsed = new URL(storage.signedUrlForStorageUri(storage.canonicalStorageUri(url)));
   if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('资料地址协议不支持');
   const response = await fetch(parsed);
   if (!response.ok) throw new Error(`资料下载失败：${response.status}`);
@@ -358,4 +359,4 @@ if (require.main === module) {
     .catch(error => { console.error(error.stack || error.message); process.exitCode = 1; });
 }
 
-module.exports = { generate, generateFromPlan, safeFileName };
+module.exports = { generate, generateFromPlan, safeFileName, fetchFile };

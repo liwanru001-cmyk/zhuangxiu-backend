@@ -485,6 +485,8 @@ async function calendarForProject(project) {
       creation_source: project.creation_source || 'owner',
       preparation_stage: project.preparation_stage || 'construction',
       client_name: project.client_name || null,
+      project_city: project.project_city || null,
+      project_address: project.project_address || null,
       owner_joined: Boolean(project.user_id),
       project_code: project.project_code,
       project_name: normalizeProjectName(project.project_name),
