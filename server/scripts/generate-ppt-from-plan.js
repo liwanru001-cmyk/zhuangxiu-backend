@@ -280,7 +280,7 @@ function addEnding(pptx, plan, outlineItem) {
   return slide;
 }
 
-async function generateFromPlan(plan, outputPath) {
+async function generateFromPlan(plan, outputPath, options = {}) {
   required(plan.project?.name, '汇报JSON缺少项目名称');
   required(plan.presentation?.title, '汇报JSON缺少标题');
   if (!Array.isArray(plan.spaces)) throw new Error('汇报JSON缺少空间列表');
@@ -289,14 +289,23 @@ async function generateFromPlan(plan, outputPath) {
   const imageCache = new Map();
   let imageIndex = 1;
   async function imageFor(source) {
+    options.signal?.throwIfAborted();
     if (!source?.url && !source?.image_url) return null;
     const key = source.url || source.image_url;
+    if (options.manifest) {
+      const canonical = storage.canonicalStorageUri(key);
+      const asset = options.manifest.find(item => item.legacy_url === canonical || item.url === canonical);
+      if (!asset) throw new Error('旧流程素材不在原始任务快照中');
+      await fs.access(asset.highres_path);
+      return asset.highres_path;
+    }
     if (imageCache.has(key)) return imageCache.get(key);
     try {
       const imagePath = await materializeImage(source, tempDirectory, imageIndex++);
       imageCache.set(key, imagePath);
       return imagePath;
     } catch (error) {
+      if (options.strict) throw error;
       console.warn(`WARN: ${source.title || source.name || key}: ${error.message}`);
       imageCache.set(key, null);
       return null;
@@ -357,6 +366,7 @@ async function generateFromPlan(plan, outputPath) {
     if (!slides.length) throw new Error('汇报目录没有可生成的页面');
     slides.forEach((slide, index) => addFooter(pptx, slide, index + 1, slides.length));
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
+    if (options.maxSlides && slides.length > options.maxSlides) throw new Error('兼容模式生成页数超过任务上限');
     await pptx.writeFile({ fileName: outputPath, compression: true });
     return { outputPath, slideCount: slides.length };
   } finally {

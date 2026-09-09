@@ -140,12 +140,15 @@ jobs:
           APP_DIR: ${{ secrets.APP_DIR }}
           SSH_HOST: ${{ secrets.SSH_HOST }}
           EXPECTED_SSH_HOST: 115.29.194.46
+          PRESENTATION_V2_API_KEY_SECRET: ${{ secrets.PRESENTATION_V2_API_KEY }}
+          PRESENTATION_V2_BASE_URL_SECRET: ${{ secrets.PRESENTATION_V2_BASE_URL }}
+          PRESENTATION_V2_MODEL_SECRET: ${{ secrets.PRESENTATION_V2_MODEL }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST
+          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET
           script: |
             set -euo pipefail
 
@@ -186,27 +189,40 @@ jobs:
               npm install -g pm2
             fi
 
-            if ! command -v pdftoppm >/dev/null 2>&1; then
+            missing_presentation_runtime='false'
+            for command_name in pdftoppm fc-match soffice; do
+              if ! command -v "$command_name" >/dev/null 2>&1; then
+                missing_presentation_runtime='true'
+              fi
+            done
+            if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
+              missing_presentation_runtime='true'
+            fi
+            if [ "$missing_presentation_runtime" = 'true' ]; then
               runner=''
               if [ "$(id -u)" -ne 0 ]; then
                 if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
                   runner='sudo'
                 else
-                  echo 'Poppler is required to render PDF plans and the deployment user has no passwordless sudo.'
+                  echo 'AI PPT v2 requires Poppler, Fontconfig, LibreOffice and a CJK font; passwordless sudo is unavailable.'
                   exit 1
                 fi
               fi
               if command -v apt-get >/dev/null 2>&1; then
                 $runner apt-get update
-                $runner apt-get install -y poppler-utils
+                $runner apt-get install -y --no-install-recommends \
+                  poppler-utils fontconfig libreoffice-impress fonts-noto-cjk
               elif command -v dnf >/dev/null 2>&1; then
-                $runner dnf install -y poppler-utils
+                $runner dnf install -y \
+                  poppler-utils fontconfig libreoffice-impress google-noto-sans-cjk-ttc-fonts
               elif command -v yum >/dev/null 2>&1; then
-                $runner yum install -y poppler-utils
+                $runner yum install -y \
+                  poppler-utils fontconfig libreoffice-impress google-noto-sans-cjk-ttc-fonts
               else
-                echo 'No supported package manager was found for installing Poppler.'
+                echo 'No supported package manager was found for the AI PPT v2 render runtime.'
                 exit 1
               fi
+              $runner fc-cache -f
             fi
 
             staging_dir="${APP_DIR}.deploy-tmp"
@@ -323,6 +339,66 @@ jobs:
               set -a
               . ./.env
               set +a
+            fi
+
+            set_env_value() {
+              env_key="$1"
+              env_value="$2"
+              [ -n "$env_value" ] || return 0
+              CONFIG_KEY="$env_key" CONFIG_VALUE="$env_value" node <<'NODE'
+            const fs = require('fs');
+            const file = '.env';
+            const key = process.env.CONFIG_KEY;
+            const value = process.env.CONFIG_VALUE;
+            if (!key || /[\r\n]/.test(value)) throw new Error('Invalid environment value');
+            const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+            const index = lines.findIndex(line => line.startsWith(`${key}=`));
+            if (index >= 0) lines[index] = `${key}=${value}`;
+            else lines.push(`${key}=${value}`);
+            fs.writeFileSync(file, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
+            NODE
+            }
+
+            v2_base_url="${PRESENTATION_V2_BASE_URL_SECRET:-${PRESENTATION_V2_BASE_URL:-https://llm-kudosu76rs0hp9is.cn-beijing.maas.aliyuncs.com/compatible-mode/v1}}"
+            v2_model="${PRESENTATION_V2_MODEL_SECRET:-${PRESENTATION_V2_MODEL:-qwen3.8-max}}"
+            v2_api_key="${PRESENTATION_V2_API_KEY_SECRET:-${PRESENTATION_V2_API_KEY:-${DASHSCOPE_API_KEY:-}}}"
+            case "${PRESENTATION_AI_MODEL:-}" in
+              qwen*)
+                v2_api_key="${v2_api_key:-${PRESENTATION_AI_API_KEY:-}}"
+                v2_base_url="${PRESENTATION_V2_BASE_URL_SECRET:-${PRESENTATION_AI_BASE_URL:-$v2_base_url}}"
+                ;;
+            esac
+            if [ -z "$v2_api_key" ]; then
+              echo 'Missing PRESENTATION_V2_API_KEY. Add it as a GitHub Actions repository secret or to the production .env.'
+              exit 1
+            fi
+            case "$v2_base_url" in
+              https://*) ;;
+              *) echo 'PRESENTATION_V2_BASE_URL must use HTTPS.'; exit 1 ;;
+            esac
+
+            set_env_value PRESENTATION_V2_BASE_URL "$v2_base_url"
+            set_env_value PRESENTATION_V2_MODEL "$v2_model"
+            set_env_value PRESENTATION_V2_API_KEY "$v2_api_key"
+            set_env_value PRESENTATION_V2_ENDPOINT '/chat/completions'
+            set_env_value PRESENTATION_SOFFICE "$(command -v soffice)"
+            set_env_value PRESENTATION_FC_MATCH "$(command -v fc-match)"
+            set_env_value PRESENTATION_PDFTOPPM "$(command -v pdftoppm)"
+            set_env_value PRESENTATION_V2_FALLBACK_FONT 'Noto Sans CJK SC'
+            chmod 600 .env
+            set -a
+            . ./.env
+            set +a
+
+            echo 'Checking AI PPT v2 fonts and headless rendering.'
+            npm run check:presentation-v2
+            model_check_id="$(printf '%s' "$PRESENTATION_V2_BASE_URL|$PRESENTATION_V2_MODEL|$PRESENTATION_V2_API_KEY" | sha256sum | cut -c1-20)"
+            model_check_file="storage/presentation-v2-model-${model_check_id}.checked"
+            if [ ! -f "$model_check_file" ]; then
+              echo 'Checking AI PPT v2 multimodal model access.'
+              npm run check:presentation-v2:model
+              mkdir -p storage
+              : > "$model_check_file"
             fi
 
             if ! command -v mysqldump >/dev/null 2>&1; then

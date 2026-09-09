@@ -11,11 +11,14 @@
     "migrate:oss": "node scripts/migrate-local-files-to-oss.js",
     "rollback:oss": "node scripts/rollback-oss-migration.js",
     "cleanup:release-uploads": "node scripts/cleanup-orphan-release-uploads.js",
+    "check:presentation-v2": "node scripts/check-presentation-v2-environment.js",
+    "check:presentation-v2:model": "node scripts/check-presentation-v2-environment.js --model",
     "fix:uploads": "node scripts/fix-upload-permissions.js"
   },
   "dependencies": {
     "@alicloud/dysmsapi20170525": "^4.6.0",
     "@alicloud/openapi-client": "^0.4.15",
+    "ajv": "^8.20.0",
     "ali-oss": "^6.23.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -26,6 +29,7 @@
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.11.0",
+    "pdfjs-dist": "5.4.149",
     "pptxgenjs": "^4.0.1",
     "redis": "^4.7.1",
     "sharp": "^0.35.2"

@@ -71,6 +71,7 @@ test('submission is idempotent and persists queued work without calling the mode
   const records = new Map();
   query = async (sql, params = []) => {
     if (sql.startsWith('CREATE TABLE')) return [{}];
+    if (sql.includes('COUNT(*) AS total')) return [[{ total: records.size }]];
     if (sql.startsWith('INSERT')) {
       assert.match(sql, /ON DUPLICATE KEY/);
       const key = params.slice(1, 4).join(':');

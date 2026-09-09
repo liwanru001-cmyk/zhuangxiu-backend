@@ -179,6 +179,8 @@ async function loadPresentationSource(projectId, options = {}) {
       customer_unit_price: row.customer_unit_price == null ? null : Number(row.customer_unit_price),
       note: row.note || '',
       selection,
+      source_type: 'scheme_product',
+      image_role: configuration?.image_url ? `configuration:${selection.configuration_id}` : 'cover',
     };
     if (!productBySpace.has(Number(row.space_id))) productBySpace.set(Number(row.space_id), []);
     productBySpace.get(Number(row.space_id)).push(item);
@@ -197,6 +199,9 @@ async function loadPresentationSource(projectId, options = {}) {
       category: row.category,
       status: row.status,
       version_no: Number(row.version_no || 1),
+      source_type: 'design_document',
+      original_url: row.file_url,
+      original_type: row.file_type,
     };
     if (row.space_key === 'whole_house') {
       (row.category === 'rendering' ? wholeHouseRenderings : wholeHouseDocuments).push(item);
@@ -218,12 +223,14 @@ async function loadPresentationSource(projectId, options = {}) {
       category: 'floor_plan',
       status: 'confirmed',
       version_no: 1,
+      source_type: 'project_floor_plan',
     });
   }
   for (const row of renderings) {
     if (!renderingBySpace.has(Number(row.space_id))) renderingBySpace.set(Number(row.space_id), []);
     renderingBySpace.get(Number(row.space_id)).push({
       id: Number(row.id), title: '空间效果图', type: 'image', url: row.image_url,
+      source_type: 'space_image', is_primary: Boolean(row.is_primary), sort_order: row.sort_order,
     });
   }
   const missingFields = [
@@ -346,7 +353,7 @@ function sourceForModel(source, settings) {
             materials: selectedMaterials(item.selection, settings.product_display.show_materials)
               .map(material => [material.part, material.brand, material.series, material.name, material.code].filter(Boolean).join(' · ')),
             quantity: settings.product_display.show_quantity ? `${item.quantity}${item.unit}` : '',
-            customer_quote: settings.product_display.show_price && item.customer_unit_price != null
+            customer_quote: settings.product_display.show_price && item.selection?.ppt?.show_price === true && item.customer_unit_price != null
               ? item.customer_unit_price : null,
             note: item.note,
           })) : [],
@@ -450,12 +457,16 @@ async function generateOutline(source, rawSettings, options = {}) {
   }
   const fetchImpl = options.fetch || fetch;
   const controller = new AbortController();
+  const abortFromParent = () => controller.abort();
+  if (options.signal?.aborted) controller.abort();
+  options.signal?.addEventListener('abort', abortFromParent, { once: true });
   const requestedTimeout = Number(options.timeoutMs ?? env.PRESENTATION_AI_TIMEOUT_MS ?? 90000);
   const timeoutMs = Number.isFinite(requestedTimeout) && requestedTimeout > 0 ? requestedTimeout : 90000;
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const messages = promptMessages(source, settings);
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < (options.maxAttempts ?? 2); attempt++) {
+      await options.beforeRequest?.();
       const response = await fetchImpl(`${config.base_url}${text(env.PRESENTATION_AI_ENDPOINT, 120) || '/chat/completions'}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${text(env.PRESENTATION_AI_API_KEY, 1000)}` },
@@ -475,6 +486,7 @@ async function generateOutline(source, rawSettings, options = {}) {
         if (controller.signal.aborted) throw error;
         return {};
       });
+      await options.onResponse?.({ model: config.model, usage: result.usage || null, raw_response: result });
       if (!response.ok) {
         const error = new Error(`大模型服务调用失败：${result.error?.message || response.status}`);
         error.status = 502;
@@ -485,7 +497,7 @@ async function generateOutline(source, rawSettings, options = {}) {
       try {
         return { settings, outline: normalizeOutline(parseModelJson(content), source, settings) };
       } catch (validationError) {
-        if (attempt === 1) throw new Error(`模型目录格式校验失败：${validationError.message}`);
+        if (attempt + 1 >= (options.maxAttempts ?? 2)) throw new Error(`模型目录格式校验失败：${validationError.message}`);
         messages.push(
           { role: 'assistant', content: String(content || '').slice(0, 60000) },
           { role: 'user', content: `上一份 JSON 未通过校验：${validationError.message}。请只修正格式并返回完整 JSON，不要更改输入事实。slides[].type 必须为单个字符串，允许值：${[...allowedSlideTypes].join(', ')}；第一页为 cover，禁止将所有类型作为数组填入 type。` },
@@ -502,6 +514,7 @@ async function generateOutline(source, rawSettings, options = {}) {
     throw error;
   } finally {
     clearTimeout(timeout);
+    options.signal?.removeEventListener('abort', abortFromParent);
   }
 }
 
