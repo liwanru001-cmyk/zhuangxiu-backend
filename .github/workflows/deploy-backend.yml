@@ -34,7 +34,7 @@ jobs:
 
       - name: Validate backend before touching production
         run: |
-          npm ci --prefix server
+          npm ci --no-audit --no-fund --prefix server
           npm test --prefix server
 
       # Do not switch/recover services before migration has been validated.
