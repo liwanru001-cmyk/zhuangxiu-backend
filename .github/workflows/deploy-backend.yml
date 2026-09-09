@@ -19,7 +19,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -148,6 +148,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 25m
           envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET
           script: |
             set -euo pipefail
