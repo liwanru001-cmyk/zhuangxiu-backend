@@ -261,6 +261,8 @@ CREATE TABLE IF NOT EXISTS sms_codes (
 CREATE TABLE IF NOT EXISTS renovation_projects (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     user_id BIGINT UNSIGNED NOT NULL,
+    project_city VARCHAR(80) DEFAULT NULL,
+    project_address VARCHAR(255) DEFAULT NULL,
     project_code CHAR(10) NOT NULL,
     designer_id BIGINT UNSIGNED DEFAULT NULL,
     house_area DECIMAL(8,2) NOT NULL,

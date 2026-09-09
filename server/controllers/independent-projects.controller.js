@@ -21,8 +21,12 @@ async function create(req, res) {
   if (req.user.role !== 'designer') return error(res, '仅设计师可以独立创建项目', 403);
   const name = String(req.body.project_name || '').trim();
   const clientName = String(req.body.client_name || '').trim();
+  const projectCity = String(req.body.project_city || '').trim();
+  const projectAddress = String(req.body.project_address || '').trim();
   if (!name || name.length > 10) return error(res, '项目名称需为 1～10 个字符');
   if (clientName.length > 80) return error(res, '客户称呼不能超过 80 个字符');
+  if (projectCity.length > 80) return error(res, '城市信息不能超过 80 个字符');
+  if (projectAddress.length > 255) return error(res, '地址不能超过 255 个字符');
   const connection = await db.getConnection();
   try {
     await connection.beginTransaction();
@@ -34,11 +38,19 @@ async function create(req, res) {
       try {
         [result] = await connection.query(
           `INSERT INTO renovation_projects
-           (user_id, created_by, creation_source, preparation_stage, client_name,
+           (user_id, created_by, creation_source, preparation_stage, client_name, project_city, project_address,
             designer_id, project_code, project_name, house_area, start_date,
             total_days, current_stage, status, renovation_method)
-           VALUES (NULL, ?, 'designer', 'preparation', ?, ?, ?, ?, 0, NULL, 0, 1, 1, 'independent_designer')`,
-          [req.user.id, clientName || null, req.user.id, code, name]
+           VALUES (NULL, ?, 'designer', 'preparation', ?, ?, ?, ?, ?, ?, 0, NULL, 0, 1, 1, 'independent_designer')`,
+          [
+            req.user.id,
+            clientName || null,
+            projectCity || null,
+            projectAddress || null,
+            req.user.id,
+            code,
+            name,
+          ]
         );
         break;
       } catch (insertError) {

@@ -550,10 +550,14 @@ async function setup(req, res) {
     house_layout: houseLayout,
     floor_plan_image: floorPlanImage,
     renovation_method: renovationMethod,
+    project_city: projectCityRaw,
+    project_address: projectAddressRaw,
   } = req.body;
   const projectName = String(projectNameRaw || '').trim().slice(0, 10);
   const area = Number(houseArea);
   const stageId = Number(currentStage);
+  const projectCity = String(projectCityRaw || '').trim().slice(0, 80) || null;
+  const projectAddress = String(projectAddressRaw || '').trim().slice(0, 255) || null;
   if (!projectName) return error(res, '请输入项目名称');
   if (!startDate || Number.isNaN(Date.parse(startDate))) return error(res, '开工日期格式不正确');
   if (!Number.isFinite(area) || area <= 0) return error(res, '房屋面积不正确');
@@ -588,7 +592,7 @@ async function setup(req, res) {
          SET project_name = ?, house_area = ?, start_date = ?, current_stage = ?, status = 1,
              preparation_stage = 'construction',
              project_type = ?, house_layout = ?, floor_plan_image = ?,
-             renovation_method = ?
+             renovation_method = ?, project_city = ?, project_address = ?
          WHERE id = ?`,
         [
           projectName,
@@ -599,6 +603,8 @@ async function setup(req, res) {
           houseLayout || null,
           floorPlanImage || null,
           renovationMethod || 'self',
+          projectCity,
+          projectAddress,
           projectId,
         ]
       );
@@ -607,8 +613,8 @@ async function setup(req, res) {
       const [result] = await connection.query(
         `INSERT INTO renovation_projects
          (user_id, project_code, project_name, house_area, start_date, total_days, current_stage, status,
-          project_type, house_layout, floor_plan_image, renovation_method)
-         VALUES (?, ?, ?, ?, ?, 82, ?, 1, ?, ?, ?, ?)`,
+          project_type, house_layout, floor_plan_image, renovation_method, project_city, project_address)
+         VALUES (?, ?, ?, ?, ?, 82, ?, 1, ?, ?, ?, ?, ?, ?)`,
         [
           req.user.id,
           projectCode,
@@ -620,6 +626,8 @@ async function setup(req, res) {
           houseLayout || null,
           floorPlanImage || null,
           renovationMethod || 'self',
+          projectCity,
+          projectAddress,
         ]
       );
       projectId = result.insertId;
@@ -829,6 +837,26 @@ function buildProjectInfoValues(project, body) {
     body.special_needs === undefined
       ? project.special_needs
       : String(body.special_needs || '').trim().slice(0, 1000) || null;
+  const projectCity =
+    body.project_city === undefined
+      ? project.project_city
+      : String(body.project_city || '').trim().slice(0, 80) || null;
+  const projectAddress =
+    body.project_address === undefined
+      ? project.project_address
+      : String(body.project_address || '').trim().slice(0, 255) || null;
+  const projectType = body.project_type === undefined
+    ? project.project_type || 'rough'
+    : String(body.project_type || '').trim();
+  const startDate = body.start_date === undefined
+    ? project.start_date
+    : String(body.start_date || '').trim() || null;
+  const currentStage = body.current_stage === undefined
+    ? Number(project.current_stage)
+    : Number(body.current_stage);
+  const renovationMethod = body.renovation_method === undefined
+    ? project.renovation_method || (project.creation_source === 'designer' ? 'independent_designer' : 'self')
+    : String(body.renovation_method || '').trim();
 
   return {
     clientName: body.client_name === undefined ? project.client_name : String(body.client_name || '').trim().slice(0, 80),
@@ -844,6 +872,12 @@ function buildProjectInfoValues(project, body) {
     stylePreference,
     keySpaces,
     specialNeeds,
+    projectCity,
+    projectAddress,
+    projectType,
+    startDate,
+    currentStage,
+    renovationMethod,
   };
 }
 
@@ -852,6 +886,17 @@ function validateProjectInfoValues(values) {
   if (!Number.isFinite(Number(values.area)) || (values.allowUnknownArea ? Number(values.area) < 0 : Number(values.area) <= 0)) {
     return '房屋面积不正确';
   }
+  if (!['refined', 'rough', 'second_hand', 'partial', 'office', 'commercial'].includes(values.projectType)) {
+    return '项目类型不正确';
+  }
+  if (!Number.isInteger(values.currentStage) || !stages.some(stage => stage.id === values.currentStage)) {
+    return '项目阶段不正确';
+  }
+  if (!['self', 'company', 'independent_designer'].includes(values.renovationMethod)) {
+    return '装修方式不正确';
+  }
+  if (values.startDate && Number.isNaN(Date.parse(values.startDate))) return '开工日期格式不正确';
+  if (!values.allowUnknownArea && !values.startDate) return '请选择开工日期';
   return null;
 }
 
@@ -860,7 +905,9 @@ async function applyProjectInfoValues(projectId, values, connection = db) {
     `UPDATE renovation_projects
      SET project_name = ?, house_area = ?, house_layout = ?, floor_plan_image = ?,
          budget_range = ?, expected_move_in_date = ?, resident_info = ?,
-         lifestyle_notes = ?, style_preference = ?, key_spaces = ?, special_needs = ?, client_name = ?
+         lifestyle_notes = ?, style_preference = ?, key_spaces = ?, special_needs = ?, client_name = ?,
+         project_city = ?, project_address = ?, project_type = ?, start_date = ?, current_stage = ?,
+         renovation_method = ?
      WHERE id = ?`,
     [
       values.projectName,
@@ -875,6 +922,12 @@ async function applyProjectInfoValues(projectId, values, connection = db) {
       values.keySpaces,
       values.specialNeeds,
       values.clientName || null,
+      values.projectCity,
+      values.projectAddress,
+      values.projectType,
+      values.startDate,
+      values.currentStage,
+      values.renovationMethod,
       projectId,
     ]
   );
@@ -894,6 +947,12 @@ function projectInfoRequestPayload(body) {
     'style_preference',
     'key_spaces',
     'special_needs',
+    'project_city',
+    'project_address',
+    'project_type',
+    'start_date',
+    'current_stage',
+    'renovation_method',
   ];
   const payload = {};
   for (const key of allowed) {
@@ -1753,7 +1812,9 @@ async function getMyProjects(req, res) {
   const [rows] = await db.query(
     `SELECT p.id, p.project_code, p.project_name, p.house_area, p.start_date, p.total_days,
             p.current_stage, p.status, p.lifecycle_status, p.created_by, p.creation_source,
-            p.preparation_stage, p.client_name, (p.user_id IS NOT NULL) AS owner_joined,
+            p.preparation_stage, p.client_name, p.project_city, p.project_address,
+            p.project_type, p.house_layout, p.renovation_method,
+            (p.user_id IS NOT NULL) AS owner_joined,
             u.nickname AS owner_nickname, u.phone AS owner_phone,
             u.city AS owner_city, pm.role AS member_role,
             pm.status AS member_status

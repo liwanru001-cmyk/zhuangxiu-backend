@@ -109,7 +109,9 @@ async function loadPresentationSource(projectId, options = {}) {
   const connection = options.db || db;
   const [projects] = await connection.query(
     `SELECT id, project_code, project_name, client_name, user_id,
-            preparation_stage, house_area, house_layout, floor_plan_image,
+            preparation_stage, project_city, project_address, project_type,
+            start_date, current_stage, renovation_method,
+            house_area, house_layout, floor_plan_image,
             budget_range, resident_info, lifestyle_notes, style_preference,
             key_spaces, special_needs
      FROM renovation_projects
@@ -239,6 +241,12 @@ async function loadPresentationSource(projectId, options = {}) {
       preparation_stage: project.preparation_stage || 'construction',
       house_area: Number(project.house_area || 0),
       house_layout: project.house_layout || '',
+      project_city: project.project_city || '',
+      project_address: project.project_address || '',
+      project_type: project.project_type || '',
+      start_date: project.start_date || null,
+      current_stage: Number(project.current_stage || 1),
+      renovation_method: project.renovation_method || '',
       budget_range: project.budget_range || '',
       resident_info: project.resident_info || '',
       lifestyle_notes: project.lifestyle_notes || '',
@@ -501,6 +509,12 @@ function buildRenderPlan(source, rawSettings, rawOutline) {
       owner_status: source.project.owner_joined ? '业主已加入' : '业主未加入',
       house_area: source.project.house_area,
       house_layout: source.project.house_layout,
+      project_city: source.project.project_city,
+      project_address: source.project.project_address,
+      project_type: source.project.project_type,
+      start_date: source.project.start_date,
+      current_stage: source.project.current_stage,
+      renovation_method: source.project.renovation_method,
       budget_range: source.project.budget_range,
       resident_info: source.project.resident_info,
       lifestyle_notes: source.project.lifestyle_notes,
