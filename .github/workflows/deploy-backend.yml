@@ -208,21 +208,80 @@ jobs:
                   exit 1
                 fi
               fi
+
+              install_official_libreoffice_rpms() {
+                libreoffice_version='25.8.7'
+                libreoffice_archive="LibreOffice_${libreoffice_version}_Linux_x86-64_rpm.tar.gz"
+                libreoffice_url="https://download.documentfoundation.org/libreoffice/stable/${libreoffice_version}/rpm/x86_64/${libreoffice_archive}"
+                libreoffice_sha256='1b2d640d648c10ea7582c68ebc17fbb5f2551790deae40d2d9e4033fa2464d72'
+                libreoffice_tmp="$(mktemp -d /tmp/yinnkhome-libreoffice.XXXXXX)"
+
+                echo "Installing LibreOffice ${libreoffice_version} from the verified official RPM archive."
+                curl -fL --retry 3 --connect-timeout 20 \
+                  -o "$libreoffice_tmp/$libreoffice_archive" \
+                  "$libreoffice_url"
+                printf '%s  %s\n' \
+                  "$libreoffice_sha256" \
+                  "$libreoffice_tmp/$libreoffice_archive" \
+                  | sha256sum -c -
+                tar -xzf "$libreoffice_tmp/$libreoffice_archive" -C "$libreoffice_tmp"
+                libreoffice_rpm_dir="$(find "$libreoffice_tmp" -type d -name RPMS -print -quit)"
+                if [ -z "$libreoffice_rpm_dir" ]; then
+                  echo 'The LibreOffice archive did not contain an RPMS directory.'
+                  exit 1
+                fi
+                $runner dnf install -y "$libreoffice_rpm_dir"/*.rpm
+                libreoffice_binary="$(find /opt -path '*/program/soffice' -type f -print -quit)"
+                if [ -z "$libreoffice_binary" ]; then
+                  echo 'LibreOffice was installed but soffice could not be located.'
+                  exit 1
+                fi
+                $runner ln -sfn "$libreoffice_binary" /usr/local/bin/soffice
+              }
+
               if command -v apt-get >/dev/null 2>&1; then
                 $runner apt-get update
                 $runner apt-get install -y --no-install-recommends \
                   poppler-utils fontconfig libreoffice-impress fonts-noto-cjk
               elif command -v dnf >/dev/null 2>&1; then
-                $runner dnf install -y \
-                  poppler-utils fontconfig libreoffice-impress google-noto-sans-cjk-ttc-fonts
+                $runner dnf install -y poppler-utils fontconfig
+                if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
+                  if $runner dnf install -y google-noto-sans-cjk-ttc-fonts; then
+                    :
+                  elif $runner dnf install -y google-noto-sans-cjk-fonts; then
+                    :
+                  else
+                    echo 'Alibaba Cloud Linux has no supported Noto Sans CJK package.'
+                    exit 1
+                  fi
+                fi
+                if ! command -v soffice >/dev/null 2>&1; then
+                  if $runner dnf install -y libreoffice-impress; then
+                    :
+                  else
+                    install_official_libreoffice_rpms
+                  fi
+                fi
               elif command -v yum >/dev/null 2>&1; then
-                $runner yum install -y \
-                  poppler-utils fontconfig libreoffice-impress google-noto-sans-cjk-ttc-fonts
+                $runner yum install -y poppler-utils fontconfig
+                $runner yum install -y google-noto-sans-cjk-ttc-fonts
+                $runner yum install -y libreoffice-impress
               else
                 echo 'No supported package manager was found for the AI PPT v2 render runtime.'
                 exit 1
               fi
               $runner fc-cache -f
+
+              for command_name in pdftoppm fc-match soffice; do
+                if ! command -v "$command_name" >/dev/null 2>&1; then
+                  echo "AI PPT v2 runtime command is still unavailable: $command_name"
+                  exit 1
+                fi
+              done
+              if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
+                echo 'Noto Sans CJK SC is still unavailable after installation.'
+                exit 1
+              fi
             fi
 
             staging_dir="${APP_DIR}.deploy-tmp"
