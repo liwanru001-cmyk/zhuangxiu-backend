@@ -21,6 +21,22 @@ const colors = {
   white: 'FFFFFF',
 };
 
+const documentCategoryLabels = {
+  original_floor_plan: '原始户型图',
+  floor_plan: '原始户型图',
+  measurement: '量房图',
+  layout_plan: '平面方案',
+  rendering: '效果图',
+  construction_drawing: '施工图',
+  hydropower: '水电图',
+  other: '其他图纸',
+};
+
+function documentSlideTitle(spaceName, document, fallback = '图纸') {
+  const label = documentCategoryLabels[document.category] || document.category_name || fallback;
+  return `${spaceName} · ${label}`;
+}
+
 function required(value, message) {
   if (!value) throw new Error(message);
   return value;
@@ -317,19 +333,19 @@ async function generateFromPlan(plan, outputPath) {
       else if (item.type === 'client_requirements') slides.push(addRequirements(pptx, plan, item));
       else if (item.type === 'whole_house_plan') {
         for (const document of plan.whole_house_documents || []) {
-          slides.push(addDocumentSlide(pptx, item.title || '全屋平面方案', item.narrative || document.title, await imageFor(document)));
+          slides.push(addDocumentSlide(pptx, documentSlideTitle('全屋', document), document.title || '', await imageFor(document)));
         }
         for (const rendering of plan.whole_house_renderings || []) {
-          slides.push(addDocumentSlide(pptx, '全屋效果表现', rendering.title || '', await imageFor(rendering)));
+          slides.push(addDocumentSlide(pptx, documentSlideTitle('全屋', rendering, '效果图'), rendering.title || '', await imageFor(rendering)));
         }
       } else if (item.type === 'space_solution') {
         const space = plan.spaces.find(value => Number(value.id) === Number(item.space_id));
         if (!space) continue;
         for (const document of space.documents || []) {
-          slides.push(addDocumentSlide(pptx, `${space.name}平面方案`, item.narrative || document.title, await imageFor(document)));
+          slides.push(addDocumentSlide(pptx, documentSlideTitle(space.name, document), document.title || '', await imageFor(document)));
         }
         for (const rendering of space.renderings || []) {
-          slides.push(addDocumentSlide(pptx, `${space.name}效果表现`, item.narrative || rendering.title || '空间效果图', await imageFor(rendering)));
+          slides.push(addDocumentSlide(pptx, documentSlideTitle(space.name, rendering, '效果图'), rendering.title || '空间效果图', await imageFor(rendering)));
         }
         for (let index = 0; index < (space.products || []).length; index++) {
           const product = space.products[index];
