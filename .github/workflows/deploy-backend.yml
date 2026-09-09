@@ -325,11 +325,12 @@ jobs:
             const file = '.env';
             const key = process.env.CONFIG_KEY;
             const value = process.env.CONFIG_VALUE;
-            if (!key || /[\r\n]/.test(value)) throw new Error('Invalid environment value');
+            if (!key || /['\r\n]/.test(value)) throw new Error('Invalid environment value');
+            const encoded = `'${value}'`;
             const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
             const index = lines.findIndex(line => line.startsWith(`${key}=`));
-            if (index >= 0) lines[index] = `${key}=${value}`;
-            else lines.push(`${key}=${value}`);
+            if (index >= 0) lines[index] = `${key}=${encoded}`;
+            else lines.push(`${key}=${encoded}`);
             fs.writeFileSync(file, `${lines.join('\n').replace(/\n+$/, '')}\n`, { mode: 0o600 });
             NODE
             }
