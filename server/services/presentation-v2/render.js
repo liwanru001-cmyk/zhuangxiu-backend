@@ -106,8 +106,25 @@ async function preflight({ directory, limits, signal }) {
   const output = path.join(directory, `font-preflight-${require('crypto').randomUUID()}.pptx`);
   const design = { presentation: { title: '字体验证', background_color: '#FFFFFF' }, slides: [{ id: 'preflight', design_intent: '验证实际渲染字体', elements: [{ id: 'text', type: 'text', role: 'body', text: '装筱窝中文渲染验证 ABC 123', x: 1, y: 1, w: 10, h: 1, font_family: limits.fallbackFont, font_size: 20, color: '#000000' }] }] };
   try {
-    await require('./validate').resolveFonts(design, limits.fallbackFont, signal);
+    const validation = require('./validate');
+    await validation.resolveFonts(design, limits.fallbackFont, signal);
+    const measured = await validation.measure(design.slides[0].elements[0]);
+    if (!Number.isFinite(measured.height) || measured.height <= 0) {
+      throw failure('font_environment', '静态文字测量引擎无法处理中文字体', true);
+    }
     await render(design, [], output, { signal, timeout: limits.renderTimeout });
+    const outputStat = await fs.stat(output);
+    if (outputStat.size <= 0) throw failure('render_environment', '静态 PPTX 生成结果为空', true);
+    if (limits.renderValidation !== 'full') {
+      return {
+        mode: 'static',
+        text_engine: 'sharp/Pango',
+        fallback_font: limits.fallbackFont,
+        pptx_generation: 'passed',
+        render_validation: 'skipped',
+        render_validation_reason: 'render_engine_disabled',
+      };
+    }
     const result = await renderedValidation(design, output, { limits, signal, preflight: true });
     if (result.issues.some(i => i.severity === 'error')) throw failure('font_render_environment', '实际渲染引擎无法完整显示中文，请检查服务端字体环境', true);
     return result.environment;

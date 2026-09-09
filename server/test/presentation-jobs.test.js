@@ -62,8 +62,11 @@ test('repeated process interruption has bounded recovery attempts', async () => 
   assert.equal(f.row.status, 'failed'); assert.match(f.row.error, /多次中断/);
 });
 test('list response never exposes private files or snapshots', () => {
-  const result = jobs.publicJob({ id: 'j', title: '报告', result_file: '/private/file', worker_token: 'secret', source_json: 'sensitive' });
+  const result = jobs.publicJob({ id: 'j', title: '报告', result_file: '/private/file', worker_token: 'secret', source_json: 'sensitive',
+    generation_result: JSON.stringify({ generation_status: 'ai_success_unverified_render', render_validation: 'skipped', render_validation_reason: 'render_engine_disabled' }) });
   assert.equal(result.filename, '报告.pptx');
+  assert.equal(result.render_validation, 'skipped');
+  assert.equal(result.render_validation_reason, 'render_engine_disabled');
   for (const key of ['result_file', 'worker_token', 'source_json']) assert.equal(result[key], undefined);
 });
 

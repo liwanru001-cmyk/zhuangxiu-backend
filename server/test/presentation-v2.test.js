@@ -13,7 +13,7 @@ const { createContext } = require('../services/presentation-v2/job-store');
 const settings = { spaces: [{ space_id: 31, included: true, show_plan: true, show_rendering: true, show_products: true, selected_product_ids: [] }], sections: { space_solutions: true, whole_house_plan: true, product_summary: true } };
 const source = { project: { id: 3 }, whole_house_documents: [], whole_house_renderings: [], spaces: [{ id: 31, documents: [], renderings: [], products: [] }] };
 function design() { return { schema_version: 2, presentation: { title: '测试', design_concept: '自然', visual_direction: '简洁', background_color: '#FFFFFF' }, slides: [{ id: 's1', design_intent: '展示需求', elements: [{ id: 't1', type: 'text', role: 'body', text: '真实内容', x: 1, y: 1, w: 5, h: 1, font_size: 18, color: '#111111' }] }] }; }
-const config = limits({ PRESENTATION_V2_FALLBACK_FONT: 'Arial Unicode MS' });
+const config = limits({ PRESENTATION_V2_FALLBACK_FONT: 'Arial Unicode MS', PRESENTATION_V2_RENDER_VALIDATION: 'full' });
 const signal = () => new AbortController().signal;
 test('v2 strict schema rejects unknown fields, NaN, unsupported shapes and wrong opacity', () => {
   const { validate } = compile(config); assert.equal(validate(design()), true);
@@ -53,6 +53,7 @@ test('asset manifest separates colliding business IDs and snapshots original ver
   assert.deepEqual(await fs.readFile(manifest[0].original_path), bytes);
 });
 async function harness(t, overrides = {}) {
+  const { limits: runtimeLimits = config, ...adapterOverrides } = overrides;
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'v2-pipeline-')); t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const events = [], calls = [], phases = { repair: 0, fallback: 0 }; let saved = {};
   const context = { state: {}, assetDirectory: dir, remaining: () => 100000, checkpoint: async () => {},
@@ -65,12 +66,24 @@ async function harness(t, overrides = {}) {
     buildRenderPlan: (s, set, outline) => ({ source: s, settings: set, outline }),
   };
   const adapters = { preflight: async () => ({}), prepare: async () => [], request: async ({ reserve, repair }) => { await reserve(repair ? 'model_repair' : 'initial'); return repair ? { slides: design().slides } : design(); },
-    validate: async () => ({ issues: [], font_actions: [] }), render: async (d, m, output) => fs.writeFile(output, 'v2'), renderedValidation: async () => ({ issues: [], environment: {} }), ...overrides };
-  return { execute: () => run({ source, rawSettings: settings, legacy, context, output: path.join(dir, 'result.pptx'), limits: config, signal: signal(), adapters }), events, calls, phases, context, saved: () => saved, legacy };
+    validate: async () => ({ issues: [], font_actions: [] }), render: async (d, m, output) => fs.writeFile(output, 'v2'), renderedValidation: async () => ({ issues: [], environment: {} }), ...adapterOverrides };
+  return { execute: () => run({ source, rawSettings: settings, legacy, context, output: path.join(dir, 'result.pptx'), limits: runtimeLimits, signal: signal(), adapters }), events, calls, phases, context, saved: () => saved, legacy };
 }
 test('warning-only validation succeeds with one model request and no repair', async t => {
   const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'warning', code: 'overlap' }] }) });
   assert.equal((await h.execute()).generation_status, 'ai_success'); assert.deepEqual(h.calls, ['initial']); assert.equal(h.phases.repair, 0);
+});
+test('static mode creates PPTX, records skipped render validation and returns an explicit status', async t => {
+  const staticLimits = limits({ PRESENTATION_V2_FALLBACK_FONT: 'Arial Unicode MS', PRESENTATION_V2_RENDER_VALIDATION: 'static' });
+  const h = await harness(t, {
+    limits: staticLimits,
+    renderedValidation: async () => { throw new Error('full render validation must not run'); },
+  });
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_success_unverified_render');
+  assert.equal(result.render_validation, 'skipped');
+  assert.equal(result.render_validation_reason, 'render_engine_disabled');
+  assert.ok(h.events.some(event => event.event === 'render_validation' && event.skipped === true));
 });
 test('server repair failure falls straight to original legacy, never model repair', async t => {
   const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.03 }] }) });

@@ -83,7 +83,7 @@ test('durable MySQL reservations survive recovery and serialize competing reques
     assert.equal(completed.status, 'completed', completed.error_message);
     const [[generation]] = await db.query('SELECT * FROM project_presentation_runs WHERE job_id = ?', [id]);
     assert.equal(generation.model_requests, useFallback ? 2 : 1);
-    assert.equal(JSON.parse(generation.result_json).generation_status, useFallback ? 'legacy_fallback_success' : 'ai_success');
+    assert.equal(JSON.parse(generation.result_json).generation_status, useFallback ? 'legacy_fallback_success' : 'ai_success_unverified_render');
     assert.ok(await fs.readFile(path.join(dir, completed.result_file)));
   }
 

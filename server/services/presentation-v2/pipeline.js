@@ -26,6 +26,16 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
     await record({ event: 'validation', label, ...result, pre_font_layout: result.font_actions?.length ? beforeFonts : undefined, post_font_layout: result.font_actions?.length ? design : undefined });
     if (result.issues.some(i => i.severity === 'error')) return result.issues;
     await render(design, state.manifest, output, { signal, timeout: limits.renderTimeout });
+    if (limits.renderValidation !== 'full') {
+      await record({
+        event: 'render_validation',
+        label,
+        skipped: true,
+        reason: 'render_engine_disabled',
+        environment: { mode: 'static', text_engine: result.environment?.text_engine || 'sharp/Pango' },
+      });
+      return result.issues;
+    }
     const actual = await renderedValidation(design, output, { limits, signal });
     await record({ event: 'render_validation', label, ...actual });
     return [...result.issues, ...actual.issues];
@@ -114,7 +124,18 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       if (issues.some(i => i.severity === 'error')) throw failure('repair_failed', '一次修正后仍存在验证错误');
     }
     await save({ validated_response: design, validation_issues: issues });
-    return { outline: design, schema_version: 2, generation_mode: 'ai_design_v2', generation_status: repaired ? 'ai_repaired_success' : 'ai_success', fallback_used: false };
+    const renderVerified = limits.renderValidation === 'full';
+    return {
+      outline: design,
+      schema_version: 2,
+      generation_mode: 'ai_design_v2',
+      generation_status: renderVerified
+        ? (repaired ? 'ai_repaired_success' : 'ai_success')
+        : (repaired ? 'ai_repaired_success_unverified_render' : 'ai_success_unverified_render'),
+      fallback_used: false,
+      render_validation: renderVerified ? 'passed' : 'skipped',
+      render_validation_reason: renderVerified ? null : 'render_engine_disabled',
+    };
   } catch (error) {
     await fs.rm(output, { force: true });
     return fallback(error);

@@ -19,7 +19,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 20
 
     steps:
       - name: Checkout
@@ -148,7 +148,6 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          command_timeout: 25m
           envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET
           script: |
             set -euo pipefail
@@ -190,99 +189,15 @@ jobs:
               npm install -g pm2
             fi
 
-            missing_presentation_runtime='false'
-            for command_name in pdftoppm fc-match soffice; do
-              if ! command -v "$command_name" >/dev/null 2>&1; then
-                missing_presentation_runtime='true'
-              fi
-            done
-            if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
-              missing_presentation_runtime='true'
+            # Production deploys never install or upgrade operating-system packages.
+            # Static validation only requires the pre-provisioned Fontconfig + CJK font.
+            if ! command -v fc-match >/dev/null 2>&1 || ! command -v fc-list >/dev/null 2>&1; then
+              echo 'AI PPT v2 static validation requires pre-provisioned Fontconfig.'
+              exit 1
             fi
-            if [ "$missing_presentation_runtime" = 'true' ]; then
-              runner=''
-              if [ "$(id -u)" -ne 0 ]; then
-                if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
-                  runner='sudo'
-                else
-                  echo 'AI PPT v2 requires Poppler, Fontconfig, LibreOffice and a CJK font; passwordless sudo is unavailable.'
-                  exit 1
-                fi
-              fi
-
-              install_official_libreoffice_rpms() {
-                libreoffice_version='25.8.7'
-                libreoffice_archive="LibreOffice_${libreoffice_version}_Linux_x86-64_rpm.tar.gz"
-                libreoffice_url="https://download.documentfoundation.org/libreoffice/stable/${libreoffice_version}/rpm/x86_64/${libreoffice_archive}"
-                libreoffice_sha256='1b2d640d648c10ea7582c68ebc17fbb5f2551790deae40d2d9e4033fa2464d72'
-                libreoffice_tmp="$(mktemp -d /tmp/yinnkhome-libreoffice.XXXXXX)"
-
-                echo "Installing LibreOffice ${libreoffice_version} from the verified official RPM archive."
-                curl -fL --retry 3 --connect-timeout 20 \
-                  -o "$libreoffice_tmp/$libreoffice_archive" \
-                  "$libreoffice_url"
-                printf '%s  %s\n' \
-                  "$libreoffice_sha256" \
-                  "$libreoffice_tmp/$libreoffice_archive" \
-                  | sha256sum -c -
-                tar -xzf "$libreoffice_tmp/$libreoffice_archive" -C "$libreoffice_tmp"
-                libreoffice_rpm_dir="$(find "$libreoffice_tmp" -type d -name RPMS -print -quit)"
-                if [ -z "$libreoffice_rpm_dir" ]; then
-                  echo 'The LibreOffice archive did not contain an RPMS directory.'
-                  exit 1
-                fi
-                $runner dnf install -y "$libreoffice_rpm_dir"/*.rpm
-                libreoffice_binary="$(find /opt -path '*/program/soffice' -type f -print -quit)"
-                if [ -z "$libreoffice_binary" ]; then
-                  echo 'LibreOffice was installed but soffice could not be located.'
-                  exit 1
-                fi
-                $runner ln -sfn "$libreoffice_binary" /usr/local/bin/soffice
-              }
-
-              if command -v apt-get >/dev/null 2>&1; then
-                $runner apt-get update
-                $runner apt-get install -y --no-install-recommends \
-                  poppler-utils fontconfig libreoffice-impress fonts-noto-cjk
-              elif command -v dnf >/dev/null 2>&1; then
-                $runner dnf install -y poppler-utils fontconfig
-                if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
-                  if $runner dnf install -y google-noto-sans-cjk-ttc-fonts; then
-                    :
-                  elif $runner dnf install -y google-noto-sans-cjk-fonts; then
-                    :
-                  else
-                    echo 'Alibaba Cloud Linux has no supported Noto Sans CJK package.'
-                    exit 1
-                  fi
-                fi
-                if ! command -v soffice >/dev/null 2>&1; then
-                  if $runner dnf install -y libreoffice-impress; then
-                    :
-                  else
-                    install_official_libreoffice_rpms
-                  fi
-                fi
-              elif command -v yum >/dev/null 2>&1; then
-                $runner yum install -y poppler-utils fontconfig
-                $runner yum install -y google-noto-sans-cjk-ttc-fonts
-                $runner yum install -y libreoffice-impress
-              else
-                echo 'No supported package manager was found for the AI PPT v2 render runtime.'
-                exit 1
-              fi
-              $runner fc-cache -f
-
-              for command_name in pdftoppm fc-match soffice; do
-                if ! command -v "$command_name" >/dev/null 2>&1; then
-                  echo "AI PPT v2 runtime command is still unavailable: $command_name"
-                  exit 1
-                fi
-              done
-              if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
-                echo 'Noto Sans CJK SC is still unavailable after installation.'
-                exit 1
-              fi
+            if ! fc-list :lang=zh family 2>/dev/null | grep -Fqi 'Noto Sans CJK SC'; then
+              echo 'AI PPT v2 static validation requires pre-provisioned Noto Sans CJK SC.'
+              exit 1
             fi
 
             staging_dir="${APP_DIR}.deploy-tmp"
@@ -441,16 +356,15 @@ jobs:
             set_env_value PRESENTATION_V2_MODEL "$v2_model"
             set_env_value PRESENTATION_V2_API_KEY "$v2_api_key"
             set_env_value PRESENTATION_V2_ENDPOINT '/chat/completions'
-            set_env_value PRESENTATION_SOFFICE "$(command -v soffice)"
+            set_env_value PRESENTATION_V2_RENDER_VALIDATION 'static'
             set_env_value PRESENTATION_FC_MATCH "$(command -v fc-match)"
-            set_env_value PRESENTATION_PDFTOPPM "$(command -v pdftoppm)"
             set_env_value PRESENTATION_V2_FALLBACK_FONT 'Noto Sans CJK SC'
             chmod 600 .env
             set -a
             . ./.env
             set +a
 
-            echo 'Checking AI PPT v2 fonts and headless rendering.'
+            echo 'Checking AI PPT v2 fonts and static PPTX generation.'
             npm run check:presentation-v2
             model_check_id="$(printf '%s' "$PRESENTATION_V2_BASE_URL|$PRESENTATION_V2_MODEL|$PRESENTATION_V2_API_KEY" | sha256sum | cut -c1-20)"
             model_check_file="storage/presentation-v2-model-${model_check_id}.checked"

@@ -5,6 +5,10 @@ function limits(env = process.env) {
     if (!Number.isFinite(parsed) || parsed <= 0 || parsed > max) throw new Error(`Invalid PRESENTATION_V2_${key}`);
     return Math.floor(parsed);
   };
+  const renderValidation = String(env.PRESENTATION_V2_RENDER_VALIDATION || 'static').trim().toLowerCase();
+  if (!['static', 'full'].includes(renderValidation)) {
+    throw new Error('Invalid PRESENTATION_V2_RENDER_VALIDATION; expected static or full');
+  }
   return {
     maxSlides: n('MAX_SLIDES', 40, 80), maxElements: n('MAX_ELEMENTS', 40, 100),
     maxAssets: n('MAX_ASSETS', 300, 1000), maxImages: n('MAX_IMAGES', 32, 100),
@@ -15,6 +19,7 @@ function limits(env = process.env) {
     callTimeout: n('CALL_TIMEOUT_MS', 180000, 300000), taskTimeout: n('TASK_TIMEOUT_MS', 900000, 1800000),
     renderTimeout: n('RENDER_TIMEOUT_MS', 90000, 180000), maxQueue: n('MAX_QUEUE', 100, 1000),
     fallbackFont: env.PRESENTATION_V2_FALLBACK_FONT || 'Noto Sans CJK SC',
+    renderValidation,
   };
 }
 const spec = { width: 13.333333, height: 7.5, unit: 'inch', aspect_ratio: '16:9' };

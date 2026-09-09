@@ -34,6 +34,8 @@ function publicJob(row) {
   const generation = row.generation_result ? parse(row.generation_result) : {};
   return { id: row.id, title: row.title, status: row.status, phase: row.phase,
     generation_mode: generation.generation_mode, generation_status: generation.generation_status,
+    render_validation: generation.render_validation,
+    render_validation_reason: generation.render_validation_reason,
     schema_version: generation.schema_version || (row.outline_json ? parse(row.outline_json).schema_version : 1) || 1,
     fallback_used: generation.fallback_used || Boolean(row.fallback_used),
     notice: row.status === 'completed' && (generation.fallback_used || row.fallback_used) ? '本次已使用兼容模式完成生成。' : null,

@@ -4,7 +4,7 @@
 
 新提交的异步任务使用 `_generation_version=2`（服务器覆盖，客户端不能降版本）。旧任务与旧同步目录/导出接口保留原逻辑，历史 JSON 无须迁移。
 
-v2：原始 source/settings 快照 → 可引用素材清单/Preview → 字体与渲染环境自检 → 多模态 Qwen → Schema/字体/几何/文字/遮挡验证 → 实际 PPTX/PDF 验证 → 保存文件。
+第一阶段 v2：原始 source/settings 快照 → 可引用素材清单/Preview → 字体环境自检 → 多模态 Qwen → Schema/字体/几何/文字/遮挡验证 → 生成 PPTX → 保存文件。真实 PPTX/PDF 渲染验证暂时关闭，后续迁移到独立渲染环境后启用。
 
 整份任务只允许一轮修正：仅轻微文字溢出时服务器最多缩字 4%；否则一次模型调用集中重设计失败页。服务器修正失败后不再请求模型，模型修正失败后不再服务器修正。warning 不触发修正。无法定位失败页的非法整体 JSON 直接降级，禁止重生成整套 v2。
 
@@ -16,7 +16,7 @@ v2：原始 source/settings 快照 → 可引用素材清单/Preview → 字体�
 - `schema.js/config.js`：严格 JSON Schema、执行单位和资源限制。
 - `model.js`：Qwen 多模态请求、失败页重设计、原始响应和 usage 记录。
 - `validate.js`：字体解析、Pango 字形测量、旋转边界、遮挡分类、受控轻修正。
-- `render.js/render-process.js`：PptxGenJS 通用绘制、隔离子进程、LibreOffice/PDF.js 检查。
+- `render.js/render-process.js`：PptxGenJS 通用绘制、隔离子进程；`full` 模式支持 LibreOffice/PDF.js 检查。
 - `pipeline.js`：单轮修正和独立 legacy 路径。
 - `job-store.js`：持久化额度、截止时间、事件与结果。
 - `presentation-jobs.js`：原队列接入、跨进程并发锁、授权复核、文件完成状态。
@@ -45,7 +45,7 @@ v2：原始 source/settings 快照 → 可引用素材清单/Preview → 字体�
 
 数据库命名锁使多进程 worker 全局最多一个生成任务执行；提交命名锁与队列容量检查限制排队量。渲染在独立 Node 子进程运行，内存和超时受限。正文测量与素材处理逐项执行，并检查总任务取消信号。
 
-文件存在并保存成功后才写完成状态。最终结果为 `ai_success`、`ai_repaired_success`、`legacy_fallback_success` 或 `failed`；原队列仍使用 `queued/running/completed/failed` 保持旧客户端兼容。失败技术细节留后台，普通用户收到简短提示。
+文件存在并保存成功后才写完成状态。第一阶段静态模式结果为 `ai_success_unverified_render` 或 `ai_repaired_success_unverified_render`，并保存 `render_validation=skipped` 和原因；完整渲染模式使用 `ai_success` 或 `ai_repaired_success`。降级和失败分别为 `legacy_fallback_success`、`failed`。原队列仍使用 `queued/running/completed/failed` 保持旧客户端兼容。
 
 ## 默认资源限制
 
@@ -69,11 +69,11 @@ v2：原始 source/settings 快照 → 可引用素材清单/Preview → 字体�
 
 1. 安装锁定依赖：`npm ci`。PDF.js 固定为已验证的 `5.4.149`；不要未经验证扩大版本范围。CI 当前使用 Node 22。
 2. MySQL 账号需要创建两张新表的权限；首次发布前可在测试环境触发建表并检查。
-3. 服务器安装 headless LibreOffice、fontconfig、Poppler，以及可用的中文字体（默认 `Noto Sans CJK SC`）。配置 `PRESENTATION_SOFFICE` 绝对路径、`PRESENTATION_V2_FALLBACK_FONT`；自定义字体环境使用 `FONTCONFIG_FILE`。
+3. 第一阶段配置 `PRESENTATION_V2_RENDER_VALIDATION=static`，服务器只需预装 Fontconfig 和中文字体（默认 `Noto Sans CJK SC`）。部署脚本只检查环境，禁止安装操作系统软件包。未来独立渲染环境配置 `full`、`PRESENTATION_SOFFICE` 和 Poppler。
 4. v2 使用北京业务空间专属 OpenAI 兼容地址和 `qwen3.8-max`。生产部署在原 `PRESENTATION_AI_MODEL` 为 Qwen 时复用现有同地域 Key，并把值固化为 `PRESENTATION_V2_*`；也可用同名 GitHub Actions Secrets 显式覆盖。不得使用只允许编程工具的 Token Plan/Coding Plan Key。
 5. 保留原 `PRESENTATION_AI_*` 供 legacy 使用。设置稳定私有 `PRESENTATION_RESULTS_DIR`，禁止放入公开 storage 目录。
-6. 本地 Codex 验收只使用 bundled LibreOffice，不使用桌面版 LibreOffice。
-7. 执行无模型渲染自检，再用一个授权真实项目进行 Qwen 联调。模型效果、账单及线上字体环境必须以实际试跑为准。
+6. 本地可用 bundled LibreOffice 验收完整渲染模式，不使用桌面版 LibreOffice。
+7. 线上先执行静态环境自检和最小视觉模型探针，再用一个授权真实项目联调。模型效果、账单及版面质量以实际试跑为准。
 
 ## 验证命令
 
@@ -82,8 +82,10 @@ cd server
 npm test
 # 可选：启动临时、无 TCP 的隔离 MySQL，测试原子计数及完整 worker；不访问业务库。
 PRESENTATION_MYSQL_TEST=1 node --test test/presentation-v2-mysql.test.js
-# 依赖已安装且配置了字体和 PRESENTATION_SOFFICE；不调用模型。
-node scripts/verify-presentation-v2.js tmp/presentation-v2-proof
+# 静态模式检查字体与 PPTX 生成；不调用模型。
+npm run check:presentation-v2
+# 独立渲染环境可额外运行完整渲染样张验证。
+PRESENTATION_V2_RENDER_VALIDATION=full node scripts/verify-presentation-v2.js tmp/presentation-v2-proof
 ```
 
 ```sh
@@ -94,7 +96,7 @@ dart analyze lib/models/project_presentation.dart lib/screens/project_presentati
 
 ## 验证能力与边界
 
-Pango 使用实际字体字形测量文本，支持宽度换行、字号、粗细、行距、段距、内边距及对齐。它不等同于 PowerPoint 的排版引擎。实际生成后，LibreOffice 转为 PDF，检查页数、文本字符覆盖和未旋转文本框的实际文字边界；旋转边界及透明图片遮挡另做几何检查。
+Pango 使用实际字体字形测量文本，支持宽度换行、字号、粗细、行距、段距、内边距及对齐。它不等同于 PowerPoint 的排版引擎。第一阶段因此明确记录为未经过真实渲染验证，不能把静态通过统计为完整渲染通过。未来 `full` 模式由 LibreOffice 转为 PDF，检查页数、文本字符覆盖和未旋转文本框的实际文字边界。
 
 警告不证明版面错误，也不会触发修正。复杂图像的主体是否被裁掉、半透明遮挡后的可读性、旋转文本的精确字形覆盖等仍需人工审阅，不能宣称算法保证所有 PowerPoint 客户端完全一致。
 
