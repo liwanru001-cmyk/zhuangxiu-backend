@@ -5,6 +5,7 @@ const os = require('os');
 const path = require('path');
 const { requireProjectContext } = require('../utils/project-context');
 const { success, error } = require('../utils/response');
+const jobs = require('../services/presentation-jobs');
 const presentationService = require('../services/project-presentation.service');
 const { generateFromPlan, safeFileName } = require('../scripts/generate-ppt-from-plan');
 
@@ -96,4 +97,37 @@ async function exportPptx(req, res) {
   }
 }
 
-module.exports = { source, outline, exportPptx };
+async function listJobs(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  return success(res, await jobs.list(context.projectId));
+}
+async function createJob(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  const body = req.body || {};
+  if (!body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) return error(res, '请填写汇报设置');
+  if (!/^[0-9a-f-]{36}$/i.test(body.request_key || '')) return error(res, '任务标识不正确');
+  const result = await jobs.submit(context.projectId, req.user.id, { ...body.settings, project_id: context.projectId, _asset_base_url: requestBaseUrl(req) }, body.request_key);
+  return success(res, result, '已加入生成队列');
+}
+async function retryJob(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  const result = await jobs.retry(context.projectId, req.params.jobId);
+  if (!result) return error(res, '方案不存在', 404);
+  return success(res, jobs.publicJob(result));
+}
+async function downloadJob(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  const job = await jobs.find(context.projectId, req.params.jobId);
+  if (!job) return error(res, '方案不存在', 404);
+  if (job.status !== 'completed' || !job.result_file) return error(res, '方案尚未生成完成', 409);
+  const filename = path.basename(job.result_file);
+  const output = path.join(jobs.resultsDirectory, filename);
+  try { await fs.access(output); } catch (_) { return error(res, '生成文件不存在，请重新生成方案', 410); }
+  res.setHeader('Cache-Control', 'no-store');
+  return res.download(output, `${safeFileName(job.title)}.pptx`);
+}
+module.exports = { source, outline, exportPptx, listJobs, createJob, retryJob, downloadJob };

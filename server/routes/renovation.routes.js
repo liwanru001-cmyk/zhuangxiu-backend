@@ -356,6 +356,10 @@ router.get('/projects/:id/spaces/:spaceId/products', ...protectedRoute, asyncHan
 router.post('/projects/:id/spaces/:spaceId/products', ...protectedRoute, asyncHandler(spaceProducts.save));
 router.put('/projects/:id/spaces/:spaceId/products/:itemId', ...protectedRoute, asyncHandler(spaceProducts.save));
 router.delete('/projects/:id/spaces/:spaceId/products/:itemId', ...protectedRoute, asyncHandler(spaceProducts.remove));
+router.get('/projects/:id/presentations', ...protectedRoute, asyncHandler(projectPresentations.listJobs));
+router.post('/projects/:id/presentations', ...protectedRoute, asyncHandler(projectPresentations.createJob));
+router.post('/projects/:id/presentations/:jobId/retry', ...protectedRoute, asyncHandler(projectPresentations.retryJob));
+router.get('/projects/:id/presentations/:jobId/download', ...protectedRoute, asyncHandler(projectPresentations.downloadJob));
 router.get('/projects/:id/presentation-source', ...protectedRoute, asyncHandler(projectPresentations.source));
 router.post('/projects/:id/presentations/outline', ...protectedRoute, asyncHandler(projectPresentations.outline));
 router.post('/projects/:id/presentations/export', ...protectedRoute, asyncHandler(projectPresentations.exportPptx));

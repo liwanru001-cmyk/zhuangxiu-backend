@@ -38,7 +38,7 @@ function safeFileName(value) {
 async function fetchFile(url, destination) {
   const parsed = new URL(storage.signedUrlForStorageUri(storage.canonicalStorageUri(url)));
   if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error('资料地址协议不支持');
-  const response = await fetch(parsed);
+  const response = await fetch(parsed, { signal: AbortSignal.timeout(60000) });
   if (!response.ok) throw new Error(`资料下载失败：${response.status}`);
   await fs.writeFile(destination, Buffer.from(await response.arrayBuffer()));
 }
@@ -49,7 +49,7 @@ async function materializeImage(source, directory, index) {
   await fetchFile(source.url || source.image_url, input);
   if ((source.type || '').toLowerCase() === 'pdf' || String(source.url || '').toLowerCase().includes('.pdf')) {
     const prefix = output.slice(0, -4);
-    await execFileAsync('pdftoppm', ['-png', '-f', '1', '-singlefile', '-r', '180', input, prefix]);
+    await execFileAsync('pdftoppm', ['-png', '-f', '1', '-singlefile', '-r', '180', input, prefix], { timeout: 60000 });
   } else {
     await sharp(input).rotate().png().toFile(output);
   }

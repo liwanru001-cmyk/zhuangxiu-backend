@@ -4719,6 +4719,7 @@ require('./config/db').schemaReady.then(() => app.listen(PORT, () => {
   console.log(`🚀 装筱窝后端启动: http://localhost:${PORT}`);
   console.log(`📋 管理后台: http://localhost:${PORT}/admin/`);
   startCompanyEvaluationScheduler();
+  require('./services/presentation-jobs').start();
 })).catch(err => {
   console.error('Backend startup refused: database migration is not ready.', err.message);
   process.exit(1);

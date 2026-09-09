@@ -29,3 +29,6 @@ zhuangxiu_app/build/
 # Editor and OS state
 .vscode/
 .idea/
+
+# Private generated presentation artifacts
+/private-presentation-results/
