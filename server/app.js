@@ -154,6 +154,8 @@ function adminAuth(req, res, next) {
   }
 }
 
+app.use('/api/admin/presentations', adminAuth, require('./routes/admin-presentations.routes')(db));
+
 function desktopReleaseRow(row) {
   return {
     id: Number(row.id),
@@ -4656,6 +4658,9 @@ app.put('/api/admin/inspection-template-items/:id', adminAuth, requireInspection
 
 // admin 静态文件
 app.get('/admin/billing', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/admin/index.html'));
+});
+app.get('/admin/presentations', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
 });
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));

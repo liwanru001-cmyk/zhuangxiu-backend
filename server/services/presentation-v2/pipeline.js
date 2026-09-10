@@ -71,6 +71,8 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
   }
   if (state.fallback_started) return fallback(failure(state.fallback_reason?.code || 'v2_failed', state.fallback_reason?.message || '恢复旧流程'));
   try {
+    // Do not label resumed historical designs with the currently running code.
+    if (!state.design && !state.generator_version) await save({ generator_version: require('./version').snapshot() });
     if (!state.limits_snapshot) await save({ limits_snapshot: limits });
     const environment = await (adapters.preflight || renderer.preflight)({ directory: path.dirname(output), limits, signal });
     await record({ event: 'render_environment_preflight', environment });
