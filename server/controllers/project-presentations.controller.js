@@ -114,9 +114,9 @@ async function createJob(req, res) {
 async function retryJob(req, res) {
   const context = await authorize(req, res);
   if (!context) return;
-  const result = await jobs.retry(context.projectId, req.params.jobId);
+  const result = await jobs.retry(context.projectId, req.user.id, req.params.jobId, { assetBaseUrl: requestBaseUrl(req) });
   if (!result) return error(res, '方案不存在', 404);
-  return success(res, jobs.publicJob(result));
+  return success(res, result, '已创建新的生成任务');
 }
 async function downloadJob(req, res) {
   const context = await authorize(req, res);

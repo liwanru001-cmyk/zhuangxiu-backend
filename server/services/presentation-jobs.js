@@ -85,11 +85,17 @@ async function submitOn(database, projectId, userId, settings, requestKey) {
   const [rows] = await database.query('SELECT * FROM project_presentation_jobs WHERE project_id = ? AND user_id = ? AND request_key = ?', [projectId, userId, requestKey]);
   return publicJob(rows[0]);
 }
-async function retry(projectId, id) {
+async function retry(projectId, userId, id, { assetBaseUrl } = {}) {
   await ensureSchema();
-  await db.query(`UPDATE project_presentation_jobs SET status = 'queued', phase = 'queued',
-    error_message = NULL, worker_token = NULL, lease_until = NULL WHERE project_id = ? AND id = ? AND status = 'failed'`, [projectId, id]);
-  return find(projectId, id);
+  const [rows] = await db.query(`SELECT title, settings_json FROM project_presentation_jobs
+    WHERE project_id = ? AND id = ? AND status = 'failed' LIMIT 1`, [projectId, id]);
+  const failed = rows[0];
+  if (!failed) return null;
+  const settings = { ...parse(failed.settings_json), title: failed.title, project_id: projectId };
+  if (assetBaseUrl) settings._asset_base_url = assetBaseUrl;
+  // A V2 run owns a fixed deadline and one-shot model budgets. Re-queuing the
+  // same row would reuse that exhausted run, so retry as a fresh monitored job.
+  return submit(projectId, userId, settings, randomUUID());
 }
 
 // A database lease prevents deployment smoke processes / multiple instances

@@ -90,6 +90,37 @@ test('submission is idempotent and persists queued work without calling the mode
   assert.equal(records.size, 1);
 });
 
+test('retry creates a fresh V2 job instead of reusing exhausted run state', async () => {
+  const oldId = '11111111-1111-1111-1111-111111111111';
+  let inserted;
+  query = async (sql, params = []) => {
+    if (sql.startsWith('CREATE TABLE')) return [{}];
+    if (sql.includes("id = ? AND status = 'failed'")) {
+      assert.deepEqual(params, [91, oldId]);
+      return [[{ title: '原方案', settings_json: JSON.stringify({ title: '旧标题', _generation_version: 2, _asset_base_url: 'https://old.example' }) }]];
+    }
+    if (sql.includes('request_key = ?') && sql.startsWith('SELECT')) {
+      if (!inserted) return [[]];
+      return [[inserted]];
+    }
+    if (sql.includes('COUNT(*) AS total')) return [[{ total: 0 }]];
+    if (sql.startsWith('INSERT INTO project_presentation_jobs')) {
+      inserted = { id: params[0], project_id: params[1], user_id: params[2], request_key: params[3], title: params[4], settings_json: params[5], status: 'queued', phase: 'queued' };
+      return [{ affectedRows: 1 }];
+    }
+    throw new Error(`Unexpected SQL: ${sql}`);
+  };
+
+  const retried = await jobs.retry(91, 8, oldId, { assetBaseUrl: 'https://new.example' });
+  assert.equal(retried.status, 'queued');
+  assert.notEqual(retried.id, oldId);
+  assert.equal(inserted.user_id, 8);
+  const settings = JSON.parse(inserted.settings_json);
+  assert.equal(settings.title, '原方案');
+  assert.equal(settings._asset_base_url, 'https://new.example');
+  assert.equal(settings._generation_version, 2);
+});
+
 test('download rejects a non-member before accessing files', async () => {
   const controller = require('../controllers/project-presentations.controller');
   query = async sql => {
