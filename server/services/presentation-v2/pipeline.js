@@ -121,16 +121,27 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       const result = await generate({ source: state.model_source, settings, manifest: state.manifest, limits, signal,
         repair: { design, ids, errors }, reserve: context.reserve, record });
       if (!result || Object.keys(result).some(k => k !== 'slides') || !Array.isArray(result.slides) || result.slides.length !== ids.length || new Set(result.slides.map(s => s.id)).size !== ids.length || result.slides.some(s => !ids.includes(s.id))) throw failure('repair_page_ids', '模型修正页 ID 与失败页不一致');
-      const next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
-      // Factual text cannot silently disappear during a layout repair.
+      const restoredText = [];
+      // The model owns repair geometry, while the server owns the exact copy.
+      // Restore every original text element by ID before any fit or validation.
       for (const old of design.slides.filter(s => ids.includes(s.id))) {
         const replacement = result.slides.find(s => s.id === old.id);
+        const replacementTexts = new Map((replacement.elements || []).filter(e => e.type === 'text').map(e => [e.id, e]));
+        for (const originalText of old.elements.filter(e => e.type === 'text')) {
+          const repairedText = replacementTexts.get(originalText.id);
+          if (!repairedText) throw failure('repair_content_changed', '模型单页修正删除或重命名了原文本元素');
+          if (repairedText.text !== originalText.text) {
+            repairedText.text = originalText.text;
+            restoredText.push({ slide_id: old.id, element_id: originalText.id });
+          }
+        }
         const paragraphs = page => (page.elements || []).filter(e => e.type === 'text')
           .flatMap(e => String(e.text).split(/\n+/)).map(text => text.replace(/\s/g, '')).filter(Boolean).sort();
         if (JSON.stringify(paragraphs(old)) !== JSON.stringify(paragraphs(replacement))) throw failure('repair_content_changed', '模型单页修正改变了原始文案');
       }
+      const next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
       await save({ repaired_design: next, repair_mode: 'model' });
-      await record({ event: 'repair_actions', mode: 'model', pre_repair_layout: design, post_repair_layout: next });
+      await record({ event: 'repair_actions', mode: 'model', restored_text: restoredText, pre_repair_layout: design, post_repair_layout: next });
       design = structuredClone(next); repaired = true;
       issues = await check(design, 'model_repaired');
     }

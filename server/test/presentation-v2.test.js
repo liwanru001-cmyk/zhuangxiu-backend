@@ -234,6 +234,18 @@ test('8.46 percent residual shrinks within the existing product card and is reme
   const blocked = await finishTextFit(d, issues, { measure: async () => ({ height: 3.7 }) });
   assert.equal(blocked, null);
 });
+test('text fit keeps successful elements when another element cannot be repaired', async () => {
+  const d = design();
+  const second = structuredClone(d.slides[0]); second.id = 's2'; second.elements[0].id = 't2'; d.slides.push(second);
+  const issues = [
+    { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.03 },
+    { severity: 'error', code: 'text_overflow', slide_id: 's2', element_id: 't2', overflow_ratio: 4 },
+  ];
+  const fit = await finishTextFit(d, issues, { measure: async element => ({ height: element.id === 't1' ? 1.03 : 100 }) });
+  assert.equal(fit.design.slides[0].elements[0].h, 1.04);
+  assert.equal(fit.design.slides[1].elements[0].h, 1);
+  assert.ok(fit.actions.every(action => action.slide_id === 's1'));
+});
 test('new model errors never invoke legacy, while already persisted legacy jobs can resume', async t => {
   const h = await harness(t, { request: async () => { throw new Error('model unavailable'); } });
   await assert.rejects(h.execute(), /model unavailable/);
@@ -282,14 +294,41 @@ test('pipeline accepts measured boundary repair with no legacy request', async t
   assert.deepEqual(h.calls, []);
   assert.equal(h.saved().text_fit_used, true);
 });
-test('model repairs only failed pages and keeps valid pages untouched', async t => {
+test('model receives only unresolved pages and server restores changed text by element ID', async t => {
   let checks = 0;
   const d = design(); d.slides.push({ ...structuredClone(d.slides[0]), id: 's2' });
   const h = await harness(t, {
-    request: async ({ reserve, repair }) => { await reserve(repair ? 'model_repair' : 'initial'); if (!repair) return d; assert.deepEqual(repair.ids, ['s1']); const page = design().slides[0]; page.elements[0].x = 2; return { slides: [page] }; },
-    validate: async () => ({ issues: checks++ === 0 ? [{ severity: 'error', code: 'out_of_bounds', slide_id: 's1' }] : [] }),
+    request: async ({ reserve, repair }) => {
+      await reserve(repair ? 'model_repair' : 'initial');
+      if (!repair) return d;
+      assert.deepEqual(repair.ids, ['s2']);
+      const page = structuredClone(d.slides[1]); page.elements[0].x = 2; page.elements[0].text = '模型删改的文案';
+      return { slides: [page] };
+    },
+    finishTextFit: async current => {
+      const fitted = structuredClone(current); fitted.slides[0].elements[0].font_size = 17;
+      return { design: fitted, actions: [{ slide_id: 's1', element_id: 't1', type: 'font_size_adjustment' }] };
+    },
+    validate: async current => {
+      const pass = checks++;
+      if (pass === 0) return { issues: [
+        { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1' },
+        { severity: 'error', code: 'text_overflow', slide_id: 's2', element_id: 't1' },
+      ] };
+      if (pass === 1) {
+        assert.equal(current.slides[0].elements[0].font_size, 17);
+        return { issues: [{ severity: 'error', code: 'text_overflow', slide_id: 's2', element_id: 't1' }] };
+      }
+      assert.equal(current.slides[1].elements[0].text, '真实内容');
+      assert.equal(current.slides[1].elements[0].x, 2);
+      return { issues: [] };
+    },
   });
-  const result = await h.execute(); assert.equal(result.generation_status, 'ai_repaired_success'); assert.deepEqual(result.outline.slides[1], d.slides[1]);
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_repaired_success');
+  assert.equal(result.outline.slides[0].elements[0].font_size, 17);
+  assert.equal(result.outline.slides[1].elements[0].text, '真实内容');
+  assert.ok(h.events.some(event => event.mode === 'model' && event.restored_text?.some(item => item.slide_id === 's2' && item.element_id === 't1')));
 });
 test('fatal asset failure never invokes either model or legacy', async t => {
   const h = await harness(t, { prepare: async () => { throw Object.assign(new Error('broken'), { fatal: true }); } });

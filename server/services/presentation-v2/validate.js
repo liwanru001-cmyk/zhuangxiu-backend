@@ -141,11 +141,11 @@ async function finishTextFit(design, issues, options = {}) {
     // Only remove unused space below top-aligned, unrotated text. Never move
     // content, narrow its width, crop images or hide actual text to pass bounds.
     if (!e || e.type !== 'text' || e.rotation || (e.vertical_align && e.vertical_align !== 'top')
-        || e.x < 0 || e.y < 0 || e.x + e.w > spec.width || e.y >= spec.height) return null;
+        || e.x < 0 || e.y < 0 || e.x + e.w > spec.width || e.y >= spec.height) continue;
     const available = Math.floor((spec.height - e.y) * 1000) / 1000;
-    if (e.h <= available || e.h - available > e.h * 0.05) return null;
+    if (e.h <= available || e.h - available > e.h * 0.05) continue;
     const measured = await (options.measure || measure)(e);
-    if (!Number.isFinite(measured.height) || measured.height + 0.01 > available) return null;
+    if (!Number.isFinite(measured.height) || measured.height + 0.01 > available) continue;
     const before = e.h;
     e.h = available;
     boundaryActions.push({ slide_id: error.slide_id, element_id: e.id, type: 'text_box_boundary_adjustment',
@@ -157,9 +157,9 @@ async function finishTextFit(design, issues, options = {}) {
     options.signal?.throwIfAborted();
     const slide = fit.design.slides.find(s => s.id === error.slide_id);
     const index = slide?.elements.findIndex(e => e.id === error.element_id);
-    if (!slide || index < 0) return null;
+    if (!slide || index < 0) continue;
     const e = slide.elements[index];
-    if (e.type !== 'text' || e.rotation || (e.vertical_align && e.vertical_align !== 'top')) return null;
+    if (e.type !== 'text' || e.rotation || (e.vertical_align && e.vertical_align !== 'top')) continue;
     const original = { font_size: e.font_size, line_spacing: e.line_spacing, paragraph_spacing: e.paragraph_spacing, h: e.h };
     const preferred = e.font_size;
     // Keep the fit bounded so the server preserves the model's design rather
@@ -177,7 +177,7 @@ async function finishTextFit(design, issues, options = {}) {
       if (horizontal > 0 && ob.y >= e.y + 0.025) bottom = Math.min(bottom, ob.y);
     }
     const available = Math.floor((bottom - e.y) * 1000) / 1000;
-    if (!(available > 0)) return null;
+    if (!(available > 0)) continue;
     const heightIsSafe = height => {
       const expanded = bounds({ ...e, h: height });
       if (expanded.x < 0 || expanded.y < 0 || expanded.x + expanded.w > spec.width || expanded.y + expanded.h > spec.height) return false;
@@ -207,7 +207,7 @@ async function finishTextFit(design, issues, options = {}) {
         break;
       }
     }
-    if (!selected) return null;
+    if (!selected) continue;
     Object.assign(e, selected.candidate);
     if (e.font_size !== original.font_size) fit.actions.push({ slide_id: slide.id, element_id: e.id, type: 'font_size_adjustment',
       before: original.font_size, after: e.font_size, minimum, reason: 'largest_readable_font_that_fits' });
@@ -217,6 +217,6 @@ async function finishTextFit(design, issues, options = {}) {
         after: e.h, measured_height: selected.measured.height, available_height: available, reason: 'measured_text_height' });
     }
   }
-  return fit;
+  return fit.actions.length ? fit : null;
 }
 module.exports = { validate, bounds, intersection, measure, lightRepair, finishTextFit, resolveFonts };
