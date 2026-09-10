@@ -36,8 +36,29 @@ test('overflow beyond the safe minimum font and page height requires structural 
   const result = await validate(d, [], { limits: config, signal: signal(), resolveFonts: async () => [], measure: async e => ({ height: e.font_size === 18 ? 2 : 1.7, lines: 4 }) });
   const error = result.issues.find(issue => issue.code === 'text_overflow');
   assert.equal(error.structural_relayout_required, true);
-  assert.equal(error.minimum_safe_font_size, 15.84);
-  assert.equal(error.minimum_safe_measured_height, 1.7);
+  assert.equal(error.real_available_height, 1.5);
+  assert.deepEqual(error.blocking_element_ids, []);
+  assert.equal(error.safe_min_font_size, 15.84);
+  assert.equal(error.measured_height_at_min_font, 1.7);
+});
+test('structural overflow uses the nearest real blocker and reports every blocking element', async () => {
+  const d = design();
+  const text = d.slides[0].elements[0];
+  Object.assign(text, { y: 2, h: 1, font_size: 18, line_spacing: 24, paragraph_spacing: 6, font_family: config.fallbackFont });
+  d.slides[0].elements.push(
+    { id: 'warning_panel', type: 'shape', shape_type: 'rect', x: 1, y: 5, w: 5, h: 0.5, fill: '#FFFFFF' },
+    { id: 'warning_image', type: 'image', asset_id: 'warning', fit: 'contain', x: 1, y: 4.5, w: 1, h: 0.5 },
+    { id: 'warning_text', type: 'text', role: 'caption', text: '提示', x: 2, y: 4.8, w: 4, h: 0.3, font_size: 10, color: '#111111' },
+  );
+  const manifest = [{ asset_id: 'warning', highres_path: __filename, width: 100, height: 100 }];
+  const result = await validate(d, manifest, { limits: config, signal: signal(), resolveFonts: async () => [],
+    measure: async e => e.id === 't1' ? { height: e.font_size === 18 ? 4 : 3, lines: 8 } : { height: 0.2, lines: 1 } });
+  const error = result.issues.find(issue => issue.code === 'text_overflow' && issue.element_id === 't1');
+  assert.equal(error.page_remaining_height, 5.5);
+  assert.equal(error.real_available_height, 2.5);
+  assert.deepEqual(error.blocking_element_ids, ['warning_panel', 'warning_image', 'warning_text']);
+  assert.equal(error.measured_height_at_min_font, 3);
+  assert.equal(error.structural_relayout_required, true);
 });
 test('representatives honor primary and existing order, separate whole house and avoid non-layout documents', () => {
   const s = structuredClone(source);

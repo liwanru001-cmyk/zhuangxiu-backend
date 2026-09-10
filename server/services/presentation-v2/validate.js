@@ -30,6 +30,27 @@ function displayRect(e, assets) {
   return { ...e, x: e.x + (e.w - w) / 2, y: e.y + (e.h - h) / 2, w, h };
 }
 function intersection(a, b) { return Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y)); }
+function textAvailableSpace(slide, index, e) {
+  let bottom = spec.height;
+  const blocking = [];
+  for (let otherIndex = 0; otherIndex < slide.elements.length; otherIndex++) {
+    const other = slide.elements[otherIndex];
+    if (otherIndex === index || (other.opacity ?? 1) === 0) continue;
+    const ob = bounds(other);
+    const background = otherIndex < index && ['shape', 'image'].includes(other.type)
+      && ob.x <= e.x && ob.y <= e.y && ob.x + ob.w >= e.x + e.w && ob.y + ob.h >= bottom;
+    if (background) continue;
+    const horizontal = Math.max(0, Math.min(e.x + e.w, ob.x + ob.w) - Math.max(e.x, ob.x));
+    if (horizontal > 0 && ob.y >= e.y + 0.025) {
+      bottom = Math.min(bottom, ob.y);
+      blocking.push(other.id);
+    }
+  }
+  return {
+    realAvailableHeight: Math.floor(Math.max(0, bottom - e.y) * 1000) / 1000,
+    blockingElementIds: blocking,
+  };
+}
 async function resolveFonts(design, fallback, signal) {
   const actions = []; const cache = new Map();
   async function resolve(name) {
@@ -76,7 +97,8 @@ async function validate(design, manifest, options) {
     signal.throwIfAborted();
     if (slideIds.has(slide.id)) add('error', 'duplicate_slide', slide, null, '页面 ID 重复');
     slideIds.add(slide.id); const ids = new Set();
-    for (const e of slide.elements) {
+    for (let elementIndex = 0; elementIndex < slide.elements.length; elementIndex++) {
+      const e = slide.elements[elementIndex];
       signal.throwIfAborted();
       if (ids.has(e.id)) add('error', 'duplicate_element', slide, e, '元素 ID 重复');
       ids.add(e.id);
@@ -96,13 +118,15 @@ async function validate(design, manifest, options) {
         const measured = await (options.measure || measure)(e);
         if (measured.height > e.h + 0.025) {
           const pageRemaining = Math.max(0, spec.height - e.y);
+          const available = textAvailableSpace(slide, elementIndex, e);
           const { candidate, minimum } = minimumTextCandidate(e);
           const minimumMeasured = minimum === e.font_size ? measured : await (options.measure || measure)(candidate);
-          const structural = minimumMeasured.height > pageRemaining + 0.025;
+          const structural = minimumMeasured.height > available.realAvailableHeight + 0.025;
           add('error', 'text_overflow', slide, e, '文本尺寸检测超出文本框', {
             overflow_ratio: measured.height / e.h - 1, measured_height: measured.height, measurement: 'Pango glyph layout',
             frame: { x: e.x, y: e.y, w: e.w, h: e.h }, page_remaining_height: pageRemaining,
-            minimum_safe_font_size: minimum, minimum_safe_measured_height: minimumMeasured.height,
+            real_available_height: available.realAvailableHeight, blocking_element_ids: available.blockingElementIds,
+            safe_min_font_size: minimum, measured_height_at_min_font: minimumMeasured.height,
             structural_relayout_required: structural,
             layout_hint: structural
               ? '在服务器允许的安全字号下，即使使用页面剩余高度仍无法容纳；必须调整正文 x/y/w，或缩小、移动相邻图片、shape 或 panel，且完整保留原文。'
@@ -187,18 +211,7 @@ async function finishTextFit(design, issues, options = {}) {
     // Keep the fit bounded so the server preserves the model's design rather
     // than solving overflow by making text arbitrarily small.
     const { minimum } = minimumTextCandidate(e);
-    let bottom = spec.height;
-    for (let otherIndex = 0; otherIndex < slide.elements.length; otherIndex++) {
-      const other = slide.elements[otherIndex];
-      if (otherIndex === index || (other.opacity ?? 1) === 0) continue;
-      const ob = bounds(other);
-      const background = otherIndex < index && ['shape', 'image'].includes(other.type)
-        && ob.x <= e.x && ob.y <= e.y && ob.x + ob.w >= e.x + e.w && ob.y + ob.h >= bottom;
-      if (background) continue;
-      const horizontal = Math.max(0, Math.min(e.x + e.w, ob.x + ob.w) - Math.max(e.x, ob.x));
-      if (horizontal > 0 && ob.y >= e.y + 0.025) bottom = Math.min(bottom, ob.y);
-    }
-    const available = Math.floor((bottom - e.y) * 1000) / 1000;
+    const { realAvailableHeight: available } = textAvailableSpace(slide, index, e);
     if (!(available > 0)) continue;
     const heightIsSafe = height => {
       const expanded = bounds({ ...e, h: height });
