@@ -69,7 +69,7 @@ async function validate(design, manifest, options) {
   if (!schemaCheck(design)) return { issues: [{ severity: 'error', code: 'schema', message: 'JSON Schema 不匹配', details: schemaCheck.errors }], font_actions: [] };
   const issues = [];
   const add = (severity, code, slide, e, message, extra = {}) => issues.push({ severity, code, slide_id: slide.id, element_id: e?.id, message, ...extra });
-  const font_actions = await resolveFonts(design, limits.fallbackFont, signal);
+  const font_actions = await (options.resolveFonts || resolveFonts)(design, limits.fallbackFont, signal);
   const assets = new Map(manifest.map(a => [a.asset_id, a])); const slideIds = new Set();
   if (design.slides.reduce((n, s) => n + s.elements.length, 0) > 600) issues.push({ severity: 'error', code: 'element_limit', message: '整份 PPT 最多 600 个元素' });
   for (const slide of design.slides) {

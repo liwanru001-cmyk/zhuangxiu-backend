@@ -33,7 +33,7 @@ test('only small error overflow is eligible for one light repair; warnings do no
 test('overflow beyond the safe minimum font and page height requires structural re-layout', async () => {
   const d = design();
   Object.assign(d.slides[0].elements[0], { y: 6, h: 1, font_size: 18, line_spacing: 24, paragraph_spacing: 6, font_family: config.fallbackFont });
-  const result = await validate(d, [], { limits: config, signal: signal(), measure: async e => ({ height: e.font_size === 18 ? 2 : 1.7, lines: 4 }) });
+  const result = await validate(d, [], { limits: config, signal: signal(), resolveFonts: async () => [], measure: async e => ({ height: e.font_size === 18 ? 2 : 1.7, lines: 4 }) });
   const error = result.issues.find(issue => issue.code === 'text_overflow');
   assert.equal(error.structural_relayout_required, true);
   assert.equal(error.minimum_safe_font_size, 15.84);
