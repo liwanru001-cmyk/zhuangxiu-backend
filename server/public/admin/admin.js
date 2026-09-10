@@ -20,7 +20,8 @@ const menus = [
 
 const rememberedToken = localStorage.getItem('admin_remember_token') || '';
 let token = sessionStorage.getItem('admin_token') || rememberedToken;
-let activeMenu = window.location.pathname.includes('/admin/presentations') ? 'presentations' : window.location.pathname.includes('/admin/billing') ? 'billing' : 'overview';
+const requestedAdminSection = new URLSearchParams(window.location.search).get('section');
+let activeMenu = requestedAdminSection === 'presentations' ? 'presentations' : window.location.pathname.includes('/admin/billing') ? 'billing' : 'overview';
 let page = 1;
 let total = 0;
 let userTab = 'accounts';
