@@ -17,6 +17,7 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
   const prepare = adapters.prepare || assets.prepare;
   const generate = adapters.request || model.request;
   const validate = adapters.validate || validator.validate;
+  const finishTextFit = adapters.finishTextFit || validator.finishTextFit;
   const render = adapters.render || renderer.render;
   const renderedValidation = adapters.renderedValidation || renderer.renderedValidation;
   async function check(design, label) {
@@ -44,9 +45,12 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
     if (error.fatal || signal.aborted) throw error;
     const reason = { code: error.code || 'v2_failed', message: error.message };
     await record({ event: 'primary_generation_error', ...reason });
+    // Only resume a legacy fallback that was already persisted by an older
+    // worker. New V2 failures must remain failures, never become V1 success.
     if (!state.fallback_started) {
-      await context.claimFallback(reason);
-      await save({ fallback_started: true, fallback_reason: reason });
+      await save({ v2_failure: reason });
+      await record({ event: 'fallback_blocked', reason, policy: 'v2_only' });
+      throw error;
     }
     let outline = state.legacy_outline;
     if (!outline) {
@@ -91,39 +95,62 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       const design = await generate({ source: sourceForModel, settings, manifest: state.manifest, limits, signal, reserve: context.reserve, record });
       await save({ design, model_source: sourceForModel });
     }
-    let design = structuredClone(state.repaired_design || state.design);
-    let issues = await check(design, state.repaired_design ? 'repaired' : 'initial');
-    let repaired = !!state.repaired_design;
-    if (issues.some(i => i.severity === 'error')) {
-      if (state.repaired_design) throw failure('repair_failed', '修正后页面仍未通过验证');
-      const errors = issues.filter(i => i.severity === 'error');
-      const light = validator.lightRepair(design, issues);
-      // Schema-invalid or page-less output cannot be safely repaired as individual pages.
-      if (!light && errors.some(e => !e.slide_id || e.code === 'duplicate_slide')) throw failure('design_invalid', '模型设计无法执行单页修复');
-      await context.claimRepair(light ? 'server' : 'model');
-      let next;
-      if (light) {
-        next = light.design;
-        await record({ event: 'repair_actions', mode: 'server', actions: light.actions, pre_repair_layout: design, post_repair_layout: next });
+    let design = structuredClone(state.repaired_design || state.initial_fitted_design || state.design);
+    const initialLabel = state.repaired_design ? 'model_repaired' : state.initial_fitted_design ? 'initial_text_fit' : 'initial';
+    let issues = await check(design, initialLabel);
+    let repaired = !!(state.repaired_design || state.initial_fitted_design);
+    // Text metrics and safe page-edge trimming belong to the server. Try them
+    // before spending the single model repair request.
+    if (issues.some(i => i.severity === 'error') && !state.repaired_design && !state.initial_text_fit_used) {
+      const fit = await finishTextFit(design, issues, { signal });
+      if (fit) {
+        await save({ initial_fitted_design: fit.design, initial_text_fit_used: true, initial_text_fit_actions: fit.actions });
+        await record({ event: 'repair_actions', mode: 'initial_text_fit', actions: fit.actions, pre_repair_layout: design, post_repair_layout: fit.design });
+        design = structuredClone(fit.design); repaired = true;
+        issues = await check(design, 'initial_text_fit');
       } else {
-        const ids = [...new Set(errors.map(e => e.slide_id))];
-        const result = await generate({ source: state.model_source, settings, manifest: state.manifest, limits, signal,
-          repair: { design, ids, errors }, reserve: context.reserve, record });
-        if (!result || Object.keys(result).some(k => k !== 'slides') || !Array.isArray(result.slides) || result.slides.length !== ids.length || new Set(result.slides.map(s => s.id)).size !== ids.length || result.slides.some(s => !ids.includes(s.id))) throw failure('repair_page_ids', '模型修正页 ID 与失败页不一致');
-        next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
-        // Factual text cannot silently disappear during a layout repair.
-        for (const old of design.slides.filter(s => ids.includes(s.id))) {
-          const replacement = result.slides.find(s => s.id === old.id);
-          const paragraphs = page => (page.elements || []).filter(e => e.type === 'text')
-            .flatMap(e => String(e.text).split(/\n+/)).map(text => text.replace(/\s/g, '')).filter(Boolean).sort();
-          if (JSON.stringify(paragraphs(old)) !== JSON.stringify(paragraphs(replacement))) throw failure('repair_content_changed', '模型单页修正改变了原始文案');
-        }
-        await record({ event: 'repair_actions', mode: 'model', pre_repair_layout: design, post_repair_layout: next });
+        await save({ initial_text_fit_used: true, initial_text_fit_actions: [] });
       }
-      await save({ repaired_design: next });
+    }
+    if (issues.some(i => i.severity === 'error') && !state.repaired_design) {
+      const errors = issues.filter(i => i.severity === 'error');
+      // Schema-invalid or page-less output cannot be safely repaired as individual pages.
+      if (errors.some(e => !e.slide_id || e.code === 'duplicate_slide')) throw failure('design_invalid', '模型设计无法执行单页修复');
+      await context.claimRepair('model');
+      const ids = [...new Set(errors.map(e => e.slide_id))];
+      const result = await generate({ source: state.model_source, settings, manifest: state.manifest, limits, signal,
+        repair: { design, ids, errors }, reserve: context.reserve, record });
+      if (!result || Object.keys(result).some(k => k !== 'slides') || !Array.isArray(result.slides) || result.slides.length !== ids.length || new Set(result.slides.map(s => s.id)).size !== ids.length || result.slides.some(s => !ids.includes(s.id))) throw failure('repair_page_ids', '模型修正页 ID 与失败页不一致');
+      const next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
+      // Factual text cannot silently disappear during a layout repair.
+      for (const old of design.slides.filter(s => ids.includes(s.id))) {
+        const replacement = result.slides.find(s => s.id === old.id);
+        const paragraphs = page => (page.elements || []).filter(e => e.type === 'text')
+          .flatMap(e => String(e.text).split(/\n+/)).map(text => text.replace(/\s/g, '')).filter(Boolean).sort();
+        if (JSON.stringify(paragraphs(old)) !== JSON.stringify(paragraphs(replacement))) throw failure('repair_content_changed', '模型单页修正改变了原始文案');
+      }
+      await save({ repaired_design: next, repair_mode: 'model' });
+      await record({ event: 'repair_actions', mode: 'model', pre_repair_layout: design, post_repair_layout: next });
       design = structuredClone(next); repaired = true;
-      issues = await check(design, 'repaired');
-      if (issues.some(i => i.severity === 'error')) throw failure('repair_failed', '一次修正后仍存在验证错误');
+      issues = await check(design, 'model_repaired');
+    }
+    // A model redesign may leave a small font-metric mismatch. Allow one
+    // bounded fit, never another model call or a second server-only repair.
+    if (issues.some(i => i.severity === 'error') && state.repair_mode === 'model' && !state.text_fit_used) {
+      const fit = await finishTextFit(design, issues, { signal });
+      if (fit) {
+        // Persist the adjusted design and consumed fit together before checking
+        // it so worker recovery cannot repeatedly shrink the same paragraphs.
+        await save({ repaired_design: fit.design, text_fit_used: true, text_fit_actions: fit.actions });
+        await record({ event: 'repair_actions', mode: 'post_model_text_fit', actions: fit.actions, pre_repair_layout: design, post_repair_layout: fit.design });
+        design = structuredClone(fit.design);
+        issues = await check(design, 'post_model_text_fit');
+      }
+    }
+    if (issues.some(i => i.severity === 'error')) {
+      const errors = issues.filter(i => i.severity === 'error');
+      await save({ validation_errors: errors });
+      throw failure('repair_failed', 'V2 排版修正后仍未通过校验');
     }
     await save({ validated_response: design, validation_issues: issues });
     const renderVerified = limits.renderValidation === 'full';

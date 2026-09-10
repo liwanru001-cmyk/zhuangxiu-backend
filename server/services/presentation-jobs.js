@@ -178,7 +178,7 @@ async function runClaimed(deps = {}) {
     if (output) await fs.rm(output, { force: true }).catch(() => {});
     let message = error.name === 'AbortError' ? '模型生成超时，请稍后重试' : String(error.message || '生成失败').slice(0, 500);
     if (context) {
-      const messages = { asset_unavailable: '项目素材无法读取，请检查文件后重新生成。', asset_mapping_error: '项目素材关联异常，请联系管理员检查。', asset_task_budget: '所选图片总量过大，请减少素材后重新生成。', font_environment: '生成环境的字体尚未配置完成，请联系管理员。', font_render_environment: '生成环境的中文字体不可用，请联系管理员。', render_environment: '生成环境尚未准备完成，请联系管理员。' };
+      const messages = { repair_failed: 'V2 排版校验未通过，本次未生成 PPT，也未退回 V1。请提供任务 ID 排查。', design_invalid: 'V2 返回的设计结构未通过校验，本次未退回 V1。请提供任务 ID 排查。', repair_content_changed: 'V2 排版修正改变了文案，已停止生成，本次未退回 V1。请提供任务 ID 排查。', asset_unavailable: '项目素材无法读取，请检查文件后重新生成。', asset_mapping_error: '项目素材关联异常，请联系管理员检查。', asset_task_budget: '所选图片总量过大，请减少素材后重新生成。', font_environment: '生成环境的字体尚未配置完成，请联系管理员。', font_render_environment: '生成环境的中文字体不可用，请联系管理员。', render_environment: '生成环境尚未准备完成，请联系管理员。' };
       message = messages[error.code] || (abort.signal.aborted ? '生成超出任务时限，请减少内容后新建任务。' : '本次生成未完成，请新建任务重试；若持续失败，请联系管理员。');
     }
     await ownedUpdate("status = 'failed', phase = 'failed', error_message = ?, lease_until = NULL", [message]);

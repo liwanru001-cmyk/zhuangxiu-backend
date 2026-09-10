@@ -5,6 +5,7 @@ const path = require('path');
 const { pathToFileURL } = require('url');
 const execFile = require('util').promisify(require('child_process').execFile);
 const { spec, failure } = require('./config');
+const { imagePlacement, deduplicateMedia } = require('./media');
 const hex = color => color.replace('#', '');
 const transparency = opacity => Math.round((1 - (opacity ?? 1)) * 100);
 async function renderInProcess(design, manifest, output, { signal } = {}) {
@@ -29,7 +30,7 @@ async function renderInProcess(design, manifest, output, { signal } = {}) {
         const a = assets.get(e.asset_id);
         if (!a) throw failure('unknown_asset', '模型引用了清单外的素材');
         slide.addImage({ path: a.highres_path,
-          ...position, sizing: { type: e.fit, w: e.w, h: e.h },
+          ...position, ...imagePlacement(e, a),
           rotate: position.rotate, objectName: e.id, transparency: transparency(e.opacity), altText: a.title });
       }
       if (e.type === 'shape') slide.addShape(pptx.ShapeType[e.shape_type], { ...position,
@@ -40,6 +41,7 @@ async function renderInProcess(design, manifest, output, { signal } = {}) {
     }
   }
   await pptx.writeFile({ fileName: output });
+  await deduplicateMedia(output, signal);
   signal?.throwIfAborted();
 }
 async function renderedValidation(design, output, options) {

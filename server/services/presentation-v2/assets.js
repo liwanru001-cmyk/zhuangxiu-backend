@@ -125,7 +125,12 @@ async function prepare(source, settings, { directory, limits, signal, fetchAsset
   return manifest;
 }
 function publicManifest(manifest) {
-  return manifest.map(({ asset_id, source_type, source_id, version_no, image_role, space_id, title, category, width, height, aspect_ratio, vision_preview_provided }) =>
-    ({ asset_id, source_type, source_id, version_no, image_role, space_id, title, category, width, height, aspect_ratio, vision_preview_provided }));
+  const first = new Map();
+  return manifest.map(({ asset_id, fingerprint, source_type, source_id, version_no, image_role, space_id, title, category, width, height, aspect_ratio, vision_preview_provided }) => {
+    const duplicate_of = fingerprint ? first.get(fingerprint) : undefined;
+    if (fingerprint && !duplicate_of) first.set(fingerprint, asset_id);
+    return { asset_id, source_type, source_id, version_no, image_role, space_id, title, category, width, height, aspect_ratio, vision_preview_provided,
+      ...(duplicate_of ? { duplicate_of } : {}) };
+  });
 }
 module.exports = { candidates, representatives, prepare, publicManifest };

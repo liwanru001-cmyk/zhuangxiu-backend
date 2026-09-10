@@ -6,7 +6,7 @@ const os = require('os');
 const path = require('path');
 const { limits } = require('../services/presentation-v2/config');
 const { compile } = require('../services/presentation-v2/schema');
-const { bounds, lightRepair, validate } = require('../services/presentation-v2/validate');
+const { bounds, lightRepair, finishTextFit, validate, measure } = require('../services/presentation-v2/validate');
 const { candidates, representatives, prepare } = require('../services/presentation-v2/assets');
 const { run } = require('../services/presentation-v2/pipeline');
 const { createContext } = require('../services/presentation-v2/job-store');
@@ -85,14 +85,202 @@ test('static mode creates PPTX, records skipped render validation and returns an
   assert.equal(result.render_validation_reason, 'render_engine_disabled');
   assert.ok(h.events.some(event => event.event === 'render_validation' && event.skipped === true));
 });
-test('server repair failure falls straight to original legacy, never model repair', async t => {
-  const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.03 }] }) });
-  const result = await h.execute(); assert.equal(result.generation_status, 'legacy_fallback_success');
-  assert.deepEqual(h.calls, ['initial', 'legacy']); assert.equal(h.phases.repair, 1); assert.equal(h.phases.fallback, 1);
+test('server text fit runs before model repair and avoids a second model request', async t => {
+  let checks = 0;
+  const h = await harness(t, {
+    validate: async () => ({ issues: checks++ === 0 ? [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.03 }] : [] }),
+    finishTextFit: async current => {
+      const fitted = structuredClone(current); fitted.slides[0].elements[0].font_size = 17.5;
+      return { design: fitted, actions: [{ type: 'font_size_adjustment' }] };
+    },
+  });
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_repaired_success');
+  assert.deepEqual(h.calls, ['initial']); assert.equal(h.phases.repair, 0); assert.equal(h.phases.fallback, 0);
+  assert.equal(h.saved().initial_text_fit_used, true);
+  assert.ok(h.events.some(e => e.mode === 'initial_text_fit'));
 });
-test('model page repair failure uses at most three requests', async t => {
+test('model page repair failure stops after two requests', async t => {
   const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'error', code: 'out_of_bounds', slide_id: 's1', element_id: 't1' }] }) });
-  assert.equal((await h.execute()).generation_status, 'legacy_fallback_success'); assert.deepEqual(h.calls, ['initial', 'model_repair', 'legacy']);
+  await assert.rejects(h.execute(), { code: 'repair_failed' }); assert.deepEqual(h.calls, ['initial', 'model_repair']);
+});
+test('3.4 percent residual overflow is fitted after model repair without a legacy request', async t => {
+  let checks = 0, fits = 0;
+  const h = await harness(t, { validate: async d => {
+    const check = checks++;
+    if (check === 2) {
+      assert.equal(d.slides[0].elements[0].font_size, 17.28);
+      return { issues: [] };
+    }
+    return { issues: [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1',
+      overflow_ratio: check === 0 ? 0.6150793650793651 : 0.033950617283950546 }] };
+  }, finishTextFit: async current => {
+    if (fits++ === 0) return null;
+    const fitted = structuredClone(current); fitted.slides[0].elements[0].font_size = 17.28;
+    return { design: fitted, actions: [{ type: 'font_size_adjustment' }] };
+  } });
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_repaired_success');
+  assert.deepEqual(h.calls, ['initial', 'model_repair']);
+  assert.equal(h.phases.repair, 1);
+  assert.equal(h.phases.fallback, 0);
+  assert.equal(h.saved().text_fit_used, true);
+  assert.equal(result.outline.slides[0].elements[0].text, '真实内容');
+  assert.ok(h.events.some(e => e.mode === 'post_model_text_fit'));
+});
+test('failed post-model fit is not repeated after worker recovery', async t => {
+  const issue = { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.034 };
+  const fitted = lightRepair(design(), [issue]).design;
+  const h = await harness(t, { validate: async () => ({ issues: [issue] }) });
+  h.context.state = { manifest: [], design: design(), repaired_design: fitted, repair_mode: 'model', text_fit_used: true };
+  await assert.rejects(h.execute(), { code: 'repair_failed' });
+  assert.deepEqual(h.calls, []);
+  assert.ok(!h.events.some(e => e.mode === 'post_model_text_fit'));
+  assert.equal(h.saved().repaired_design.slides[0].elements[0].font_size, 17.28);
+});
+test('a post-model fit that still overflows fails without further shrink or requests', async t => {
+  let checks = 0, fits = 0;
+  const h = await harness(t, { validate: async () => ({ issues: [{
+    severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1',
+    overflow_ratio: checks++ === 0 ? 0.61 : 0.034,
+  }] }), finishTextFit: async current => {
+    if (fits++ === 0) return null;
+    const fitted = structuredClone(current); fitted.slides[0].elements[0].font_size = 17.28;
+    return { design: fitted, actions: [{ type: 'font_size_adjustment' }] };
+  } });
+  await assert.rejects(h.execute(), { code: 'repair_failed' });
+  assert.equal(checks, 3);
+  assert.deepEqual(h.calls, ['initial', 'model_repair']);
+  assert.equal(h.saved().repaired_design.slides[0].elements[0].font_size, 17.28);
+  assert.equal(h.events.filter(e => e.mode === 'post_model_text_fit').length, 1);
+});
+test('post-model fit survives interruption before validation without shrinking again', async t => {
+  const issue = { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.034 };
+  const fitted = lightRepair(design(), [issue]).design;
+  const h = await harness(t);
+  h.context.state = { manifest: [], design: design(), repaired_design: fitted, repair_mode: 'model', text_fit_used: true };
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_repaired_success');
+  assert.equal(result.outline.slides[0].elements[0].font_size, 17.28);
+  assert.deepEqual(h.calls, []);
+});
+test('bounded fit reduces measured CJK paragraph height with explicit line spacing', async () => {
+  const d = design();
+  const e = d.slides[0].elements[0];
+  Object.assign(e, { font_family: 'Arial Unicode MS', text: Array(10).fill('户外茶室保留通透视野').join('\n'),
+    font_size: 18, line_spacing: 24, paragraph_spacing: 6, h: 4.5 });
+  const measured = await measure(e);
+  e.h = measured.height / 1.0339506172839505;
+  const fitted = lightRepair(d, [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.0339506172839505 }]);
+  const next = fitted.design.slides[0].elements[0];
+  assert.equal(next.text, e.text);
+  assert.deepEqual([next.x, next.y, next.w, next.h], [e.x, e.y, e.w, e.h]);
+  assert.ok(next.font_size >= e.font_size * 0.96);
+  assert.ok(next.line_spacing < e.line_spacing);
+  assert.ok((await measure(next)).height <= next.h + 0.025);
+});
+test('production tea paragraph residual expands into free space before reducing font size', async () => {
+  const d = design();
+  Object.assign(d.slides[0].elements[0], { x: 0.8, y: 2.5, w: 5, h: 4.5, font_size: 15,
+    line_spacing: 22, paragraph_spacing: 10 });
+  const issues = [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.033950617283950546 }];
+  const fit = await finishTextFit(d, issues, { measure: async () => ({ height: 4.536944444444444 }) });
+  const e = fit.design.slides[0].elements[0];
+  assert.equal(e.font_size, 15);
+  assert.equal(e.h, 4.547);
+  assert.equal(e.text, d.slides[0].elements[0].text);
+  assert.deepEqual([e.x, e.y, e.w], [0.8, 2.5, 5]);
+  assert.equal(fit.actions.length, 1);
+  assert.equal(d.slides[0].elements[0].h, 4.5);
+});
+test('text fit declines unsafe growth, rotation and alignment but can use safe page space', async () => {
+  const issue = { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.034 };
+  for (const variant of ['lower_text', 'upper_layer', 'edge', 'rotation', 'middle', 'large']) {
+    const d = design();
+    const e = d.slides[0].elements[0];
+    Object.assign(e, { x: 0.8, y: 2.5, w: 5, h: 4.5, font_size: 15 });
+    if (variant === 'lower_text') d.slides[0].elements.push({ ...e, id: 'footer', y: 7.01, h: 0.2, text: '页脚' });
+    if (variant === 'upper_layer') d.slides[0].elements.push({ id: 'overlay', type: 'shape', x: 0, y: 0, w: 13.3, h: 7.5 });
+    if (variant === 'edge') e.y = 3;
+    if (variant === 'rotation') e.rotation = 5;
+    if (variant === 'middle') e.vertical_align = 'middle';
+    const fit = await finishTextFit(d, [issue], { measure: async () => ({ height: variant === 'large' ? 5 : 4.536944444444444 }) });
+    if (variant === 'large') {
+      assert.equal(fit.design.slides[0].elements[0].h, 5);
+    } else {
+      assert.equal(fit, null, variant);
+    }
+  }
+});
+test('existing full background allows growth and unaffected elements remain intact', async () => {
+  const d = design();
+  const bg = { id: 'bg', type: 'shape', x: 0, y: 0, w: 13.3, h: 7.5 };
+  d.slides[0].elements.unshift(bg);
+  const fit = await finishTextFit(d, [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.034 }],
+    { measure: async () => ({ height: 1.03 }) });
+  assert.equal(fit.design.slides[0].elements[1].h, 1.04);
+  assert.deepEqual(fit.design.slides[0].elements[0], bg);
+});
+test('8.46 percent residual shrinks within the existing product card and is remeasured', async () => {
+  const d = design();
+  const e = d.slides[0].elements[0];
+  Object.assign(e, { x: 5.2, y: 3.2, w: 6.8, h: 3.4, font_size: 13, line_spacing: 18, paragraph_spacing: 6 });
+  d.slides[0].elements.unshift({ id: 'card', type: 'shape', shape_type: 'rect', x: 0.8, y: 1.6, w: 11.73, h: 5.2 });
+  const issues = [{ severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.08455882352941169 }];
+  const fit = await finishTextFit(d, issues, { measure: async candidate => ({ height: 3.6875 * candidate.font_size / 13 }) });
+  assert.equal(fit.design.slides[0].elements[1].font_size, 12.5);
+  assert.equal(fit.design.slides[0].elements[1].h, 3.556);
+  assert.equal(fit.design.slides[0].elements[1].text, e.text);
+  const blocked = await finishTextFit(d, issues, { measure: async () => ({ height: 3.7 }) });
+  assert.equal(blocked, null);
+});
+test('new model errors never invoke legacy, while already persisted legacy jobs can resume', async t => {
+  const h = await harness(t, { request: async () => { throw new Error('model unavailable'); } });
+  await assert.rejects(h.execute(), /model unavailable/);
+  assert.equal(h.phases.fallback, 0);
+  assert.equal(h.saved().fallback_started, undefined);
+  const old = await harness(t);
+  old.context.state = { fallback_started: true, legacy_outline: { schema_version: 1, slides: [] }, fallback_reason: { code: 'old', message: 'old' } };
+  assert.equal((await old.execute()).generation_status, 'legacy_fallback_success');
+  assert.deepEqual(old.calls, []);
+});
+test('bottom overflow trims only unused frame space without changing text or typography', async () => {
+  const d = design();
+  Object.assign(d.slides[0].elements[0], { y: 1.8, h: 5.8 });
+  d.slides.push({ ...structuredClone(d.slides[0]), id: 's2' });
+  Object.assign(d.slides[1].elements[0], { y: 1.6, h: 6.2 });
+  const issues = d.slides.map(s => ({ severity: 'error', code: 'out_of_bounds', slide_id: s.id, element_id: 't1' }));
+  const fit = await finishTextFit(d, issues, { measure: async () => ({ height: 5.5 }) });
+  assert.deepEqual(fit.design.slides.map(s => s.elements[0].h), [5.7, 5.9]);
+  for (let i = 0; i < 2; i++) {
+    assert.deepEqual({ ...fit.design.slides[i].elements[0], h: d.slides[i].elements[0].h }, d.slides[i].elements[0]);
+  }
+  assert.equal(fit.actions.length, 2);
+});
+test('boundary repair refuses clipping, large overflow, rotation and horizontal changes', async () => {
+  const issue = { severity: 'error', code: 'out_of_bounds', slide_id: 's1', element_id: 't1' };
+  for (const variant of ['clip', 'large', 'rotate', 'right', 'bottom_align']) {
+    const d = design(); const e = d.slides[0].elements[0];
+    Object.assign(e, { y: 1.8, h: 5.8 });
+    if (variant === 'large') e.h = 7;
+    if (variant === 'rotate') e.rotation = 5;
+    if (variant === 'right') e.x = 10;
+    if (variant === 'bottom_align') e.vertical_align = 'bottom';
+    assert.equal(await finishTextFit(d, [issue], { measure: async () => ({ height: variant === 'clip' ? 5.75 : 5 }) }), null, variant);
+  }
+});
+test('pipeline accepts measured boundary repair with no legacy request', async t => {
+  let checks = 0;
+  const d = design(); Object.assign(d.slides[0].elements[0], { y: 1.8, h: 5.8 });
+  const h = await harness(t, { validate: async current => {
+    if (checks++ === 0) return { issues: [{ severity: 'error', code: 'out_of_bounds', slide_id: 's1', element_id: 't1' }] };
+    assert.equal(current.slides[0].elements[0].h, 5.7);
+    return { issues: [] };
+  } });
+  h.context.state = { manifest: [], design: design(), repaired_design: d, repair_mode: 'model' };
+  assert.equal((await h.execute()).generation_status, 'ai_repaired_success');
+  assert.deepEqual(h.calls, []);
+  assert.equal(h.saved().text_fit_used, true);
 });
 test('model repairs only failed pages and keeps valid pages untouched', async t => {
   let checks = 0;
@@ -111,12 +299,13 @@ test('recovering a repaired design revalidates without consuming another repair'
   const h = await harness(t); h.context.state = { manifest: [], design: design(), repaired_design: design() };
   assert.equal((await h.execute()).generation_status, 'ai_repaired_success'); assert.deepEqual(h.calls, []);
 });
-test('malformed initial schema falls back without attempting whole-deck regeneration', async t => {
+test('malformed initial schema fails without legacy or whole-deck regeneration', async t => {
   const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'error', code: 'schema' }] }) });
-  assert.equal((await h.execute()).generation_status, 'legacy_fallback_success'); assert.deepEqual(h.calls, ['initial', 'legacy']);
+  await assert.rejects(h.execute(), { code: 'design_invalid' }); assert.deepEqual(h.calls, ['initial']);
 });
-test('fallback failure propagates as failure, not success', async t => {
+test('previously persisted fallback failure propagates as failure, not success', async t => {
   const h = await harness(t, { request: async () => { throw new Error('AI failure'); } });
+  h.context.state = { fallback_started: true, fallback_reason: { code: 'old_failure', message: 'old failure' } };
   h.legacy.generateOutline = async () => { throw new Error('legacy failure'); };
   await assert.rejects(h.execute(), /legacy failure/);
 });
