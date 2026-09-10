@@ -32,13 +32,18 @@ function ensureSchema() {
 function parse(value) { return typeof value === 'string' ? JSON.parse(value) : value; }
 function publicJob(row) {
   const generation = row.generation_result ? parse(row.generation_result) : {};
+  const isDraft = generation.generation_status === 'ai_draft' || generation.draft === true;
   return { id: row.id, title: row.title, status: row.status, phase: row.phase,
     generation_mode: generation.generation_mode, generation_status: generation.generation_status,
     render_validation: generation.render_validation,
     render_validation_reason: generation.render_validation_reason,
     schema_version: generation.schema_version || (row.outline_json ? parse(row.outline_json).schema_version : 1) || 1,
     fallback_used: generation.fallback_used || Boolean(row.fallback_used),
-    notice: row.status === 'completed' && (generation.fallback_used || row.fallback_used) ? '本次已使用兼容模式完成生成。' : null,
+    is_draft: isDraft,
+    draft_issue_count: isDraft ? Number(generation.draft_issue_count || 0) : 0,
+    notice: row.status === 'completed' && isDraft
+      ? `V2 草稿已生成，可下载查看；仍有 ${Number(generation.draft_issue_count || 0)} 项校验或修复问题，详情已保留在生成监控。`
+      : row.status === 'completed' && (generation.fallback_used || row.fallback_used) ? '本次已使用兼容模式完成生成。' : null,
     created_at: row.created_at, updated_at: row.updated_at, error: row.error_message,
     outline: row.outline_json ? parse(row.outline_json) : null,
     filename: `${safeFileName(row.title)}.pptx` };

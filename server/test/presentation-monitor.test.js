@@ -6,11 +6,13 @@ const v2 = { id: '18d5bbf8-59ca-4be4-a11f-c1157700bf66', title: '项目', projec
   result_json: { generation_mode: 'ai_design_v2', schema_version: 2, generation_status: 'ai_success_unverified_render' } };
 test('monitor separates V2 delivery, repair, fallback, failures and unfinished jobs', () => {
   const rows = [classify(v2), classify({ ...v2, repair_used: 1, warning_count: 2, result_json: { ...v2.result_json, generation_status: 'ai_repaired_success_unverified_render' } }),
+    classify({ ...v2, warning_count: 3, result_json: { ...v2.result_json, generation_status: 'ai_draft', draft: true, draft_issue_count: 3 } }),
     classify({ ...v2, fallback_used: 1, result_json: { generation_status: 'legacy_fallback_success' } }),
     classify({ ...v2, status: 'failed' }), classify({ ...v2, status: 'running' }),
     classify({ ...v2, requested_version: null, run_id: null, result_json: {} }), classify({ ...v2, result_json: {} })];
   const s = summarize(rows);
-  assert.equal(s.v2_finished, 5); assert.equal(s.v2_successful, 2); assert.equal(s.v2_success_rate, .4);
+  assert.equal(s.v2_finished, 6); assert.equal(s.v2_successful, 2); assert.equal(s.v2_success_rate, 1 / 3);
+  assert.equal(s.counts.draft, 1);
   assert.equal(s.counts.legacy, 1); assert.equal(s.counts.unknown, 1); assert.equal(s.render_verified, 0);
   assert.equal(s.with_warnings, 1); assert.equal(s.repair_success_rate, 1);
   assert.equal(summarize([]).v2_success_rate, null);

@@ -130,9 +130,29 @@ test('server text fit runs before model repair and avoids a second model request
   assert.equal(h.saved().initial_text_fit_used, true);
   assert.ok(h.events.some(e => e.mode === 'initial_text_fit'));
 });
-test('model page repair failure stops after two requests', async t => {
+test('unresolved model page repair delivers a marked V2 draft after two requests', async t => {
   const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'error', code: 'out_of_bounds', slide_id: 's1', element_id: 't1' }] }) });
-  await assert.rejects(h.execute(), { code: 'repair_failed' }); assert.deepEqual(h.calls, ['initial', 'model_repair']);
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_draft'); assert.equal(result.draft, true);
+  assert.equal(result.draft_issue_count, 1); assert.deepEqual(h.calls, ['initial', 'model_repair']);
+  assert.ok(h.events.some(event => event.event === 'draft_delivered'));
+});
+test('unsafe model copy changes are discarded while the last copy-safe V2 design is delivered as a draft', async t => {
+  const issue = { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.2 };
+  const h = await harness(t, {
+    validate: async () => ({ issues: [issue] }),
+    finishTextFit: async () => null,
+    request: async ({ reserve, repair }) => {
+      await reserve(repair ? 'model_repair' : 'initial');
+      if (!repair) return design();
+      const page = structuredClone(design().slides[0]); page.elements = [];
+      return { slides: [page] };
+    },
+  });
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_draft');
+  assert.equal(result.draft_reason, 'repair_content_changed');
+  assert.equal(result.outline.slides[0].elements[0].text, '真实内容');
 });
 test('model repair must structurally reallocate pages marked as height-impossible', async t => {
   const d = design();
@@ -150,7 +170,9 @@ test('model repair must structurally reallocate pages marked as height-impossibl
     validate: async () => ({ issues: [issue] }),
     finishTextFit: async () => null,
   });
-  await assert.rejects(h.execute(), { code: 'repair_failed' });
+  const result = await h.execute();
+  assert.equal(result.generation_status, 'ai_draft');
+  assert.equal(result.draft_reason, 'repair_structure_incomplete');
   assert.deepEqual(h.calls, ['initial', 'model_repair']);
   assert.deepEqual(h.events.find(e => e.event === 'repair_structure_check').failed, [{ slide_id: 's1', element_id: 't1' }]);
 });
@@ -178,17 +200,17 @@ test('3.4 percent residual overflow is fitted after model repair without a legac
   assert.equal(result.outline.slides[0].elements[0].text, '真实内容');
   assert.ok(h.events.some(e => e.mode === 'post_model_text_fit'));
 });
-test('failed post-model fit is not repeated after worker recovery', async t => {
+test('failed post-model fit is not repeated after worker recovery and delivers a draft', async t => {
   const issue = { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', overflow_ratio: 0.034 };
   const fitted = lightRepair(design(), [issue]).design;
   const h = await harness(t, { validate: async () => ({ issues: [issue] }) });
   h.context.state = { manifest: [], design: design(), repaired_design: fitted, repair_mode: 'model', text_fit_used: true };
-  await assert.rejects(h.execute(), { code: 'repair_failed' });
+  assert.equal((await h.execute()).generation_status, 'ai_draft');
   assert.deepEqual(h.calls, []);
   assert.ok(!h.events.some(e => e.mode === 'post_model_text_fit'));
   assert.equal(h.saved().repaired_design.slides[0].elements[0].font_size, 17.28);
 });
-test('a post-model fit that still overflows fails without further shrink or requests', async t => {
+test('a post-model fit that still overflows delivers a draft without further shrink or requests', async t => {
   let checks = 0, fits = 0;
   const h = await harness(t, { validate: async () => ({ issues: [{
     severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1',
@@ -198,7 +220,7 @@ test('a post-model fit that still overflows fails without further shrink or requ
     const fitted = structuredClone(current); fitted.slides[0].elements[0].font_size = 17.28;
     return { design: fitted, actions: [{ type: 'font_size_adjustment' }] };
   } });
-  await assert.rejects(h.execute(), { code: 'repair_failed' });
+  assert.equal((await h.execute()).generation_status, 'ai_draft');
   assert.equal(checks, 3);
   assert.deepEqual(h.calls, ['initial', 'model_repair']);
   assert.equal(h.saved().repaired_design.slides[0].elements[0].font_size, 17.28);

@@ -7,6 +7,14 @@ const validator = require('./validate');
 const renderer = require('./render');
 const { failure } = require('./config');
 const changed = (a, b) => Math.abs(Number(a) - Number(b)) > 0.001;
+const draftableLayoutErrors = new Set([
+  'text_overflow', 'out_of_bounds', 'text_collision', 'text_occluded',
+  'render_text_overflow', 'render_text_missing', 'render_page_count', 'render_failed',
+]);
+function canRenderDraft(issues) {
+  const errors = (issues || []).filter(issue => issue.severity === 'error');
+  return errors.length > 0 && errors.every(issue => draftableLayoutErrors.has(issue.code));
+}
 function structuralRepairFailures(design, repairedSlides, errors) {
   const failures = [];
   for (const error of errors.filter(e => e.structural_relayout_required)) {
@@ -45,6 +53,33 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
   const finishTextFit = adapters.finishTextFit || validator.finishTextFit;
   const render = adapters.render || renderer.render;
   const renderedValidation = adapters.renderedValidation || renderer.renderedValidation;
+  let draftCandidate = null, draftIssues = [], repairStructureFailures = state.repair_structure_failures || [];
+  async function deliverDraft(design, issues, reason) {
+    const errors = issues.filter(issue => issue.severity === 'error');
+    try { await fs.access(output); }
+    catch { await render(design, state.manifest, output, { signal, timeout: limits.renderTimeout }); }
+    const draftIssueCount = errors.length || repairStructureFailures.length;
+    await save({
+      validated_response: design,
+      validation_issues: issues,
+      validation_errors: errors,
+      repair_structure_failures: repairStructureFailures,
+      draft_reason: reason,
+    });
+    await record({ event: 'draft_delivered', reason, issues: errors, repair_structure_failures: repairStructureFailures });
+    return {
+      outline: design,
+      schema_version: 2,
+      generation_mode: 'ai_design_v2',
+      generation_status: 'ai_draft',
+      draft: true,
+      draft_issue_count: draftIssueCount,
+      draft_reason: reason,
+      fallback_used: false,
+      render_validation: errors.some(issue => issue.code.startsWith('render_')) ? 'failed' : 'skipped',
+      render_validation_reason: errors.some(issue => issue.code.startsWith('render_')) ? 'draft_render_validation_errors' : 'draft_layout_errors',
+    };
+  }
   async function check(design, label) {
     await context.checkpoint(); signal.throwIfAborted();
     const beforeFonts = structuredClone(design);
@@ -121,8 +156,10 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       await save({ design, model_source: sourceForModel });
     }
     let design = structuredClone(state.repaired_design || state.initial_fitted_design || state.design);
+    draftCandidate = structuredClone(design);
     const initialLabel = state.repaired_design ? 'model_repaired' : state.initial_fitted_design ? 'initial_text_fit' : 'initial';
     let issues = await check(design, initialLabel);
+    draftIssues = issues;
     let repaired = !!(state.repaired_design || state.initial_fitted_design);
     // Text metrics and safe page-edge trimming belong to the server. Try them
     // before spending the single model repair request.
@@ -133,6 +170,7 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
         await record({ event: 'repair_actions', mode: 'initial_text_fit', actions: fit.actions, pre_repair_layout: design, post_repair_layout: fit.design });
         design = structuredClone(fit.design); repaired = true;
         issues = await check(design, 'initial_text_fit');
+        draftCandidate = structuredClone(design); draftIssues = issues;
       } else {
         await save({ initial_text_fit_used: true, initial_text_fit_actions: [] });
       }
@@ -166,12 +204,13 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       }
       const structuralFailures = structuralRepairFailures(design, result.slides, errors);
       await record({ event: 'repair_structure_check', required: errors.filter(e => e.structural_relayout_required).map(e => ({ slide_id: e.slide_id, element_id: e.element_id })), failed: structuralFailures });
-      if (structuralFailures.length) throw failure('repair_failed', '模型未完成必须的结构性重排');
+      repairStructureFailures = structuralFailures;
       const next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
-      await save({ repaired_design: next, repair_mode: 'model' });
+      await save({ repaired_design: next, repair_mode: 'model', repair_structure_failures: structuralFailures });
       await record({ event: 'repair_actions', mode: 'model', restored_text: restoredText, pre_repair_layout: design, post_repair_layout: next });
       design = structuredClone(next); repaired = true;
       issues = await check(design, 'model_repaired');
+      draftCandidate = structuredClone(design); draftIssues = issues;
     }
     // A model redesign may leave a small font-metric mismatch. Allow one
     // bounded fit, never another model call or a second server-only repair.
@@ -184,11 +223,15 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
         await record({ event: 'repair_actions', mode: 'post_model_text_fit', actions: fit.actions, pre_repair_layout: design, post_repair_layout: fit.design });
         design = structuredClone(fit.design);
         issues = await check(design, 'post_model_text_fit');
+        draftCandidate = structuredClone(design); draftIssues = issues;
       }
     }
-    if (issues.some(i => i.severity === 'error')) {
+    if (issues.some(i => i.severity === 'error') || repairStructureFailures.length) {
       const errors = issues.filter(i => i.severity === 'error');
-      await save({ validation_errors: errors });
+      if (canRenderDraft(issues) || (!errors.length && repairStructureFailures.length)) {
+        return deliverDraft(design, issues, repairStructureFailures.length ? 'repair_structure_incomplete' : 'layout_validation_failed');
+      }
+      await save({ validation_errors: errors, validation_issues: issues });
       throw failure('repair_failed', 'V2 排版修正后仍未通过校验');
     }
     await save({ validated_response: design, validation_issues: issues });
@@ -205,6 +248,13 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       render_validation_reason: renderVerified ? null : 'render_engine_disabled',
     };
   } catch (error) {
+    // A bad or incomplete repair must not discard an already renderable V2
+    // design. Keep the last copy-safe candidate and expose its flaws as a
+    // draft. Fatal environment, schema and asset failures still fail.
+    if (!error.fatal && !signal.aborted && draftCandidate && canRenderDraft(draftIssues)) {
+      try { return await deliverDraft(draftCandidate, draftIssues, error.code || 'repair_incomplete'); }
+      catch (draftError) { error = draftError; }
+    }
     await fs.rm(output, { force: true });
     return fallback(error);
   }

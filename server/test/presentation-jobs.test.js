@@ -70,6 +70,14 @@ test('list response never exposes private files or snapshots', () => {
   for (const key of ['result_file', 'worker_token', 'source_json']) assert.equal(result[key], undefined);
 });
 
+test('list response identifies downloadable V2 drafts and reports their remaining issues', () => {
+  const result = jobs.publicJob({ id: 'j', title: '报告', status: 'completed',
+    generation_result: JSON.stringify({ generation_mode: 'ai_design_v2', schema_version: 2, generation_status: 'ai_draft', draft: true, draft_issue_count: 3 }) });
+  assert.equal(result.is_draft, true);
+  assert.equal(result.draft_issue_count, 3);
+  assert.match(result.notice, /V2 草稿已生成/);
+});
+
 test('submission is idempotent and persists queued work without calling the model', async () => {
   const records = new Map();
   query = async (sql, params = []) => {

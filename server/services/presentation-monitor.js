@@ -5,7 +5,7 @@ const parse = (value, fallback = {}) => {
   try { return JSON.parse(value) ?? fallback; } catch { return fallback; }
 };
 const fail = (message, status = 400) => Object.assign(new Error(message), { status });
-const outcomes = ['direct', 'repaired', 'failed', 'fallback', 'legacy', 'pending', 'unknown'];
+const outcomes = ['direct', 'repaired', 'draft', 'failed', 'fallback', 'legacy', 'pending', 'unknown'];
 function filters(query = {}, now = new Date()) {
   const end = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Shanghai' });
   const start = new Date(new Date(`${end}T00:00:00Z`).getTime() - 6 * 86400000).toISOString().slice(0, 10);
@@ -30,6 +30,7 @@ function classify(row) {
   else if (row.status === 'failed') outcome = 'failed';
   else if (row.status === 'completed') {
     if (Number(row.fallback_used) || result.fallback_used || result.generation_status === 'legacy_fallback_success' || (v2 && result.generation_mode === 'legacy')) outcome = 'fallback';
+    else if (result.generation_mode === 'ai_design_v2' && Number(result.schema_version) === 2 && result.generation_status === 'ai_draft') outcome = 'draft';
     else if (result.generation_mode === 'ai_design_v2' && Number(result.schema_version) === 2 && /^ai_(repaired_)?success(?:_unverified_render)?$/.test(result.generation_status)) outcome = result.generation_status.includes('repaired') ? 'repaired' : 'direct';
     else if (!v2 || result.generation_mode === 'legacy') outcome = 'legacy';
   }
@@ -40,6 +41,7 @@ function classify(row) {
     outcome, is_v2_task: v2, generation_status: result.generation_status || null,
     render_verified: result.render_validation === 'passed' || ['ai_success', 'ai_repaired_success'].includes(result.generation_status),
     model_requests: row.model_requests == null ? null : Number(row.model_requests), repair_used: !!Number(row.repair_used), warnings: Number(row.warning_count || 0),
+    draft_issue_count: result.generation_status === 'ai_draft' ? Number(result.draft_issue_count || 0) : 0,
     version: JSON.stringify([code, prompt]), code_version: code, prompt_version: prompt,
     error: row.error_message || null };
 }
@@ -120,7 +122,7 @@ function createMonitor(db) {
       const groups = new Map();
       for (const row of all) { if (!groups.has(row.version)) groups.set(row.version, []); groups.get(row.version).push(row); }
       return { filters: f, ...summarize(selected),
-        denominator_note: 'V2 成功率 = V2 成功交付数 / 已结束的 V2 任务数（含失败、回退和结果未知；不含排队中、生成中及旧 V1 任务）。成功交付不等于人工视觉验收通过。',
+        denominator_note: 'V2 成功率 = V2 正式成功交付数 / 已结束的 V2 任务数（含草稿、失败、回退和结果未知；不含排队中、生成中及旧 V1 任务）。草稿可下载查看，但不计为正式成功。',
         problems: [...problems.values()].map(p => ({ code: p.code, severity: p.severity, jobs: p.jobs.size, pages: p.pages.size })).sort((a, b) => b.jobs - a.jobs),
         versions: [...groups].map(([version, items]) => ({ version, code_version: items[0].code_version, prompt_version: items[0].prompt_version,
           first_seen: items[items.length - 1].created_at, last_seen: items[0].created_at, ...summarize(items) })),

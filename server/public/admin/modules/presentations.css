@@ -27,6 +27,7 @@
 .ppt-code { display:block; margin-top:6px; color:#667085; font-size:11px; overflow-wrap:anywhere; }
 .ppt-badge { display:inline-block; padding:4px 8px; border-radius:6px; background:#f2f4f7; white-space:nowrap; font-size:12px; }
 .ppt-badge.direct,.ppt-badge.repaired { color:#067647; background:#ecfdf3; }
+.ppt-badge.draft { color:#175cd3; background:#eff8ff; }
 .ppt-badge.failed { color:#b42318; background:#fef3f2; }
 .ppt-badge.fallback,.ppt-badge.pending { color:#93370d; background:#fffaeb; }
 .ppt-empty { padding:30px!important; text-align:center!important; color:#667085; }
