@@ -3,7 +3,7 @@ const fs = require('fs/promises');
 const { createSchema } = require('./schema');
 const { publicManifest } = require('./assets');
 const { spec, failure } = require('./config');
-const PROMPT_VERSION = 'ai-design-v2.3';
+const PROMPT_VERSION = 'ai-design-v2.4';
 function configuration(env = process.env) {
   return { model: env.PRESENTATION_V2_MODEL || 'qwen3.8-max',
     baseUrl: (env.PRESENTATION_V2_BASE_URL || 'https://llm-kudosu76rs0hp9is.cn-beijing.maas.aliyuncs.com/compatible-mode/v1').replace(/\/$/, ''),
@@ -27,7 +27,7 @@ async function request({ source, settings, manifest, repair, limits, signal, res
       defaults: 'elements 按从底到顶绘制；单页背景覆盖整套背景；文本内边距0、行距font_size*1.2、段距0、顶端左对齐、正常字重、不自动缩字；图片居中裁切。',
       fallback_font: limits.fallbackFont,
       boundaries: '页面宽13.333333英寸、高7.5英寸。未旋转元素必须满足 x+w<=13.333333、y+h<=7.5；例如 y=1.8 时 h 最多5.7，y=1.6 时 h 最多5.9，仍须给其他内容留空间。旋转和描边也必须计入边界。文字完整可见，避免遮挡正文。',
-      text_layout: '修复文字溢出不能只增加文本框高度。先核对页面剩余空间与邻近元素，再调整宽度、位置、字号、行距或段距；不得删除原文。不要同时用大量空行和大段距制造重复留白。提交前逐一计算修正元素的 x+w 和 y+h，不能以产生越界来换取文字不溢出。',
+      text_layout: '修复文字溢出不能只增加文本框高度。先核对页面剩余空间与邻近元素，再调整宽度、位置、字号、行距或段距；不得删除原文。错误若标记 structural_relayout_required=true，禁止只缩字号、行距、段距或增加文本框高度；必须调整该正文的 x/y/w，或缩小、移动相邻图片、shape、panel，真正重新分配页面空间，并完整保留原文。不要同时用大量空行和大段距制造重复留白。提交前逐一计算修正元素的 x+w 和 y+h，不能以产生越界来换取文字不溢出。',
       factual_basis: '将内容区分为已提供事实、图像可见现象、待确认建议。项目要求、材质性能、现状保留、施工方式和产品可定制范围必须有文字依据；不能从效果图推断防滑性能、原有乔木或改色承诺。无依据的内容省略，或明确标为“建议/待确认”，不得写成已确定方案。缺失需求不靠空泛抒情补足页数。产品数值与单位按原始记录保留；明显异常时标注“尺寸待确认”，禁止擅自换算或猜测。',
       image_usage: 'duplicate_of 表示图片内容完全相同，不能因空间名称不同而当成不同视角或不同空间的独立证据。合并重复的效果展示，注明共用参考图。封面和结尾可以复用，正文避免反复展示同图而没有新增信息。平面图和产品图优先 contain 完整显示；效果图 cover 允许裁切但应保留设计主体。',
     },

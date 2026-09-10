@@ -6,6 +6,31 @@ const model = require('./model');
 const validator = require('./validate');
 const renderer = require('./render');
 const { failure } = require('./config');
+const changed = (a, b) => Math.abs(Number(a) - Number(b)) > 0.001;
+function structuralRepairFailures(design, repairedSlides, errors) {
+  const failures = [];
+  for (const error of errors.filter(e => e.structural_relayout_required)) {
+    const beforePage = design.slides.find(s => s.id === error.slide_id);
+    const afterPage = repairedSlides.find(s => s.id === error.slide_id);
+    const beforeText = beforePage?.elements.find(e => e.id === error.element_id && e.type === 'text');
+    const afterText = afterPage?.elements.find(e => e.id === error.element_id && e.type === 'text');
+    if (!beforeText || !afterText) continue;
+    const textReallocated = ['x', 'y', 'w'].some(key => changed(beforeText[key], afterText[key]));
+    const adjacentReallocated = beforePage.elements.some(before => {
+      if (!['image', 'shape'].includes(before.type)) return false;
+      const gapX = Math.max(beforeText.x - (before.x + before.w), before.x - (beforeText.x + beforeText.w), 0);
+      const gapY = Math.max(beforeText.y - (before.y + before.h), before.y - (beforeText.y + beforeText.h), 0);
+      if (gapX > 1 || gapY > 1) return false;
+      const after = afterPage.elements.find(e => e.id === before.id && e.type === before.type);
+      if (!after) return false;
+      const moved = changed(before.x, after.x) || changed(before.y, after.y);
+      const shrunk = after.w < before.w - 0.001 || after.h < before.h - 0.001;
+      return moved || shrunk;
+    });
+    if (!textReallocated && !adjacentReallocated) failures.push({ slide_id: error.slide_id, element_id: error.element_id });
+  }
+  return failures;
+}
 async function run({ source, rawSettings, legacy, context, output, limits, signal, adapters = {} }) {
   // The persisted source/settings belong to the task, never to either designer.
   const original = structuredClone(source), settingsSnapshot = structuredClone(rawSettings);
@@ -139,6 +164,9 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
           .flatMap(e => String(e.text).split(/\n+/)).map(text => text.replace(/\s/g, '')).filter(Boolean).sort();
         if (JSON.stringify(paragraphs(old)) !== JSON.stringify(paragraphs(replacement))) throw failure('repair_content_changed', '模型单页修正改变了原始文案');
       }
+      const structuralFailures = structuralRepairFailures(design, result.slides, errors);
+      await record({ event: 'repair_structure_check', required: errors.filter(e => e.structural_relayout_required).map(e => ({ slide_id: e.slide_id, element_id: e.element_id })), failed: structuralFailures });
+      if (structuralFailures.length) throw failure('repair_failed', '模型未完成必须的结构性重排');
       const next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
       await save({ repaired_design: next, repair_mode: 'model' });
       await record({ event: 'repair_actions', mode: 'model', restored_text: restoredText, pre_repair_layout: design, post_repair_layout: next });

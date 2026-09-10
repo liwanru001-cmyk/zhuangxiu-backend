@@ -30,6 +30,15 @@ test('only small error overflow is eligible for one light repair; warnings do no
   const result = lightRepair(design(), [issue]); assert.equal(result.design.slides[0].elements[0].font_size, 17.28);
   assert.equal(lightRepair(design(), [{ ...issue, overflow_ratio: 0.2 }]), null);
 });
+test('overflow beyond the safe minimum font and page height requires structural re-layout', async () => {
+  const d = design();
+  Object.assign(d.slides[0].elements[0], { y: 6, h: 1, font_size: 18, line_spacing: 24, paragraph_spacing: 6, font_family: config.fallbackFont });
+  const result = await validate(d, [], { limits: config, signal: signal(), measure: async e => ({ height: e.font_size === 18 ? 2 : 1.7, lines: 4 }) });
+  const error = result.issues.find(issue => issue.code === 'text_overflow');
+  assert.equal(error.structural_relayout_required, true);
+  assert.equal(error.minimum_safe_font_size, 15.84);
+  assert.equal(error.minimum_safe_measured_height, 1.7);
+});
 test('representatives honor primary and existing order, separate whole house and avoid non-layout documents', () => {
   const s = structuredClone(source);
   s.spaces[0].documents = [{ id: 1, category: 'construction_drawing', url: 'https://x/1' }, { id: 2, category: 'layout_plan', url: 'https://x/2' }];
@@ -103,6 +112,26 @@ test('server text fit runs before model repair and avoids a second model request
 test('model page repair failure stops after two requests', async t => {
   const h = await harness(t, { validate: async () => ({ issues: [{ severity: 'error', code: 'out_of_bounds', slide_id: 's1', element_id: 't1' }] }) });
   await assert.rejects(h.execute(), { code: 'repair_failed' }); assert.deepEqual(h.calls, ['initial', 'model_repair']);
+});
+test('model repair must structurally reallocate pages marked as height-impossible', async t => {
+  const d = design();
+  d.slides[0].elements.unshift({ id: 'panel', type: 'shape', shape_type: 'rect', x: 0.8, y: 0.8, w: 5.4, h: 1.4, fill: '#FFFFFF' });
+  const issue = { severity: 'error', code: 'text_overflow', slide_id: 's1', element_id: 't1', structural_relayout_required: true };
+  const h = await harness(t, {
+    request: async ({ reserve, repair }) => {
+      await reserve(repair ? 'model_repair' : 'initial');
+      if (!repair) return d;
+      const page = structuredClone(d.slides[0]);
+      Object.assign(page.elements.find(e => e.id === 't1'), { h: 1.4, font_size: 16, line_spacing: 18 });
+      page.elements.find(e => e.id === 'panel').h = 1.8;
+      return { slides: [page] };
+    },
+    validate: async () => ({ issues: [issue] }),
+    finishTextFit: async () => null,
+  });
+  await assert.rejects(h.execute(), { code: 'repair_failed' });
+  assert.deepEqual(h.calls, ['initial', 'model_repair']);
+  assert.deepEqual(h.events.find(e => e.event === 'repair_structure_check').failed, [{ slide_id: 's1', element_id: 't1' }]);
 });
 test('3.4 percent residual overflow is fitted after model repair without a legacy request', async t => {
   let checks = 0, fits = 0;

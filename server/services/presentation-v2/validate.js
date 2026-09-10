@@ -5,6 +5,15 @@ const execFile = require('util').promisify(require('child_process').execFile);
 const { compile } = require('./schema');
 const { spec, failure } = require('./config');
 const escape = text => text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+const minimumByRole = { title: 24, subtitle: 14, body: 12, caption: 10, product: 11, decoration: 6 };
+function minimumTextCandidate(e) {
+  const minimum = Math.min(e.font_size, Math.max(minimumByRole[e.role] || 12, Math.round(e.font_size * 0.88 * 100) / 100));
+  const candidate = { ...e, font_size: minimum };
+  for (const key of ['line_spacing', 'paragraph_spacing']) {
+    if (e[key] != null) candidate[key] = Math.max(key === 'line_spacing' ? 6 : 0, Math.round(e[key] * minimum / e.font_size * 100) / 100);
+  }
+  return { candidate, minimum };
+}
 function bounds(e) {
   const angle = (e.rotation || 0) * Math.PI / 180;
   const w = Math.abs(e.w * Math.cos(angle)) + Math.abs(e.h * Math.sin(angle));
@@ -85,7 +94,21 @@ async function validate(design, manifest, options) {
       }
       if (e.type === 'text' && e.w > 0 && e.h > 0) {
         const measured = await (options.measure || measure)(e);
-        if (measured.height > e.h + 0.025) add('error', 'text_overflow', slide, e, '文本尺寸检测超出文本框', { overflow_ratio: measured.height / e.h - 1, measured_height: measured.height, measurement: 'Pango glyph layout', frame: { x: e.x, y: e.y, w: e.w, h: e.h }, page_remaining_height: Math.max(0, spec.height - e.y), layout_hint: '剩余高度仅是页面上限，仍须避开其他元素；不能只增加 h 导致 y+h 越界。' });
+        if (measured.height > e.h + 0.025) {
+          const pageRemaining = Math.max(0, spec.height - e.y);
+          const { candidate, minimum } = minimumTextCandidate(e);
+          const minimumMeasured = minimum === e.font_size ? measured : await (options.measure || measure)(candidate);
+          const structural = minimumMeasured.height > pageRemaining + 0.025;
+          add('error', 'text_overflow', slide, e, '文本尺寸检测超出文本框', {
+            overflow_ratio: measured.height / e.h - 1, measured_height: measured.height, measurement: 'Pango glyph layout',
+            frame: { x: e.x, y: e.y, w: e.w, h: e.h }, page_remaining_height: pageRemaining,
+            minimum_safe_font_size: minimum, minimum_safe_measured_height: minimumMeasured.height,
+            structural_relayout_required: structural,
+            layout_hint: structural
+              ? '在服务器允许的安全字号下，即使使用页面剩余高度仍无法容纳；必须调整正文 x/y/w，或缩小、移动相邻图片、shape 或 panel，且完整保留原文。'
+              : '剩余高度仅是页面上限，仍须避开其他元素；不能只增加 h 导致 y+h 越界。',
+          });
+        }
         if (e.max_lines && measured.lines > e.max_lines) add('error', 'text_line_limit', slide, e, '超过模型声明的最大行数');
         else if (e.role === 'title' && measured.lines > 2) add('warning', 'title_wrap', slide, e, '标题超过两行，请检查是否符合设计意图');
       }
@@ -152,7 +175,6 @@ async function finishTextFit(design, issues, options = {}) {
       before, after: available, measured_height: measured.height, max_reduction: 0.05, reason: 'remove_unused_space_outside_page' });
   }
   const fit = { design: bounded, actions: [...boundaryActions] };
-  const minimumByRole = { title: 24, subtitle: 14, body: 12, caption: 10, product: 11, decoration: 6 };
   for (const error of errors.filter(i => i.code === 'text_overflow')) {
     options.signal?.throwIfAborted();
     const slide = fit.design.slides.find(s => s.id === error.slide_id);
@@ -164,7 +186,7 @@ async function finishTextFit(design, issues, options = {}) {
     const preferred = e.font_size;
     // Keep the fit bounded so the server preserves the model's design rather
     // than solving overflow by making text arbitrarily small.
-    const minimum = Math.min(preferred, Math.max(minimumByRole[e.role] || 12, Math.round(preferred * 0.88 * 100) / 100));
+    const { minimum } = minimumTextCandidate(e);
     let bottom = spec.height;
     for (let otherIndex = 0; otherIndex < slide.elements.length; otherIndex++) {
       const other = slide.elements[otherIndex];
