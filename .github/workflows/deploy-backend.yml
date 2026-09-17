@@ -116,7 +116,7 @@ jobs:
           fi
 
           sudo apt-get update
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y rpm
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y rpm cpio
           sudo rpm --import "$chrome_key"
           rpm_signature="$(sudo rpm --checksig "$chrome_rpm")"
           echo "$rpm_signature"
@@ -125,17 +125,26 @@ jobs:
             *'signatures OK'*) ;;
             *) echo 'Chrome RPM did not return a valid signature result.'; exit 1 ;;
           esac
-          chrome_rpm_sha256="$(sha256sum "$chrome_rpm" | awk '{print $1}')"
-          printf '%s\n' "$chrome_rpm_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
-            echo 'Failed to calculate the verified Chrome RPM SHA-256.'
+          chrome_payload_root="$RUNNER_TEMP/chrome-payload"
+          chrome_archive="$RUNNER_TEMP/google-chrome-stable.tar.gz"
+          mkdir -p "$chrome_payload_root"
+          (
+            cd "$chrome_payload_root"
+            rpm2cpio "$chrome_rpm" | cpio -idm --quiet './opt/google/chrome/*'
+          )
+          test -x "$chrome_payload_root/opt/google/chrome/google-chrome"
+          tar -C "$chrome_payload_root/opt/google/chrome" -czf "$chrome_archive" .
+          chrome_archive_sha256="$(sha256sum "$chrome_archive" | awk '{print $1}')"
+          printf '%s\n' "$chrome_archive_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
+            echo 'Failed to calculate the verified Chrome archive SHA-256.'
             exit 1
           }
 
           scp -i ~/.ssh/deploy_key -P "$ssh_port" \
             -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
-            "$chrome_rpm" "$remote:/tmp/yinnkhome-google-chrome-stable.rpm"
+            "$chrome_archive" "$remote:/tmp/yinnkhome-google-chrome-stable.tar.gz"
           echo 'needed=true' >> "$GITHUB_OUTPUT"
-          echo "sha256=$chrome_rpm_sha256" >> "$GITHUB_OUTPUT"
+          echo "sha256=$chrome_archive_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Provision Chromium for controlled ingestion rendering
         uses: appleboy/ssh-action@v1.0.3
@@ -143,13 +152,13 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           EXPECTED_SSH_HOST: 115.29.194.46
           CHROME_PACKAGE_NEEDED: ${{ steps.chrome-package.outputs.needed }}
-          CHROME_RPM_SHA256: ${{ steps.chrome-package.outputs.sha256 }}
+          CHROME_ARCHIVE_SHA256: ${{ steps.chrome-package.outputs.sha256 }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED,CHROME_RPM_SHA256
+          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED,CHROME_ARCHIVE_SHA256
           script: |
             set -euo pipefail
 
@@ -196,10 +205,9 @@ jobs:
               exit 1
             fi
 
-            chrome_rpm='/tmp/yinnkhome-google-chrome-stable.rpm'
-            chrome_install_log='/tmp/yinnkhome-chrome-install.log'
+            chrome_archive='/tmp/yinnkhome-google-chrome-stable.tar.gz'
             chrome_diagnostic='/tmp/yinnkhome-chrome-install-error.log'
-            trap '$runner rm -f "$chrome_rpm"' EXIT
+            trap '$runner rm -f "$chrome_archive"' EXIT
             write_chrome_diagnostic() {
               set +e
               {
@@ -208,38 +216,29 @@ jobs:
                 echo '--- architecture and RPM ---'
                 uname -m
                 rpm --version
-                echo '--- package-manager tail ---'
-                tail -40 "$chrome_install_log" 2>/dev/null || true
+                echo '--- managed Chrome files ---'
+                find /opt/yinnkhome-chromium -maxdepth 2 -type f -name chrome -o -name google-chrome 2>/dev/null | head -20
               } > "$chrome_diagnostic"
             }
-            test -s "$chrome_rpm"
-            printf '%s\n' "$CHROME_RPM_SHA256" | grep -Eq '^[0-9a-f]{64}$' || {
-              echo 'The staged Chrome RPM SHA-256 is missing or invalid.'
+            test -s "$chrome_archive"
+            printf '%s\n' "$CHROME_ARCHIVE_SHA256" | grep -Eq '^[0-9a-f]{64}$' || {
+              echo 'The staged Chrome archive SHA-256 is missing or invalid.'
               exit 1
             }
-            printf '%s  %s\n' "$CHROME_RPM_SHA256" "$chrome_rpm" | sha256sum -c -
+            printf '%s  %s\n' "$CHROME_ARCHIVE_SHA256" "$chrome_archive" | sha256sum -c -
 
-            # The RPM was GPG-verified on the GitHub runner, transferred over SSH,
-            # and is pinned here by SHA-256. This avoids legacy server RPM keyrings
-            # that cannot represent Google's current signing subkey.
-            $runner rm -f /etc/yum.repos.d/google-chrome.repo
-
-            if command -v dnf >/dev/null 2>&1; then
-              if ! $runner dnf install -y --nogpgcheck "$chrome_rpm" 2>&1 | tee "$chrome_install_log"; then
-                write_chrome_diagnostic
-                exit 1
-              fi
-            elif command -v yum >/dev/null 2>&1; then
-              if ! $runner yum install -y --nogpgcheck "$chrome_rpm" 2>&1 | tee "$chrome_install_log"; then
-                write_chrome_diagnostic
-                exit 1
-              fi
-            else
-              echo 'DNF or YUM is required to install the verified Chrome RPM.'
+            # The source RPM was GPG-verified on the GitHub runner. The extracted
+            # payload is transferred over SSH and pinned here by its SHA-256, so the
+            # server does not need a Google repository or foreign RPM dependencies.
+            chrome_root='/opt/yinnkhome-chromium'
+            chrome_release="$chrome_root/$CHROME_ARCHIVE_SHA256"
+            $runner install -d -m 0755 "$chrome_root" "$chrome_release"
+            if ! $runner tar -xzf "$chrome_archive" -C "$chrome_release"; then
               write_chrome_diagnostic
               exit 1
             fi
-            $runner rm -f /etc/yum.repos.d/google-chrome.repo
+            $runner chmod 4755 "$chrome_release/chrome-sandbox"
+            $runner ln -sfn "$chrome_release/google-chrome" /usr/local/bin/google-chrome-stable
 
             chromium_path="$(find_chromium)" || {
               echo 'Chromium package installation completed without an executable on PATH.'
