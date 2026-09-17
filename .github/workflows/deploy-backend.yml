@@ -47,6 +47,7 @@ jobs:
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 1m
           script: |
             set -eu
             stale_pattern='/opt/yinnkhome-chromium/.*/chrome'
