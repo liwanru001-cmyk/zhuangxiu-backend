@@ -103,6 +103,29 @@ function withBlindTestSeeds(rawConfig,siteMap,seenUrls=[]){
   return config;
 }
 
+function validationUrlKey(value){
+  try{const url=new URL(String(value));url.hash='';return url.href.replace(/\/$/,'');}catch(_){return String(value||'').trim().replace(/\/$/,'');}
+}
+function withRequiredValidationSeeds(rawConfig,requiredUrls=[]){
+  const config=JSON.parse(JSON.stringify(rawConfig)),required=[...new Map(requiredUrls.filter(Boolean).map(url=>[validationUrlKey(url),url])).values()];
+  if(!required.length)return config;
+  const limit=Math.max(required.length,Math.min(5,Number(config.sandbox?.max_pages||5)));
+  const keys=new Set(required.map(validationUrlKey)),remaining=(config.discovery?.seed_urls||[]).filter(url=>!keys.has(validationUrlKey(url)));
+  config.discovery={...config.discovery,seed_urls:[...required,...remaining].slice(0,limit)};
+  config.sandbox={...config.sandbox,max_pages:limit,max_products:Math.max(required.length,Math.min(5,Number(config.sandbox?.max_products||5)))};
+  config.provenance={...config.provenance,evidence_ids:appendEvidenceId(config.provenance?.evidence_ids,`PROGRAM_REQUIRED_REGRESSION_SET:${digest(required).slice(0,16)}`)};
+  return config;
+}
+function enforceRequiredValidation(rawResult,requiredUrls=[]){
+  const required=[...new Map(requiredUrls.filter(Boolean).map(url=>[validationUrlKey(url),url])).entries()];
+  if(!required.length)return rawResult;
+  const accepted=new Set((rawResult?.accepted_products||[]).filter(item=>item?.accepted===true&&!(item.validation_errors||[]).length).map(item=>validationUrlKey(item.source_url)));
+  const failed=required.filter(([key])=>!accepted.has(key));
+  if(!failed.length)return rawResult;
+  const failures=failed.map(([,url])=>({stage:'required_regression_page',source_url:url,code:'REQUIRED_REGRESSION_PAGE_FAILED',message:'触发模板漂移的页面未通过新规则验收'}));
+  return {...rawResult,passed:false,outcome:'REQUIRED_REGRESSION_PAGE_FAILED',summary:{...(rawResult?.summary||{}),failures:Number(rawResult?.summary?.failures||0)+failures.length},failures:[...(rawResult?.failures||[]),...failures]};
+}
+
 function refineFromValidation(rawConfig,result){
   const config=JSON.parse(JSON.stringify(rawConfig)),errors=(result.rejected_products||[]).flatMap(item=>item.validation_errors||[]);
   const missing=new Set(errors.filter(value=>value.startsWith('TEMPLATE_SIGNALS_MISSING:')).flatMap(value=>value.split(':')[1].split(',')));
@@ -451,7 +474,18 @@ function createSiteCognitionControl(db, dependencies = {}) {
     if(!discoveryRule)return null;
     const [evidence]=await db.query("SELECT content FROM product_ingestion_site_cognition_evidence WHERE workflow_id=? AND evidence_type='SITE_STRUCTURE_MAP' ORDER BY revision DESC,id DESC LIMIT 1",[workflow.id]);
     const siteMap=parsed(evidence[0]?.content,null);
-    return siteMap?{siteMap,discoveryRule}:null;
+    let requiredValidationUrls=Array.isArray(payload.required_validation_urls)?payload.required_validation_urls:[];
+    // Workflows already waiting for budget approval were created before the
+    // regression URL was copied into the drafting event. Recover it from the
+    // durable job snapshot so the first post-deploy resume is protected too.
+    if(!requiredValidationUrls.length){
+      try{
+        const [jobs]=await db.query('SELECT scope_snapshot FROM product_ingestion_jobs WHERE id=?',[workflow.job_id]);
+        const drift=parsed(jobs[0]?.scope_snapshot,{})?.template_drift_checkpoint;
+        if(drift?.active&&drift.failed_url)requiredValidationUrls=[drift.failed_url];
+      }catch(_){}
+    }
+    return siteMap?{siteMap,discoveryRule,requiredValidationUrls}:null;
   }
 
   async function finishWithHandoff(workflow,error,actor='system:site-cognition'){
@@ -512,7 +546,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
     return workflow;
   }
 
-  async function generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback=null,{maxAttempts=1,discoveryTest=null,discoveryExposedUrls=[]}={}){
+  async function generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback=null,{maxAttempts=1,discoveryTest=null,discoveryExposedUrls=[],requiredValidationUrls=[]}={}){
     let generated;
     const contexts=buildExtractionContexts(extractionMap,{feedback,discoveryRule});
     const reserve=contexts.reduce((sum,item)=>sum+Number(item.budget?.reserved_total_tokens||0),0);
@@ -520,10 +554,12 @@ function createSiteCognitionControl(db, dependencies = {}) {
     catch(error){await saveAiAudit(workflow,error.details || null,'invalid',error.details?.validation_errors || [error.message]).catch(()=>{});throw error;}
     const analyzedUrls=evidenceUrls({pages:discoveryExposedUrls.map(url=>({url}))},generated.input_manifest);
     generated.config=withBlindTestSeeds(generated.config,extractionMap,analyzedUrls);
+    generated.config=withRequiredValidationSeeds(generated.config,requiredValidationUrls);
     const rule=await siteRules.create(workflow.source_id,generated.config,'ai:site-rule-generator');
     await db.query('UPDATE product_ingestion_site_cognition_workflows SET rule_id=? WHERE id=?',[rule.id,workflow.id]);workflow.rule_id=rule.id;
     workflow=await move(workflow,'SUCCESS','SUCCESS',{rule_id:rule.id},actor);
     const run=await siteRules.runSandbox(rule.id,'system:site-cognition');
+    run.result=enforceRequiredValidation(run.result,requiredValidationUrls);
     if(discoveryTest)await saveDiscoveryTests(workflow,rule,discoveryTest);
     await saveTests(workflow,rule,extractionMap,run.result,analyzedUrls);
     if(!run.result.passed) {
@@ -536,7 +572,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
         workflow=await move(workflow,'EXTRACTION_REVISED','SUCCESS',{reason:'只根据统一校验的可证伪信号收敛，不调用 AI'},'system:validation-refinement');
         const refinedRule=await siteRules.create(workflow.source_id,refined,'system:validation-refinement');
         await db.query('UPDATE product_ingestion_site_cognition_workflows SET rule_id=? WHERE id=?',[refinedRule.id,workflow.id]);workflow.rule_id=refinedRule.id;
-        const refinedRun=await siteRules.runSandbox(refinedRule.id,'system:site-cognition');await saveTests(workflow,refinedRule,extractionMap,refinedRun.result,analyzedUrls);
+        const refinedRun=await siteRules.runSandbox(refinedRule.id,'system:site-cognition');refinedRun.result=enforceRequiredValidation(refinedRun.result,requiredValidationUrls);await saveTests(workflow,refinedRule,extractionMap,refinedRun.result,analyzedUrls);
         if(refinedRun.result.passed){
           return completeValidatedRule(workflow,refinedRule,refinedRun,actor);
         }
@@ -675,12 +711,15 @@ function createSiteCognitionControl(db, dependencies = {}) {
         const frozenRules=await loadFrozenSiteRules(db,workflow.source_id),baseRule=frozenRules[0];
         if(baseRule){
           const config=baseRule.config,discoveryRule={seed_urls:config.discovery.seed_urls,product_detail_path_prefixes:config.discovery.product_detail_path_prefixes,listing_path_prefixes:config.discovery.listing_path_prefixes,exclude_path_prefixes:config.discovery.exclude_path_prefixes,product_detail_paths:config.discovery.product_detail_paths||[],listing_paths:config.discovery.listing_paths||[],exclude_paths:config.discovery.exclude_paths||[],product_detail_path_patterns:config.discovery.product_detail_path_patterns||[],listing_path_patterns:config.discovery.listing_path_patterns||[],exclude_path_patterns:config.discovery.exclude_path_patterns||[],link_sources:config.discovery.link_sources,required_signals:config.template.required_signals};
-          workflow=await move(workflow,'GENERATE_DISCOVERY_RULE','SUCCESS',{reused_rule_id:baseRule.id,reason:'模板漂移只补充提取模板，不重复生成已验证的全站发现规则'},'system:template-checkpoint');
-          workflow=await move(workflow,'SUCCESS','SUCCESS',{reused_rule_id:baseRule.id,discovery_rule:discoveryRule},'system:template-checkpoint');
-          workflow=await move(workflow,'SUCCESS','SUCCESS',{reused_rule_id:baseRule.id,discovery_rule:discoveryRule},'system:template-checkpoint');
+          const requiredValidationUrls=[driftCheckpoint.failed_url].filter(Boolean);
+          workflow=await move(workflow,'GENERATE_DISCOVERY_RULE','SUCCESS',{reused_rule_id:baseRule.id,reason:'模板漂移只补充提取模板，不重复生成已验证的全站发现规则',required_validation_urls:requiredValidationUrls},'system:template-checkpoint');
+          workflow=await move(workflow,'SUCCESS','SUCCESS',{reused_rule_id:baseRule.id,discovery_rule:discoveryRule,required_validation_urls:requiredValidationUrls},'system:template-checkpoint');
+          workflow=await move(workflow,'SUCCESS','SUCCESS',{reused_rule_id:baseRule.id,discovery_rule:discoveryRule,required_validation_urls:requiredValidationUrls},'system:template-checkpoint');
           const extractionMap=await augmentEvidenceForRule(siteMap,{...siteMap.site,brand_name:siteMap.site.brand,base_url:siteMap.site.entry_url,allowed_hosts:siteMap.site.allowed_hosts,allowed_asset_hosts:siteMap.site.allowed_asset_hosts,allowed_path_prefixes:siteMap.site.allowed_path_prefixes,request_interval_ms:siteMap.site.request_interval_ms,source_status:'active',job_status:'discovering',source_id:workflow.source_id,job_id:workflow.job_id,policy_db:db,page_quota:{used:0,limit:8}},discoveryRule,pageFetcher);
           await saveEvidence(workflow,extractionMap);
-          return generateAndTestExtraction(workflow,extractionMap,normalizeDiscoveryRule(discoveryRule,extractionMap),actor,null,{maxAttempts:1});
+          // Await here so budget and rule-generation failures stay inside this
+          // executor's catch block and enter the workflow handoff state.
+          return await generateAndTestExtraction(workflow,extractionMap,normalizeDiscoveryRule(discoveryRule,extractionMap),actor,null,{maxAttempts:1,requiredValidationUrls});
         }
       }
       if(siteMap.public_json_api_rule)return await draftAndTest(workflow,siteMap,actor,null,{next_decision:{action:'GENERATE_DISCOVERY_RULE',reason:'已验证的公开 JSON API 合同可直接确定商品记录范围'}},restartRecovery);
@@ -758,7 +797,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
         const extractionMap=await augmentEvidenceForRule(siteMap,{...siteMap.site,brand_name:siteMap.site.brand,base_url:siteMap.site.entry_url,allowed_hosts:siteMap.site.allowed_hosts,allowed_asset_hosts:siteMap.site.allowed_asset_hosts,allowed_path_prefixes:siteMap.site.allowed_path_prefixes,request_interval_ms:siteMap.site.request_interval_ms,source_status:'active',job_status:'discovering',source_id:workflow.source_id,job_id:workflow.job_id,policy_db:db,page_quota:{used:0,limit:8}},checkpoint.discoveryRule,pageFetcher);
         const discoveryRule=normalizeDiscoveryRule(checkpoint.discoveryRule,extractionMap);
         await saveEvidence(workflow,extractionMap);
-        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:1});
+        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:1,requiredValidationUrls:checkpoint.requiredValidationUrls});
       }catch(error){console.error('Site cognition stage retry failed:',{workflowId:workflow.id,code:error.code||error.name,message:error.message});await finishWithHandoff(workflow,error,actor);}
     });else schedule(()=>execute(workflow.id,actor));
     return get(workflow.id);
@@ -781,7 +820,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
     if(checkpoint)schedule(async()=>{
       try{
         const extractionMap=checkpoint.siteMap,discoveryRule=normalizeDiscoveryRule(checkpoint.discoveryRule,extractionMap);
-        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:1});
+        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:1,requiredValidationUrls:checkpoint.requiredValidationUrls});
       }catch(error){console.error('Site cognition budget resume failed:',{workflowId:workflow.id,code:error.code||error.name,message:error.message});await finishWithHandoff(workflow,error,actor);}
     });else schedule(()=>execute(workflow.id,actor));
     return get(workflow.id);
@@ -897,4 +936,4 @@ function createSiteCognitionControl(db, dependencies = {}) {
   return {startForJob,execute,get,list,feedback,retryHandoff,approveAiBudget,latestForJob,recoverInterrupted,markFullCrawlStarted,markFullCrawlFinished,returnToHumanAnchor,stopForJob};
 }
 
-module.exports = { createSiteCognitionControl, businessCopy, BUSINESS_ERROR_TYPES, DISCOVERY_ERROR_TYPES, AI_TOKEN_BUDGET, MAX_AI_TOKEN_BUDGET, MAX_EVIDENCE_PROBE_ROUNDS, evidenceProbeFingerprint, canAutoFreezeRule, renderedEvidenceUsable, withBlindTestSeeds, refineFromValidation, validateDiscoveryAgainstMap, publicApiDiscovery, augmentEvidenceForRule, attemptBudgetUsed, aiBudgetLimit, nextAiBudgetLimit, evidenceUrls };
+module.exports = { createSiteCognitionControl, businessCopy, BUSINESS_ERROR_TYPES, DISCOVERY_ERROR_TYPES, AI_TOKEN_BUDGET, MAX_AI_TOKEN_BUDGET, MAX_EVIDENCE_PROBE_ROUNDS, evidenceProbeFingerprint, canAutoFreezeRule, renderedEvidenceUsable, withBlindTestSeeds, withRequiredValidationSeeds, enforceRequiredValidation, refineFromValidation, validateDiscoveryAgainstMap, publicApiDiscovery, augmentEvidenceForRule, attemptBudgetUsed, aiBudgetLimit, nextAiBudgetLimit, evidenceUrls };

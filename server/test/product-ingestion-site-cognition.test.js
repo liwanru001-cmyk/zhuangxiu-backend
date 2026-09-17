@@ -129,6 +129,19 @@ test('blind samples exclude every URL exposed in AI evidence manifests',()=>{
   assert.equal(validateDiscoveryAgainstMap({site:{entry_url:'https://www.poliform.cn/'},pages:[],clusters:[{url_examples:[seen,blind]}]}, {seed_urls:[seen],product_detail_path_prefixes:['/产品/'],listing_path_prefixes:[],exclude_path_prefixes:[]}, exposed).unseen_product_urls.includes(blind),true);
 });
 
+test('template drift regression page is forced into the sandbox and must pass',()=>{
+  const {withRequiredValidationSeeds,enforceRequiredValidation}=require('../services/product-ingestion-site-cognition');
+  const failed='https://example.com/products/drifted';
+  const value=config();value.discovery.seed_urls=['https://example.com/products/a','https://example.com/products/b'];
+  const forced=withRequiredValidationSeeds(value,[failed]);
+  assert.equal(forced.discovery.seed_urls[0],failed);
+  const base={passed:true,outcome:'SUCCESS',summary:{products_accepted:1,products_rejected:0,failures:0},accepted_products:[{source_url:'https://example.com/products/a',accepted:true,validation_errors:[]}],rejected_products:[],failures:[]};
+  const blocked=enforceRequiredValidation(base,[failed]);
+  assert.equal(blocked.passed,false);
+  assert.equal(blocked.outcome,'REQUIRED_REGRESSION_PAGE_FAILED');
+  assert.equal(enforceRequiredValidation({...base,accepted_products:[{source_url:`${failed}/`,accepted:true,validation_errors:[]}]},[failed]).passed,true);
+});
+
 test('blind samples understand task-scoped AI Context Builder manifests',()=>{
   const exposed=['https://example.com/products/a','https://example.com/products/b'];
   const manifest={contexts:[{task:'product_fields',evidence:{pages:exposed.map((url,index)=>({page_id:`P-${index+1}`,url}))}}]};
@@ -570,6 +583,14 @@ test('restart recovery resumes discovery and extraction instead of leaving jobs 
   assert.match(updates[0],/status='discovery_approved'/);
   assert.match(updates[1],/status='queued'/);
   assert.equal(updates.every(sql=>!sql.includes("status='failed'")),true);
+});
+
+test('template drift extraction awaits failures so the workflow can hand them off',()=>{
+  const source=fs.readFileSync(require.resolve('../services/product-ingestion-site-cognition'),'utf8');
+  assert.match(source,/return await generateAndTestExtraction\(workflow,extractionMap,normalizeDiscoveryRule/);
+  assert.match(source,/requiredValidationUrls=\[driftCheckpoint\.failed_url\]/);
+  assert.match(source,/requiredValidationUrls:checkpoint\.requiredValidationUrls/);
+  assert.match(source,/template_drift_checkpoint/);
 });
 
 test('invalid human anchor returns to a new business anchor instead of staying in hypothesis evaluation',async()=>{

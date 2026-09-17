@@ -97,11 +97,19 @@ function candidateSummary(payload) {
   const configurations=Array.isArray(details.configurations)?details.configurations:Array.isArray(document.configurations)?document.configurations:[];
   const assets=Array.isArray(payload?.product_document?.data?.assets)?payload.product_document.data.assets:[];
   const legacyImages=[payload?.cover_url,details?.image_url,...(Array.isArray(details?.image_urls)?details.image_urls:[]),...configurations.flatMap(item=>[item?.image_url,...(Array.isArray(item?.image_urls)?item.image_urls:[])])].filter(Boolean);
+  const firstConfiguration=configurations[0]||{},assetById=new Map(assets.map(item=>[String(item?.id),item]));
+  const firstConfigurationImage=Array.isArray(firstConfiguration.asset_ids)
+    ? firstConfiguration.asset_ids.map(value=>assetById.get(String(value))?.url).find(Boolean)
+    : null;
+  const firstLegacyConfigurationImage=[firstConfiguration.image_url,...(Array.isArray(firstConfiguration.image_urls)?firstConfiguration.image_urls:[])].find(Boolean);
+  const heroImage=assets.find(item=>item?.role==='hero'&&item?.url)?.url;
   return {
     product_name:String(payload?.name||product?.names?.primary||product?.names?.zh||'').trim(),
     model_code:String(payload?.model||payload?.sku||product?.identifiers?.model||product?.identifiers?.sku||'').trim(),
     configuration_count:configurations.length,
     asset_count:new Set([...assets.map(item=>item?.url),...legacyImages].filter(Boolean)).size,
+    cover_image_url:String(payload?.cover_url||heroImage||firstConfigurationImage||firstLegacyConfigurationImage||legacyImages[0]||''),
+    first_configuration_image_url:String(firstConfigurationImage||firstLegacyConfigurationImage||''),
   };
 }
 function mapSource(row) {
@@ -388,6 +396,7 @@ function createControl(db) {
       if(paged){const [countRows]=await db.query(`SELECT COUNT(*) total FROM product_ingestion_candidates candidate JOIN product_ingestion_jobs job ON job.id=candidate.job_id ${where}`,params);total=Number(countRows[0]?.total||0);}
       const [rows] = await db.query(`SELECT candidate.id,candidate.job_id,candidate.source_id,candidate.source_url,candidate.source_external_id,candidate.normalized_payload,candidate.validation_status,candidate.validation_issues,candidate.review_status,candidate.generated_fields,candidate.classification_suggestion,candidate.classification_override,candidate.published_product_id,candidate.published_version_id,candidate.published_at,candidate.created_at,source.brand_name,source.status source_status,job.status job_status,job.current_stage,
         (SELECT COUNT(*) FROM product_ingestion_candidate_categories assignment WHERE assignment.candidate_id=candidate.id) category_count,
+        (SELECT GROUP_CONCAT(category.id ORDER BY category.sort_order) FROM product_ingestion_candidate_categories assignment JOIN public_product_categories category ON category.id=assignment.category_id WHERE assignment.candidate_id=candidate.id) category_ids,
         (SELECT GROUP_CONCAT(category.name ORDER BY category.sort_order SEPARATOR '、') FROM product_ingestion_candidate_categories assignment JOIN public_product_categories category ON category.id=assignment.category_id WHERE assignment.candidate_id=candidate.id) category_names,
         (SELECT recovery.status FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id ORDER BY recovery.id DESC LIMIT 1) recovery_status,
         CASE WHEN candidate.validation_status='invalid' THEN 'needs_attention' WHEN product.id IS NULL THEN 'new' WHEN current_version.content_fingerprint=candidate.content_fingerprint THEN 'unchanged' ELSE 'updated' END change_status
@@ -397,7 +406,7 @@ function createControl(db) {
       const items=rows.map(row => {const payload=parseJsonValue(row.normalized_payload),summary=candidateSummary(payload),categoryCount=Number(row.category_count||0),blockers=[];
         if(!row.published_product_id){if(row.validation_status!=='valid')blockers.push('结构未通过');if(row.review_status!=='approved')blockers.push('未审核通过');if(!categoryCount)blockers.push('未设置标准分类');if(row.source_status!=='active')blockers.push('来源未启用');}
         return { ...row, id: Number(row.id), job_id: Number(row.job_id), source_id: Number(row.source_id),category_count:categoryCount,
-          category_names:String(row.category_names||'').split('、').filter(Boolean),...summary,publish_ready:!row.published_product_id&&!blockers.length,publish_blockers:blockers,
+          category_ids:String(row.category_ids||'').split(',').map(Number).filter(Number.isSafeInteger),category_names:String(row.category_names||'').split('、').filter(Boolean),...summary,publish_ready:!row.published_product_id&&!blockers.length,publish_blockers:blockers,
           normalized_payload:payload,validation_issues: parseJsonList(row.validation_issues), generated_fields: parseJsonList(row.generated_fields),
           classification_suggestion:parseJsonValue(row.classification_suggestion),classification_override:parseJsonValue(row.classification_override) };});
       return paged?{items,total,limit,offset}:items;

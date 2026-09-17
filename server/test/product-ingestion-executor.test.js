@@ -148,6 +148,41 @@ test('worker makes no request after a queued job is cancelled before claim', asy
   assert.equal(queries.length, 2);
 });
 
+test('extraction resume re-enters full crawl workflow before processing frozen-rule pages', async () => {
+  const transitions=[];
+  const job={
+    id:32,source_id:4,status:'queued',source_status:'active',frozen_site_rule_id:9,
+    scope_snapshot:{
+      adapter_key:'universal_web_v1',product_type:'furniture',seed_urls:[],allowed_hosts:['example.com'],
+      allowed_path_prefixes:['/'],max_pages:1,max_products:1,request_interval_ms:1000,site_rule_ids:[9],
+    },
+  };
+  const db={query:async sql=>{
+    if(sql.startsWith('SELECT job.*'))return [[job]];
+    if(sql.includes("SET status='running'"))return [{affectedRows:1}];
+    if(sql.startsWith('SELECT source_url,extracted_payload'))return [[]];
+    if(sql.startsWith('SELECT COUNT(*) candidates'))return [[{candidates:0,accepted:0,rejected:0}]];
+    if(sql.startsWith('SELECT source_url,normalized_payload'))return [[]];
+    if(sql.includes('SET status=?'))return [{affectedRows:1}];
+    throw new Error(`Unexpected query: ${sql}`);
+  }};
+  const runner=createRunner(db,{
+    globalSlots:{acquire:async()=>({release:async()=>{}})},
+    loadFrozenSiteRules:async()=>[{id:9,version_number:1,config:{}}],
+    onFullCrawlStarted:async id=>transitions.push(['started',id]),
+    onFullCrawlFinished:async(id,outcome)=>transitions.push(['finished',id,outcome]),
+  });
+  await runner.run(32);
+  assert.deepEqual(transitions,[['started',32],['finished',32,'success']]);
+});
+
+test('extraction resume restores page progress from the durable checkpoint',()=>{
+  const source=require('fs').readFileSync(require.resolve('../services/product-ingestion-runner'),'utf8');
+  assert.match(source,/let pages=checkpoint,/);
+  assert.doesNotMatch(source,/let pages=checkpoint\?Number\(job\.pages_fetched/);
+  assert.match(source,/Frozen-rule retries upsert the same URL/);
+});
+
 test('automatic collection continues from discovery to candidate ingestion without scope confirmation', async () => {
   let state='discovery_approved',scope={adapter_key:'universal_web_v1',job_mode:'brand_scan',source_id:4,brand_name:'Example',base_url:'https://example.com/',seed_urls:['https://example.com/'],allowed_hosts:['example.com'],allowed_path_prefixes:['/'],max_pages:5,max_products:5,request_interval_ms:1000,manual_review_required:true};
   let complete;const completed=new Promise(resolve=>{complete=resolve;});

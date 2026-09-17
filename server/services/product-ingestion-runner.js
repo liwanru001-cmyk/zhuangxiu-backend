@@ -186,9 +186,18 @@ function createRunner(db, dependencies = {}) {
       // A queued job can be cancelled before this asynchronous worker claims it.
       // In that case it must stop without making any network request.
       if (!claimed.affectedRows) return;
+      // Discovery normally moves the cognition workflow into FULL_CRAWLING. A
+      // template-drift recovery can resume directly at extraction, so make the
+      // same transition here as well. Without it, a later template drift is
+      // recorded only on the job and cannot re-enter the cognition repair loop.
+      if(frozenRule)await fullCrawlStarted(Number(id));
       const commonImageKeys=await loadCommonImageKeys(db,job.source_id,Number(id));
       const representativePages=imageProfileAttempted?[]:await loadRepresentativePages(db,job.source_id,Number(id));
-      let pages=checkpoint?Number(job.pages_fetched||0):0,found=checkpoint?Number(job.candidates_found||checkpoint):0;
+      // checkpoint_index is the durable full-crawl cursor. pages_fetched is
+      // also used while rebuilding site evidence, so it may be reset to a
+      // small number during template-drift recovery and must not be used to
+      // restore extraction progress.
+      let pages=checkpoint,found=checkpoint?Number(job.candidates_found||checkpoint):0;
       const publicApiPageCache=new Map();
       let accepted=checkpoint?Number(job.accepted_count||0):0,rejected=checkpoint?Number(job.rejected_count||0):0,processed=checkpoint,currentUrl=null,lastProgressAt=Date.now(),watchdogTriggered=false,shadowAttempts=0;
       const watchdog=setInterval(()=>{if(!watchdogTriggered&&Date.now()-lastProgressAt>NO_PROGRESS_TIMEOUT_MS){watchdogTriggered=true;db.query(`UPDATE product_ingestion_jobs SET status='failed',finished_at=NOW(),failure_code='NO_PROGRESS_TIMEOUT',last_error=?,current_stage='failed' WHERE id=? AND status='running'`,[`NO_PROGRESS_TIMEOUT: 超过 ${Math.round(NO_PROGRESS_TIMEOUT_MS/1000)} 秒没有进度；最后页面：${currentUrl||'未知'}`.slice(0,1000),id]).catch(()=>{});}},15000);watchdog.unref?.();
@@ -250,6 +259,13 @@ function createRunner(db, dependencies = {}) {
           if(String(error.code||'').startsWith('INGESTION_AI_'))fatalError=error;
         }
         processed+=1;
+        // Frozen-rule retries upsert the same URL. Recount physical rows so a
+        // repaired page does not inflate candidate totals or leave a stale
+        // rejected count behind.
+        if(frozenRule){
+          const [[actual]]=await db.query(`SELECT COUNT(*) candidates,SUM(validation_status='valid') accepted,SUM(validation_status<>'valid') rejected FROM product_ingestion_candidates WHERE job_id=?`,[id]);
+          found=Number(actual.candidates||0);accepted=Number(actual.accepted||0);rejected=Number(actual.rejected||0);
+        }
         const [progress]=await db.query(`UPDATE product_ingestion_jobs SET pages_fetched=?,candidates_found=?,accepted_count=?,rejected_count=?,checkpoint_index=?,heartbeat_at=NOW() WHERE id=? AND status='running'`, [pages,found,accepted,rejected,processed,id]);
         if(!progress.affectedRows){const error=new Error('任务已被中止，进度不能继续写入');error.code='JOB_INTERRUPTED';throw error;}
         lastProgressAt=Date.now();

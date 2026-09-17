@@ -233,9 +233,26 @@ test('candidate detail exposes parsed governance payloads but never raw HTML', a
 });
 
 test('candidate list supports server pagination and recovery-state filtering',async()=>{
-  const calls=[];const db={query:async(sql,params=[])=>{calls.push({sql,params});if(sql.startsWith('SELECT COUNT(*) total'))return [[{total:73}]];if(sql.includes('SELECT candidate.id'))return [[{id:12,job_id:4,source_id:2,validation_issues:'[]',generated_fields:'[]',classification_suggestion:null,classification_override:null,recovery_status:'shadow_ready'}]];throw new Error(`Unexpected query: ${sql}`);}};
+  const payload={product_document:{data:{product:{names:{primary:'云朵沙发'}},configurations:[{id:'configuration-1',asset_ids:['configuration-image']}],assets:[{id:'hero-image',role:'hero',url:'https://img.example/hero.jpg'},{id:'configuration-image',role:'configuration',url:'https://img.example/configuration.jpg'}]}}};
+  const calls=[];const db={query:async(sql,params=[])=>{calls.push({sql,params});if(sql.startsWith('SELECT COUNT(*) total'))return [[{total:73}]];if(sql.includes('SELECT candidate.id'))return [[{id:12,job_id:4,source_id:2,normalized_payload:JSON.stringify(payload),validation_issues:'[]',generated_fields:'[]',classification_suggestion:null,classification_override:null,recovery_status:'shadow_ready',category_ids:'4,7',category_names:'沙发、休闲椅'}]];throw new Error(`Unexpected query: ${sql}`);}};
   const result=await createControl(db).listCandidates({paged:'1',job_id:'4',status:'invalid',recovery_status:'shadow_ready',limit:'25',offset:'50'});
   assert.equal(result.total,73);assert.equal(result.items[0].recovery_status,'shadow_ready');assert.deepEqual(calls[0].params,["invalid",4,"shadow_ready"]);assert.deepEqual(calls[1].params,["invalid",4,"shadow_ready",25,50]);
+  assert.deepEqual(result.items[0].category_ids,[4,7]);
+  assert.equal(result.items[0].cover_image_url,'https://img.example/hero.jpg');
+  assert.equal(result.items[0].first_configuration_image_url,'https://img.example/configuration.jpg');
+});
+
+test('candidate list exposes inline classification editing and separate product/configuration images',()=>{
+  const ui=fs.readFileSync(require.resolve('../public/admin/modules/product-ingestion'),'utf8');
+  assert.match(ui,/产品主图/);
+  assert.match(ui,/款型配置图/);
+  assert.match(ui,/data-row-product-type/);
+  assert.match(ui,/data-row-category/);
+  assert.match(ui,/data-save-candidate-categories/);
+  assert.match(ui,/本页.*项.*共.*项/);
+  assert.match(ui,/data-candidate-page-size/);
+  assert.match(ui,/data-candidate-page-input/);
+  assert.match(ui,/jump-candidate-page/);
 });
 
 test('batch classification correction rebuilds product structure and records an audit entry', async () => {

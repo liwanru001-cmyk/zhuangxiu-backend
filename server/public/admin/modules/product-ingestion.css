@@ -60,6 +60,23 @@
 .ingestion-bulk-bar [data-bulk-progress] { color: #475467; font-size: 12px; }
 .ingestion-check-col { width: 54px; text-align: center; }
 .ingestion-check-col input { width: 17px; height: 17px; }
+.ingestion-candidate-table { min-width: 1480px; }
+.ingestion-candidate-table th:nth-child(1),.ingestion-candidate-table td:nth-child(1) { width: 48px; text-align: center; }
+.ingestion-candidate-table th:nth-child(3),.ingestion-candidate-table td:nth-child(3),.ingestion-candidate-table th:nth-child(6),.ingestion-candidate-table td:nth-child(6) { width: 116px; }
+.ingestion-candidate-table th:nth-child(4),.ingestion-candidate-table td:nth-child(4) { width: 245px; }
+.ingestion-candidate-table th:nth-child(5),.ingestion-candidate-table td:nth-child(5) { width: 118px; max-width: 150px; }
+.ingestion-candidate-table-image { width: 104px; height: 86px; display: grid; place-items: center; overflow: hidden; border: 1px solid #e4e7ec; border-radius: 9px; background: #f8fafc; color: #98a2b3; font-size: 10px; text-align: center; }
+.ingestion-candidate-table-image a { width: 100%; height: 100%; display: block; }
+.ingestion-candidate-table-image img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.ingestion-candidate-table-image.configuration { background: #fff; }
+.ingestion-validation-cell .ingestion-code { max-width: 140px; margin-top: 6px; }
+.ingestion-candidate-classification { display: grid; gap: 7px; min-width: 220px; }
+.ingestion-candidate-classification label { display: grid; gap: 4px; color: #475467; font-size: 10px; font-weight: 700; }
+.ingestion-candidate-classification select { width: 100%; padding: 6px 8px; border: 1px solid #d0d5dd; border-radius: 7px; background: #fff; color: #1d2939; font: inherit; font-size: 11px; }
+.ingestion-candidate-classification select[multiple] { min-height: 64px; }
+.ingestion-candidate-classification small,.ingestion-candidate-classification [data-row-save-status] { color: #667085; font-size: 9px; line-height: 1.4; }
+.ingestion-candidate-classification button { justify-self: start; padding: 6px 9px; border: 1px solid #4f6ef7; border-radius: 7px; background: #4f6ef7; color: #fff; font-size: 10px; font-weight: 700; }
+.ingestion-candidate-classification button:disabled { opacity: .55; }
 .ingestion-classification { display: grid; grid-template-columns: minmax(180px, .8fr) minmax(320px, 2fr) auto; align-items: center; gap: 16px; margin: 16px 0; padding: 16px; border: 1px solid #dbe3f5; border-radius: 12px; background: #f8faff; }
 .ingestion-classification p { margin: 5px 0 0; color: #667085; font-size: 12px; }
 .ingestion-category-options { display: flex; flex-wrap: wrap; gap: 8px 14px; }
@@ -147,10 +164,13 @@
 .ingestion-library-card .ingestion-actions { margin-top: 12px; }
 .ingestion-library-card button.primary { border-color: #3154c8; background: #3154c8; color: #fff; }
 .ingestion-library-card button.danger { border-color: #fecdca; background: #fff5f5; color: #b42318; }
-.ingestion-library-pagination { display: flex; justify-content: center; align-items: center; gap: 12px; margin-top: 24px; }
+.ingestion-library-pagination { display: flex; justify-content: center; align-items: center; flex-wrap: wrap; gap: 12px; margin-top: 24px; }
 .ingestion-library-pagination button { padding: 8px 12px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; color: #344054; }
 .ingestion-library-pagination button:disabled { opacity: .4; }
 .ingestion-library-pagination span { color: #667085; font-size: 11px; }
+.ingestion-library-pagination label { display: flex; align-items: center; gap: 6px; color: #667085; font-size: 11px; white-space: nowrap; }
+.ingestion-library-pagination select,.ingestion-library-pagination input { height: 34px; padding: 5px 8px; border: 1px solid #d0d5dd; border-radius: 8px; background: #fff; color: #344054; font: inherit; }
+.ingestion-library-pagination input { width: 64px; text-align: center; }
 .ingestion-library-workbench { display: grid; gap: 18px; }
 .ingestion-library-sticky { position: sticky; z-index: 5; top: 0; padding: 14px 16px; border: 1px solid #dfe3eb; border-radius: 12px; background: rgba(255,255,255,.97); box-shadow: 0 8px 22px rgba(16,24,40,.08); backdrop-filter: blur(10px); }
 .ingestion-library-sticky h3 { margin: 5px 0; }
