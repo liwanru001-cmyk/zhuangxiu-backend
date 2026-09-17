@@ -40,6 +40,25 @@ jobs:
           node server/scripts/create-release-manifest.js --output server/release-manifest.json
           test "$(node -p "require('./server/release-manifest.json').release_sha")" = "$GITHUB_SHA"
 
+      - name: Recover stale controlled Chromium processes
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            set -eu
+            stale_pattern='/opt/yinnkhome-chromium/.*/chrome'
+            if command -v pgrep >/dev/null 2>&1; then
+              pgrep -af "$stale_pattern" || true
+            fi
+            if command -v pkill >/dev/null 2>&1; then
+              pkill -TERM -f "$stale_pattern" || true
+              sleep 2
+              pkill -KILL -f "$stale_pattern" || true
+            fi
+
       # Do not switch/recover services before migration has been validated.
       - name: Check current backend without changing it
         uses: appleboy/ssh-action@v1.0.3
@@ -682,7 +701,7 @@ jobs:
 
             echo 'Checking the production environment contract and read-only service connectivity.'
             deployment_phase='production_contract'
-            npm run check:production-contract -- --connectivity
+            timeout 120s npm run check:production-contract -- --connectivity
 
             echo 'Checking AI PPT v2 fonts and static PPTX generation.'
             deployment_phase='presentation_static_check'
@@ -692,7 +711,7 @@ jobs:
             if [ ! -f "$model_check_file" ]; then
               echo 'Checking AI PPT v2 multimodal model access.'
               deployment_phase='presentation_model_check'
-              npm run check:presentation-v2:model
+              timeout 180s npm run check:presentation-v2:model
               mkdir -p storage
               : > "$model_check_file"
             fi
