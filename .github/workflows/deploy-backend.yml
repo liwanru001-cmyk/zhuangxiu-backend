@@ -52,7 +52,7 @@ jobs:
             set -eu
             curl --max-time 15 -fsS http://127.0.0.1:3001/health
 
-      - name: Stage verified Chrome RPM when the server needs it
+      - name: Stage Playwright-matched Chromium when the server needs it
         id: chrome-package
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -85,73 +85,54 @@ jobs:
             -o ServerAliveInterval=15
           )
           remote="${SSH_USER}@${SSH_HOST}"
+          playwright_version="$(node -p "require('./server/node_modules/playwright-core/package.json').version")"
+          printf '%s\n' "$playwright_version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+            echo "Invalid locked Playwright version: $playwright_version"
+            exit 1
+          }
+          chrome_marker="/opt/yinnkhome-chromium/playwright-core-${playwright_version}.ready"
 
-          if ssh "${ssh_opts[@]}" "$remote" '
+          if ssh "${ssh_opts[@]}" "$remote" "CHROME_MARKER='$chrome_marker' bash -s" <<'REMOTE_CHECK'
             for chrome_command in google-chrome-stable google-chrome chromium chromium-browser; do
               chrome_candidate="$(command -v "$chrome_command" 2>/dev/null || true)"
-              if [ -n "$chrome_candidate" ] && [ -x "$chrome_candidate" ] && "$chrome_candidate" --version >/dev/null 2>&1; then
+              if [ -f "$CHROME_MARKER" ] && [ -n "$chrome_candidate" ] && [ -x "$chrome_candidate" ] && "$chrome_candidate" --version >/dev/null 2>&1; then
                 exit 0
               fi
             done
             exit 1
-          '; then
-            echo 'Chrome/Chromium is already installed; package staging is not required.'
+          REMOTE_CHECK
+          then
+            echo 'The Playwright-matched Chromium is already installed; package staging is not required.'
             echo 'needed=false' >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
           remote_arch="$(ssh "${ssh_opts[@]}" "$remote" 'uname -m')"
           if [ "$remote_arch" != 'x86_64' ]; then
-            echo "The official Google Chrome RPM requires x86_64; server reports $remote_arch."
+            echo "The locked Playwright Chromium build requires x86_64; server reports $remote_arch."
             exit 1
           fi
 
-          chrome_rpm="$RUNNER_TEMP/google-chrome-stable.rpm"
-          chrome_key="$RUNNER_TEMP/google-linux-signing-key.pub"
-          curl --fail --silent --show-error --location \
-            https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm \
-            --output "$chrome_rpm"
-          curl --fail --silent --show-error --location \
-            https://dl.google.com/linux/linux_signing_key.pub \
-            --output "$chrome_key"
-
-          google_key_fingerprint="$({ gpg --batch --show-keys --with-colons "$chrome_key" 2>/dev/null || true; } \
-            | awk -F: '$1 == "fpr" { print $10; exit }')"
-          if [ "$google_key_fingerprint" != 'EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796' ]; then
-            echo "Unexpected Google Linux signing-key fingerprint: ${google_key_fingerprint:-missing}"
-            exit 1
-          fi
-
-          sudo apt-get update
-          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y rpm cpio
-          sudo rpm --import "$chrome_key"
-          rpm_signature="$(sudo rpm --checksig "$chrome_rpm")"
-          echo "$rpm_signature"
-          case "$rpm_signature" in
-            *'NOT OK'*|*'NOKEY'*) echo 'Chrome RPM signature verification failed.'; exit 1 ;;
-            *'signatures OK'*) ;;
-            *) echo 'Chrome RPM did not return a valid signature result.'; exit 1 ;;
-          esac
-          chrome_payload_root="$RUNNER_TEMP/chrome-payload"
-          chrome_archive="$RUNNER_TEMP/google-chrome-stable.tar.gz"
-          mkdir -p "$chrome_payload_root"
-          (
-            cd "$chrome_payload_root"
-            rpm2cpio "$chrome_rpm" | cpio -idm --quiet './opt/google/chrome/*'
-          )
-          test -x "$chrome_payload_root/opt/google/chrome/google-chrome"
-          tar -C "$chrome_payload_root/opt/google/chrome" -czf "$chrome_archive" .
+          server/node_modules/.bin/playwright-core install chromium
+          chromium_executable="$(node -e "process.stdout.write(require('./server/node_modules/playwright-core').chromium.executablePath())")"
+          test -x "$chromium_executable"
+          chromium_payload_dir="$(dirname "$chromium_executable")"
+          chromium_executable_name="$(basename "$chromium_executable")"
+          chrome_archive="$RUNNER_TEMP/playwright-chromium.tar.gz"
+          tar -C "$chromium_payload_dir" -czf "$chrome_archive" .
           chrome_archive_sha256="$(sha256sum "$chrome_archive" | awk '{print $1}')"
           printf '%s\n' "$chrome_archive_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
-            echo 'Failed to calculate the verified Chrome archive SHA-256.'
+            echo 'Failed to calculate the Playwright Chromium archive SHA-256.'
             exit 1
           }
 
           scp -i ~/.ssh/deploy_key -P "$ssh_port" \
             -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
-            "$chrome_archive" "$remote:/tmp/yinnkhome-google-chrome-stable.tar.gz"
+            "$chrome_archive" "$remote:/tmp/yinnkhome-playwright-chromium.tar.gz"
           echo 'needed=true' >> "$GITHUB_OUTPUT"
           echo "sha256=$chrome_archive_sha256" >> "$GITHUB_OUTPUT"
+          echo "executable_name=$chromium_executable_name" >> "$GITHUB_OUTPUT"
+          echo "playwright_version=$playwright_version" >> "$GITHUB_OUTPUT"
 
       - name: Provision Chromium for controlled ingestion rendering
         uses: appleboy/ssh-action@v1.0.3
@@ -160,12 +141,14 @@ jobs:
           EXPECTED_SSH_HOST: 115.29.194.46
           CHROME_PACKAGE_NEEDED: ${{ steps.chrome-package.outputs.needed }}
           CHROME_ARCHIVE_SHA256: ${{ steps.chrome-package.outputs.sha256 }}
+          CHROME_EXECUTABLE_NAME: ${{ steps.chrome-package.outputs.executable_name }}
+          CHROME_PLAYWRIGHT_VERSION: ${{ steps.chrome-package.outputs.playwright_version }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED,CHROME_ARCHIVE_SHA256
+          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED,CHROME_ARCHIVE_SHA256,CHROME_EXECUTABLE_NAME,CHROME_PLAYWRIGHT_VERSION
           script: |
             set -euo pipefail
 
@@ -214,7 +197,7 @@ jobs:
               exit 1
             fi
 
-            chrome_archive='/tmp/yinnkhome-google-chrome-stable.tar.gz'
+            chrome_archive='/tmp/yinnkhome-playwright-chromium.tar.gz'
             chrome_dependency_log='/tmp/yinnkhome-chrome-dependencies.log'
             chrome_diagnostic='/tmp/yinnkhome-chrome-install-error.log'
             trap '$runner rm -f "$chrome_archive"' EXIT
@@ -244,11 +227,19 @@ jobs:
               echo 'The staged Chrome archive SHA-256 is missing or invalid.'
               exit 1
             }
+            printf '%s\n' "$CHROME_EXECUTABLE_NAME" | grep -Eq '^[A-Za-z0-9._-]+$' || {
+              echo 'The staged Chromium executable name is missing or invalid.'
+              exit 1
+            }
+            printf '%s\n' "$CHROME_PLAYWRIGHT_VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$' || {
+              echo 'The staged Playwright version is missing or invalid.'
+              exit 1
+            }
             printf '%s  %s\n' "$CHROME_ARCHIVE_SHA256" "$chrome_archive" | sha256sum -c -
 
-            # The source RPM was GPG-verified on the GitHub runner. The extracted
-            # payload is transferred over SSH and pinned here by its SHA-256, so the
-            # server does not need a Google repository or foreign RPM dependencies.
+            # This browser revision is selected by the lockfile-pinned
+            # playwright-core package. The payload is transferred over SSH and
+            # pinned here by SHA-256.
             chrome_root='/opt/yinnkhome-chromium'
             chrome_release="$chrome_root/$CHROME_ARCHIVE_SHA256"
             $runner install -d -m 0755 "$chrome_root" "$chrome_release"
@@ -256,8 +247,10 @@ jobs:
               write_chrome_diagnostic
               exit 1
             fi
-            $runner chmod 4755 "$chrome_release/chrome-sandbox"
-            $runner ln -sfn "$chrome_release/google-chrome" /usr/local/bin/google-chrome-stable
+            if [ -f "$chrome_release/chrome-sandbox" ]; then
+              $runner chmod 4755 "$chrome_release/chrome-sandbox"
+            fi
+            $runner ln -sfn "$chrome_release/$CHROME_EXECUTABLE_NAME" /usr/local/bin/google-chrome-stable
 
             chrome_runtime_dependencies=(
               'libatk-1.0.so.0()(64bit)'
@@ -299,6 +292,7 @@ jobs:
               exit 1
             fi
             echo "$chrome_version_error"
+            $runner touch "/opt/yinnkhome-chromium/playwright-core-${CHROME_PLAYWRIGHT_VERSION}.ready"
             rm -f "$chrome_dependency_log" "$chrome_diagnostic"
 
       - name: Report Chromium provisioning diagnostics
