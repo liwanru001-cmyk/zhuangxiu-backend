@@ -125,14 +125,17 @@ jobs:
             *'signatures OK'*) ;;
             *) echo 'Chrome RPM did not return a valid signature result.'; exit 1 ;;
           esac
+          chrome_rpm_sha256="$(sha256sum "$chrome_rpm" | awk '{print $1}')"
+          printf '%s\n' "$chrome_rpm_sha256" | grep -Eq '^[0-9a-f]{64}$' || {
+            echo 'Failed to calculate the verified Chrome RPM SHA-256.'
+            exit 1
+          }
 
           scp -i ~/.ssh/deploy_key -P "$ssh_port" \
             -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
             "$chrome_rpm" "$remote:/tmp/yinnkhome-google-chrome-stable.rpm"
-          scp -i ~/.ssh/deploy_key -P "$ssh_port" \
-            -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
-            "$chrome_key" "$remote:/tmp/yinnkhome-google-linux-signing-key.pub"
           echo 'needed=true' >> "$GITHUB_OUTPUT"
+          echo "sha256=$chrome_rpm_sha256" >> "$GITHUB_OUTPUT"
 
       - name: Provision Chromium for controlled ingestion rendering
         uses: appleboy/ssh-action@v1.0.3
@@ -140,12 +143,13 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           EXPECTED_SSH_HOST: 115.29.194.46
           CHROME_PACKAGE_NEEDED: ${{ steps.chrome-package.outputs.needed }}
+          CHROME_RPM_SHA256: ${{ steps.chrome-package.outputs.sha256 }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED
+          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED,CHROME_RPM_SHA256
           script: |
             set -euo pipefail
 
@@ -193,38 +197,28 @@ jobs:
             fi
 
             chrome_rpm='/tmp/yinnkhome-google-chrome-stable.rpm'
-            chrome_key='/tmp/yinnkhome-google-linux-signing-key.pub'
-            trap '$runner rm -f "$chrome_rpm" "$chrome_key"' EXIT
+            trap '$runner rm -f "$chrome_rpm"' EXIT
             test -s "$chrome_rpm"
-            test -s "$chrome_key"
+            printf '%s\n' "$CHROME_RPM_SHA256" | grep -Eq '^[0-9a-f]{64}$' || {
+              echo 'The staged Chrome RPM SHA-256 is missing or invalid.'
+              exit 1
+            }
+            printf '%s  %s\n' "$CHROME_RPM_SHA256" "$chrome_rpm" | sha256sum -c -
 
-            $runner rpm --import "$chrome_key"
-            rpm_signature="$($runner rpm --checksig "$chrome_rpm" || true)"
-            if printf '%s\n' "$rpm_signature" | grep -Eq 'NOKEY|NOT OK'; then
-              old_google_keys="$(rpm -qa 'gpg-pubkey-d38b4796-*' || true)"
-              if [ -n "$old_google_keys" ]; then
-                printf '%s\n' "$old_google_keys" | while IFS= read -r old_google_key; do
-                  [ -n "$old_google_key" ] && $runner rpm -e "$old_google_key"
-                done
-              fi
-              $runner rpm --import "$chrome_key"
-              rpm_signature="$($runner rpm --checksig "$chrome_rpm")"
-            fi
-            echo "$rpm_signature"
-            case "$rpm_signature" in
-              *'NOT OK'*|*'NOKEY'*) echo 'Chrome RPM signature verification failed on the server.'; exit 1 ;;
-              *'signatures OK'*) ;;
-              *) echo 'Chrome RPM did not return a valid signature result on the server.'; exit 1 ;;
-            esac
+            # The RPM was GPG-verified on the GitHub runner, transferred over SSH,
+            # and is pinned here by SHA-256. This avoids legacy server RPM keyrings
+            # that cannot represent Google's current signing subkey.
+            $runner rm -f /etc/yum.repos.d/google-chrome.repo
 
             if command -v dnf >/dev/null 2>&1; then
-              $runner dnf install -y "$chrome_rpm"
+              $runner dnf install -y --nogpgcheck "$chrome_rpm"
             elif command -v yum >/dev/null 2>&1; then
-              $runner yum install -y "$chrome_rpm"
+              $runner yum install -y --nogpgcheck "$chrome_rpm"
             else
               echo 'DNF or YUM is required to install the verified Chrome RPM.'
               exit 1
             fi
+            $runner rm -f /etc/yum.repos.d/google-chrome.repo
 
             chromium_path="$(find_chromium)" || {
               echo 'Chromium package installation completed without an executable on PATH.'
