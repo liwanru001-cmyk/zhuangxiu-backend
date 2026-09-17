@@ -109,9 +109,67 @@ jobs:
               $runner env DEBIAN_FRONTEND=noninteractive apt-get install -y chromium \
                 || $runner env DEBIAN_FRONTEND=noninteractive apt-get install -y chromium-browser
             elif command -v dnf >/dev/null 2>&1; then
-              $runner dnf install -y chromium || $runner dnf install -y chromium-headless
+              if ! $runner dnf install -y chromium && ! $runner dnf install -y chromium-headless; then
+                if [ "$(uname -m)" != 'x86_64' ]; then
+                  echo 'The official Google Chrome RPM fallback only supports x86_64.'
+                  exit 1
+                fi
+                command -v curl >/dev/null 2>&1 || {
+                  echo 'curl is required to bootstrap the official Google Chrome RPM signing key.'
+                  exit 1
+                }
+                chrome_key="$(mktemp)"
+                chrome_repo="$(mktemp)"
+                trap 'rm -f "$chrome_key" "$chrome_repo"' EXIT
+                curl --fail --silent --show-error --location \
+                  https://dl.google.com/linux/linux_signing_key.pub \
+                  --output "$chrome_key"
+                $runner rpm --import "$chrome_key"
+                cat > "$chrome_repo" <<'EOF'
+            [google-chrome]
+            name=Google Chrome
+            baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64
+            enabled=1
+            gpgcheck=1
+            repo_gpgcheck=0
+            gpgkey=https://dl.google.com/linux/linux_signing_key.pub
+            EOF
+                $runner install -m 0644 "$chrome_repo" /etc/yum.repos.d/google-chrome.repo
+                $runner dnf install -y google-chrome-stable
+                rm -f "$chrome_key" "$chrome_repo"
+                trap - EXIT
+              fi
             elif command -v yum >/dev/null 2>&1; then
-              $runner yum install -y chromium || $runner yum install -y chromium-headless
+              if ! $runner yum install -y chromium && ! $runner yum install -y chromium-headless; then
+                if [ "$(uname -m)" != 'x86_64' ]; then
+                  echo 'The official Google Chrome RPM fallback only supports x86_64.'
+                  exit 1
+                fi
+                command -v curl >/dev/null 2>&1 || {
+                  echo 'curl is required to bootstrap the official Google Chrome RPM signing key.'
+                  exit 1
+                }
+                chrome_key="$(mktemp)"
+                chrome_repo="$(mktemp)"
+                trap 'rm -f "$chrome_key" "$chrome_repo"' EXIT
+                curl --fail --silent --show-error --location \
+                  https://dl.google.com/linux/linux_signing_key.pub \
+                  --output "$chrome_key"
+                $runner rpm --import "$chrome_key"
+                cat > "$chrome_repo" <<'EOF'
+            [google-chrome]
+            name=Google Chrome
+            baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64
+            enabled=1
+            gpgcheck=1
+            repo_gpgcheck=0
+            gpgkey=https://dl.google.com/linux/linux_signing_key.pub
+            EOF
+                $runner install -m 0644 "$chrome_repo" /etc/yum.repos.d/google-chrome.repo
+                $runner yum install -y google-chrome-stable
+                rm -f "$chrome_key" "$chrome_repo"
+                trap - EXIT
+              fi
             else
               echo 'No supported package manager is available to install Chromium.'
               exit 1
