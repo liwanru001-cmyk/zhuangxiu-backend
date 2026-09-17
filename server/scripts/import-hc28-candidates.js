@@ -64,9 +64,24 @@ async function main() {
     const [jobs] = await conn.query('SELECT id FROM product_ingestion_jobs WHERE source_id=? AND reason=? ORDER BY id DESC LIMIT 1 FOR UPDATE', [sourceId, 'HC28 audited local import 20260917']);
     if (jobs[0]) jobId = jobs[0].id;
     else {
-      const [r] = await conn.query(`INSERT INTO product_ingestion_jobs
-        (source_id,status,job_mode,seed_urls,max_pages,max_products,request_interval_ms,reason,scope_snapshot,created_by,started_at,finished_at)
-        VALUES (?,'completed','detail_capture',?,500,500,2000,?,?,?,NOW(),NOW())`, [sourceId, JSON.stringify(records.map(x => x.source_url)), JSON.stringify({ source_id: sourceId, seed_urls: records.map(x => x.source_url), no_crawl: true, import_manifest: 'hc28-import-package-20260917' }), actor]);
+      const [r] = await conn.query(
+        `INSERT INTO product_ingestion_jobs
+          (source_id,status,job_mode,seed_urls,max_pages,max_products,request_interval_ms,reason,scope_snapshot,created_by,started_at,finished_at)
+          VALUES (?,'completed','detail_capture',?,500,500,2000,?,?,?,NOW(),NOW())`,
+        [
+          sourceId,
+          JSON.stringify(records.map(x => x.source_url)),
+          'HC28 audited local import 20260917',
+          JSON.stringify({
+            source_id: sourceId,
+            seed_urls: records.map(x => x.source_url),
+            no_crawl: true,
+            import_manifest: 'hc28-import-package-20260917'
+          }),
+          actor
+        ]
+      );
+
       jobId = r.insertId;
     }
     for (const record of records) {
