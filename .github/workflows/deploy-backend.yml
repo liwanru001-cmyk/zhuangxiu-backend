@@ -129,7 +129,7 @@ jobs:
             echo "Invalid locked Playwright version: $playwright_version"
             exit 1
           }
-          chrome_marker="/opt/yinnkhome-chromium/playwright-core-${playwright_version}.ready"
+          chrome_marker="/opt/yinnkhome-chromium/playwright-core-${playwright_version}-headless-shell.ready"
 
           timeout 20s ssh "${ssh_opts[@]}" "$remote" \
             "timeout 10s pkill -TERM -f '/opt/yinnkhome-chromium/.*/chrome' || true; sleep 2; timeout 10s pkill -KILL -f '/opt/yinnkhome-chromium/.*/chrome' || true" \
@@ -156,8 +156,12 @@ jobs:
             exit 1
           fi
 
-          server/node_modules/.bin/playwright-core install chromium
-          chromium_executable="$(node -e "process.stdout.write(require('./server/node_modules/playwright-core').chromium.executablePath())")"
+          # The full Chrome-for-Testing bundle can take too long to initialize on
+          # the 1.7 GB production host. Playwright's matching headless shell is
+          # smaller and purpose-built for this server-side rendering workload.
+          server/node_modules/.bin/playwright-core install --only-shell chromium
+          playwright_browser_root="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+          chromium_executable="$(find "$playwright_browser_root" -type f -name chrome-headless-shell -perm -111 | sort | tail -1)"
           test -x "$chromium_executable"
           chromium_payload_dir="$(dirname "$chromium_executable")"
           chromium_executable_name="$(basename "$chromium_executable")"
@@ -218,11 +222,11 @@ jobs:
             }
 
             if chromium_path="$(find_chromium)"; then
-              if "$chromium_path" --version; then
+              if [ "$CHROME_PACKAGE_NEEDED" != 'true' ] && "$chromium_path" --version; then
                 echo "Chromium is already provisioned: $chromium_path"
                 exit 0
               fi
-              echo "The existing Chromium executable is not runnable: $chromium_path"
+              echo "Replacing the existing Chromium executable with the locked headless shell: $chromium_path"
             fi
 
             runner=''
@@ -254,10 +258,10 @@ jobs:
                 uname -m
                 rpm --version
                 echo '--- managed Chrome files ---'
-                find /opt/yinnkhome-chromium -maxdepth 2 -type f -name chrome -o -name google-chrome 2>/dev/null | head -20
+                find /opt/yinnkhome-chromium -maxdepth 2 -type f \( -name chrome -o -name google-chrome -o -name chrome-headless-shell \) 2>/dev/null | head -20
                 echo '--- missing shared libraries ---'
-                if [ -n "${chrome_release:-}" ] && [ -x "$chrome_release/chrome" ]; then
-                  ldd "$chrome_release/chrome" 2>&1 | grep 'not found' || true
+                if [ -n "${chrome_release:-}" ] && [ -n "${CHROME_EXECUTABLE_NAME:-}" ] && [ -x "$chrome_release/$CHROME_EXECUTABLE_NAME" ]; then
+                  ldd "$chrome_release/$CHROME_EXECUTABLE_NAME" 2>&1 | grep 'not found' || true
                 fi
                 echo '--- dependency installation tail ---'
                 tail -40 "$chrome_dependency_log" 2>/dev/null || true
@@ -335,7 +339,13 @@ jobs:
               exit 1
             fi
             echo "$chrome_version_error"
-            $runner touch "/opt/yinnkhome-chromium/playwright-core-${CHROME_PLAYWRIGHT_VERSION}.ready"
+            if ! timeout 45s "$chromium_path" --headless --no-sandbox --disable-gpu --disable-dev-shm-usage --dump-dom about:blank \
+              | grep -Fq '<html'; then
+              chrome_version_error='Headless Chromium smoke test did not complete successfully.'
+              write_chrome_diagnostic
+              exit 1
+            fi
+            $runner touch "/opt/yinnkhome-chromium/playwright-core-${CHROME_PLAYWRIGHT_VERSION}-headless-shell.ready"
             rm -f "$chrome_dependency_log" "$chrome_diagnostic"
 
       - name: Report Chromium provisioning diagnostics
