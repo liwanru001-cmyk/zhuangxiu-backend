@@ -12,7 +12,7 @@ on:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 35
     permissions:
       actions: read
       contents: read
@@ -39,7 +39,10 @@ jobs:
           set -euo pipefail
 
           found_backend_run="false"
-          for attempt in $(seq 1 90); do
+          # Backend validation, private backup and migration can legitimately
+          # exceed ten minutes on the production host. Keep the admin release
+          # pinned to the same SHA instead of timing out first.
+          for attempt in $(seq 1 330); do
             response="$(curl -fsS \
               -H "Authorization: Bearer $GH_TOKEN" \
               -H "Accept: application/vnd.github+json" \
