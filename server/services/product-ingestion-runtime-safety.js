@@ -124,8 +124,8 @@ async function canRequest(raw, context = {}) {
   if (!result && !context.job_status) result=deny('JOB_CONTEXT_REQUIRED', '请求缺少已授权任务状态');
   else if (!result && ['robots_bootstrap','sitemap','page','product'].includes(purpose) && !['discovering','running'].includes(context.job_status)) {
     result=deny('JOB_NOT_EXECUTABLE', '抓取任务当前不允许发出网络请求');
-  } else if (!result && purpose === 'asset' && context.job_status !== 'completed') {
-    result=deny('JOB_NOT_EXECUTABLE', '只能为已完成抓取并通过人工审核的候选归档素材');
+  } else if (!result && purpose === 'asset' && context.job_status !== 'completed' && context.candidate_publish_authorized !== true) {
+    result=deny('JOB_NOT_EXECUTABLE', '素材归档需要已完成的抓取任务，或已通过发布前校验的候选授权');
   }
   const allowedHosts = purpose === 'asset' ? parseList(context.allowed_asset_hosts) : parseList(context.allowed_hosts);
   if (!result && !allowedHosts.includes(url.hostname.toLowerCase())) result=deny(purpose === 'asset' ? 'ASSET_HOST_NOT_ALLOWED' : 'DOMAIN_NOT_ALLOWED', `域名 ${url.hostname} 不在${purpose === 'asset' ? '素材' : '页面'}授权范围内`);

@@ -35,6 +35,8 @@ test('canRequest returns structured decisions for page, source, robots and asset
   assert.equal((await canRequest('https://example.com/products/chair',{...base,purpose:'product'})).reason_code,'POLICY_ALLOWED');
   assert.equal((await canRequest('https://example.com/about',{...base,purpose:'page'})).reason_code,'PATH_NOT_ALLOWED');
   assert.equal((await canRequest('https://cdn.example.com/a.jpg',{...base,job_status:'completed',purpose:'asset'})).allowed,true);
+  assert.equal((await canRequest('https://cdn.example.com/a.jpg',{...base,job_status:'running',purpose:'asset'})).reason_code,'JOB_NOT_EXECUTABLE');
+  assert.equal((await canRequest('https://cdn.example.com/a.jpg',{...base,job_status:'running',purpose:'asset',candidate_publish_authorized:true})).allowed,true);
   assert.equal((await canRequest('https://example.com/a.jpg',{...base,job_status:'completed',purpose:'asset'})).reason_code,'ASSET_HOST_NOT_ALLOWED');
   assert.equal((await canRequest('https://example.com/products/chair',{...base,source_status:'paused',purpose:'product'})).reason_code,'SOURCE_NOT_ACTIVE');
   assert.equal((await canRequest('https://example.com/products/chair',{...base,robots_policy:{evaluate:async()=>({allowed:false,matched_rule:'Disallow: /products/'})},purpose:'product'})).reason_code,'ROBOTS_DISALLOW');

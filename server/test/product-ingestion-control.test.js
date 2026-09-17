@@ -185,7 +185,9 @@ test('site cognition cannot be half-paused and the workbench exposes inline task
   assert.match(routes,/\/jobs\/:id\/workbench/);assert.match(routes,/\/jobs\/:id\/pause/);assert.match(routes,/\/jobs\/:id\/resume/);
   assert.match(routes,/site-cognition\/workflows\/:id\/retry/);
   assert.match(ui,/任务抓取台/);assert.match(ui,/data-workbench-decision/);assert.match(ui,/prepare-pause/);assert.match(ui,/prepare-bulk-publish/);
-  assert.match(ui,/candidateStageReady=job\.status==='completed'/);
+  assert.match(ui,/candidateStageReady=!review&&counts\.total>0/);
+  assert.match(ui,/从错误处继续/);
+  assert.match(ui,/data-inline-approve/);
   assert.match(ui,/if\(job\.status==='completed'&&counts\.total>0&&counts\.published===counts\.total\)return 6/);
   assert.match(ui,/scheduleWorkbenchPoll/);assert.match(ui,/data-live-progress/);
   assert.match(ui,/prepare-cognition-retry/);

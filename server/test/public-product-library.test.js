@@ -33,10 +33,12 @@ test('publishing creates a product, immutable version and separate configuration
     if(sql.startsWith('UPDATE public_product_library_products')||sql.startsWith('UPDATE product_ingestion_candidates'))return [{affectedRows:1}];
     throw new Error(`Unexpected query: ${sql}`);
   }};
-  const result=await createPublicProductLibrary({getConnection:async()=>conn},{archiveProductAssets:async value=>({payload:value,assets:[]})}).publishCandidate(9,'reviewer');
+  let archiveRuntime;
+  const result=await createPublicProductLibrary({getConnection:async()=>conn},{archiveProductAssets:async (value,_source,runtime)=>{archiveRuntime=runtime;return {payload:value,assets:[]};}}).publishCandidate(9,'reviewer');
   assert.deepEqual(result,{product_id:31,version_id:41,version_no:1,configuration_count:1,asset_count:0,already_published:false});
   assert.equal(queries.filter(item=>item.sql.startsWith('INSERT INTO public_product_library_configurations')).length,1);
   assert.equal(committed,true);
+  assert.equal(archiveRuntime.candidatePublishAuthorized,true);
 });
 
 test('publishing accepts a gated v2 product without inventing a configuration',async()=>{

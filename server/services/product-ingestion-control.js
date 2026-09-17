@@ -92,6 +92,18 @@ function parseJsonValue(value) {
   if (value == null || typeof value === 'object') return value;
   try { return JSON.parse(value); } catch (_) { return null; }
 }
+function candidateSummary(payload) {
+  const document=payload?.product_document?.data||{},product=document.product||{},details=payload?.product_details||{};
+  const configurations=Array.isArray(details.configurations)?details.configurations:Array.isArray(document.configurations)?document.configurations:[];
+  const assets=Array.isArray(payload?.product_document?.data?.assets)?payload.product_document.data.assets:[];
+  const legacyImages=[payload?.cover_url,details?.image_url,...(Array.isArray(details?.image_urls)?details.image_urls:[]),...configurations.flatMap(item=>[item?.image_url,...(Array.isArray(item?.image_urls)?item.image_urls:[])])].filter(Boolean);
+  return {
+    product_name:String(payload?.name||product?.names?.primary||product?.names?.zh||'').trim(),
+    model_code:String(payload?.model||payload?.sku||product?.identifiers?.model||product?.identifiers?.sku||'').trim(),
+    configuration_count:configurations.length,
+    asset_count:new Set([...assets.map(item=>item?.url),...legacyImages].filter(Boolean)).size,
+  };
+}
 function mapSource(row) {
   const storedAssetHosts = parseJsonList(row.allowed_asset_hosts);
   let primaryAssetHost = '';
@@ -374,15 +386,20 @@ function createControl(db) {
       if(recoveryStatus){if(!recoveryStatuses.includes(recoveryStatus))fail('恢复状态不正确');if(recoveryStatus==='none')where+=' AND NOT EXISTS (SELECT 1 FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id)';else if(recoveryStatus==='any')where+=' AND EXISTS (SELECT 1 FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id)';else{where+=' AND EXISTS (SELECT 1 FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id AND recovery.status=?)';params.push(recoveryStatus);}}
       let total=null;
       if(paged){const [countRows]=await db.query(`SELECT COUNT(*) total FROM product_ingestion_candidates candidate JOIN product_ingestion_jobs job ON job.id=candidate.job_id ${where}`,params);total=Number(countRows[0]?.total||0);}
-      const [rows] = await db.query(`SELECT candidate.id,candidate.job_id,candidate.source_id,candidate.source_url,candidate.source_external_id,candidate.normalized_payload,candidate.validation_status,candidate.validation_issues,candidate.review_status,candidate.generated_fields,candidate.classification_suggestion,candidate.classification_override,candidate.published_product_id,candidate.published_version_id,candidate.published_at,candidate.created_at,source.brand_name,
+      const [rows] = await db.query(`SELECT candidate.id,candidate.job_id,candidate.source_id,candidate.source_url,candidate.source_external_id,candidate.normalized_payload,candidate.validation_status,candidate.validation_issues,candidate.review_status,candidate.generated_fields,candidate.classification_suggestion,candidate.classification_override,candidate.published_product_id,candidate.published_version_id,candidate.published_at,candidate.created_at,source.brand_name,source.status source_status,job.status job_status,job.current_stage,
+        (SELECT COUNT(*) FROM product_ingestion_candidate_categories assignment WHERE assignment.candidate_id=candidate.id) category_count,
+        (SELECT GROUP_CONCAT(category.name ORDER BY category.sort_order SEPARATOR '、') FROM product_ingestion_candidate_categories assignment JOIN public_product_categories category ON category.id=assignment.category_id WHERE assignment.candidate_id=candidate.id) category_names,
         (SELECT recovery.status FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id ORDER BY recovery.id DESC LIMIT 1) recovery_status,
         CASE WHEN candidate.validation_status='invalid' THEN 'needs_attention' WHEN product.id IS NULL THEN 'new' WHEN current_version.content_fingerprint=candidate.content_fingerprint THEN 'unchanged' ELSE 'updated' END change_status
         FROM product_ingestion_candidates candidate JOIN product_ingestion_sources source ON source.id=candidate.source_id JOIN product_ingestion_jobs job ON job.id=candidate.job_id
         LEFT JOIN public_product_library_products product ON product.source_id=candidate.source_id AND product.source_url_hash=candidate.source_url_hash
         LEFT JOIN public_product_library_versions current_version ON current_version.id=product.current_version_id ${where} ORDER BY candidate.id DESC LIMIT ? OFFSET ?`, [...params,limit,offset]);
-      const items=rows.map(row => ({ ...row, id: Number(row.id), job_id: Number(row.job_id), source_id: Number(row.source_id),
-        normalized_payload:parseJsonValue(row.normalized_payload),validation_issues: parseJsonList(row.validation_issues), generated_fields: parseJsonList(row.generated_fields),
-        classification_suggestion:parseJsonValue(row.classification_suggestion),classification_override:parseJsonValue(row.classification_override) }));
+      const items=rows.map(row => {const payload=parseJsonValue(row.normalized_payload),summary=candidateSummary(payload),categoryCount=Number(row.category_count||0),blockers=[];
+        if(!row.published_product_id){if(row.validation_status!=='valid')blockers.push('结构未通过');if(row.review_status!=='approved')blockers.push('未审核通过');if(!categoryCount)blockers.push('未设置标准分类');if(row.source_status!=='active')blockers.push('来源未启用');}
+        return { ...row, id: Number(row.id), job_id: Number(row.job_id), source_id: Number(row.source_id),category_count:categoryCount,
+          category_names:String(row.category_names||'').split('、').filter(Boolean),...summary,publish_ready:!row.published_product_id&&!blockers.length,publish_blockers:blockers,
+          normalized_payload:payload,validation_issues: parseJsonList(row.validation_issues), generated_fields: parseJsonList(row.generated_fields),
+          classification_suggestion:parseJsonValue(row.classification_suggestion),classification_override:parseJsonValue(row.classification_override) };});
       return paged?{items,total,limit,offset}:items;
     },
     async getCandidate(id) {

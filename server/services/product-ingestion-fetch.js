@@ -62,6 +62,7 @@ function contextFor(scope, options, redirectFrom) {
     quota:options.quota || (['page','product'].includes(purpose)?scope.page_quota:purpose==='asset'?scope.asset_quota:null),
     db:scope.policy_db, authorize:scope.policy_authorizer, lookup:options.lookup,
     method:options.method || 'GET', read_only_post_approved:options.readOnlyPostApproved === true,
+    candidate_publish_authorized:scope.candidate_publish_authorized === true,
   };
 }
 

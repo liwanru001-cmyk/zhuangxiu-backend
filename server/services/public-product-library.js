@@ -155,7 +155,10 @@ function createPublicProductLibrary(db, options = {}) {
       const preparedClassifications = await candidateCategories(conn, prepared);
       const sourceCanonical = JSON.stringify(sourcePayload);
       const fingerprint = digest(sourceCanonical);
-      const archived = await archiveAssets(sourcePayload, prepared, {db:conn});
+      // This capability is issued only after the candidate passed structural,
+      // human-review and taxonomy gates above. It deliberately does not make
+      // an unfinished crawl executable; it authorizes only this asset archive.
+      const archived = await archiveAssets(sourcePayload, prepared, {db:conn,candidatePublishAuthorized:true});
       const payload = archived.payload;
       const configurations = payloadConfigurations(payload);
       const canonical = JSON.stringify(payload);

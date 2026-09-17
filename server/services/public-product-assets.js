@@ -41,10 +41,11 @@ function sourceScope(source, runtime = {}) {
   const hosts=[...new Set(configuredHosts.length?configuredHosts:(primaryHost&&pageHosts.includes(primaryHost)?[primaryHost]:[]))];
   if (!hosts.length) fail('来源没有可用于素材归档的授权域名', 'ASSET_HOSTS_EMPTY');
   const sourceId=source.source_id||source.id,jobId=source.job_id;
-  const authorize=runtime.db&&sourceId&&jobId?async()=>{const [rows]=await runtime.db.query(`SELECT source.status source_status,job.status job_status FROM product_ingestion_sources source JOIN product_ingestion_jobs job ON job.source_id=source.id WHERE source.id=? AND job.id=?`,[sourceId,jobId]);return rows[0]||{source_status:'missing',job_status:'missing'};}:null;
+  const authorize=runtime.db&&sourceId&&jobId?async()=>{const [rows]=await runtime.db.query(`SELECT source.status source_status,job.status job_status FROM product_ingestion_sources source JOIN product_ingestion_jobs job ON job.source_id=source.id WHERE source.id=? AND job.id=?`,[sourceId,jobId]);return {...(rows[0]||{source_status:'missing',job_status:'missing'}),candidate_publish_authorized:runtime.candidatePublishAuthorized===true};}:null;
   return { allowed_asset_hosts:hosts,allowed_hosts:[],allowed_path_prefixes:['/'],source_id:sourceId,
     source_status:source.source_status||source.status,job_id:source.job_id,job_status:source.job_status,
-    request_interval_ms:source.request_interval_ms||2000,policy_db:runtime.db,policy_authorizer:authorize };
+    request_interval_ms:source.request_interval_ms||2000,policy_db:runtime.db,policy_authorizer:authorize,
+    candidate_publish_authorized:runtime.candidatePublishAuthorized===true };
 }
 
 function collectReferences(node, currentPath = '$', result = []) {
