@@ -9,6 +9,20 @@ const independentSchema = require('../services/independent-project-schema');
 
 const baseline = '20260802_project_progress_change_requests.sql';
 
+function migrationChecksum(sql) {
+  return crypto.createHash('sha256').update(sql).digest('hex');
+}
+
+function assertRecordedChecksum(name, recorded, current) {
+  if (recorded === current) return;
+  const error = new Error(`Migration checksum mismatch: ${name}. Historical migrations are immutable; restore the recorded file or add a new migration.`);
+  error.code = 'MIGRATION_CHECKSUM_MISMATCH';
+  error.migration = name;
+  error.recordedChecksum = recorded;
+  error.currentChecksum = current;
+  throw error;
+}
+
 async function main() {
   const migrationsDir = path.join(__dirname, '..', 'migrations');
   const files = (await fs.readdir(migrationsDir))
@@ -35,12 +49,13 @@ async function main() {
 
     for (const name of files) {
       const sql = await fs.readFile(path.join(migrationsDir, name), 'utf8');
-      const checksum = crypto.createHash('sha256').update(sql).digest('hex');
+      const checksum = migrationChecksum(sql);
       const [existing] = await connection.query(
         'SELECT checksum FROM schema_migrations WHERE name = ? LIMIT 1',
         [name]
       );
       if (existing[0]) {
+        assertRecordedChecksum(name, existing[0].checksum, checksum);
         if (name === independentSchema.migrationName) await independentSchema.assertSchema(connection);
         continue;
       }
@@ -67,7 +82,11 @@ async function main() {
   }
 }
 
-main().catch((error) => {
-  console.error(error);
-  process.exit(1);
-});
+if (require.main === module) {
+  main().catch((error) => {
+    console.error(error);
+    process.exit(1);
+  });
+}
+
+module.exports = { main, migrationChecksum, assertRecordedChecksum };

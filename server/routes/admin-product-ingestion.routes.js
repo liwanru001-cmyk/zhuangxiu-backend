@@ -15,14 +15,17 @@ const { PRODUCT_SCHEMA_VERSION,FIELD_STATUSES,ASSET_ROLES,CORRECTION_ACTIONS,FIE
 const {fetchHtml}=require('../services/product-ingestion-fetch');
 const {createHybridFetcher}=require('../services/product-ingestion-rendered-fetch');
 const {isSmokeMode}=require('../services/startup-mode');
+const {createGlobalSlotManager}=require('../services/product-ingestion-global-slots');
 
 module.exports = function routes(db) {
   const hybridFetch=createHybridFetcher({fetchHtml});
+  const globalSlots=createGlobalSlotManager(db);
   const router = express.Router(), control = createControl(db), library = createPublicProductLibrary(db), taxonomy = createPublicProductTaxonomy(db), fieldReview=createFieldReview(db), siteRules=createSiteRuleControl(db,{fetchHtml:hybridFetch}), officialMaterials=createOfficialBrandMaterials(db), materialOnboarding=createMaterialOnboarding(db,{fetchHtml:hybridFetch,officialMaterials});
   let runner;
-  const cognition=createSiteCognitionControl(db,{siteRules,fetchHtml,renderedFetchHtml:hybridFetch,onFullCrawlReady:(jobId,options={})=>setImmediate(()=>options.resume_mode==='extraction'?runner.start(jobId):runner.startDiscovery(jobId))});
+  const cognition=createSiteCognitionControl(db,{siteRules,fetchHtml,renderedFetchHtml:hybridFetch,globalSlots,onFullCrawlReady:(jobId,options={})=>setImmediate(()=>options.resume_mode==='extraction'?runner.start(jobId):runner.startDiscovery(jobId))});
   runner=createRunner(db,{
     fetchHtml:hybridFetch,
+    globalSlots,
     startSiteCognition:jobId=>cognition.startForJob(jobId,'system:auto'),
     onFullCrawlStarted:jobId=>cognition.markFullCrawlStarted(jobId),
     onFullCrawlFinished:(jobId,outcome,details)=>cognition.markFullCrawlFinished(jobId,outcome,details),

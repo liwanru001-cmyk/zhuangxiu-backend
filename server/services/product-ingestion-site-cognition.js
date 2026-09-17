@@ -19,6 +19,7 @@ const {generatePublicJsonApiRule,getPath,recordToCanonicalHtml,addApiRoutableEvi
 const {urlRole}=require('./product-ingestion-url-role-contract');
 
 const running = new Set();
+const { createGlobalSlotManager } = require('./product-ingestion-global-slots');
 const AI_TOKEN_BUDGET=60000;
 const MAX_AI_TOKEN_BUDGET=480000;
 const MAX_EVIDENCE_PROBE_ROUNDS=3;
@@ -190,6 +191,8 @@ function createSiteCognitionControl(db, dependencies = {}) {
   const publicApiRuleGenerator=dependencies.generatePublicJsonApiRule||generatePublicJsonApiRule;
   const now=dependencies.now || (()=>Date.now());
   const scheduleAt=dependencies.scheduleAt || ((callback,delay)=>{const timer=setTimeout(callback,Math.max(0,delay));timer.unref?.();return timer;});
+  const globalSlots=dependencies.globalSlots||createGlobalSlotManager(db,{env:dependencies.env});
+  const globalSlotRetryMs=Math.max(100,Number(dependencies.globalSlotRetryMs||process.env.INGESTION_GLOBAL_SLOT_RETRY_MS||1000));
 
   function scheduleAccessResume(workflow,resumeAt,actor='system:access-wait'){
     const delay=Math.max(0,Date.parse(resumeAt)-now());
@@ -632,7 +635,10 @@ function createSiteCognitionControl(db, dependencies = {}) {
   async function execute(id, actor='system:site-cognition') {
     if(running.has(Number(id)))return;
     running.add(Number(id));
+    let globalSlot;
     try{
+      globalSlot=await globalSlots.acquire({jobId:id,phase:'site-cognition'});
+      if(!globalSlot){scheduleAt(()=>execute(Number(id),actor),globalSlotRetryMs);return;}
       let workflow=await get(id);if(!workflow)return;
       const restartRecovery=Boolean(workflow.resume_payload?.restart_recovery);
       const [jobs]=await db.query(`SELECT job.*,source.status source_status,source.brand_name,source.base_url,source.allowed_hosts,source.allowed_asset_hosts,source.allowed_path_prefixes FROM product_ingestion_jobs job JOIN product_ingestion_sources source ON source.id=job.source_id WHERE job.id=?`,[workflow.job_id]);
@@ -689,7 +695,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
         if(current.state==='STOPPED_SAFE')return;
         await finishWithHandoff(current,error,actor);
       }
-    }finally{running.delete(Number(id));}
+    }finally{await globalSlot?.release();running.delete(Number(id));}
   }
 
   async function startForJob(jobId, actor='system:site-cognition') {

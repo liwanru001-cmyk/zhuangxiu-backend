@@ -13,6 +13,7 @@ const { createShadowRecoveryPlanner } = require('./product-ingestion-recovery-sh
 const { classifyIngestionOutcome } = require('./product-ingestion-outcome-classifier');
 const { boundedBackoffAt } = require('./product-ingestion-access-preflight');
 const { fetchVirtualProduct } = require('./product-ingestion-public-json-api');
+const { createGlobalSlotManager } = require('./product-ingestion-global-slots');
 const {
   loadFrozenSiteRules,
   discoverProductsWithSiteRule,
@@ -117,6 +118,8 @@ function createRunner(db, dependencies = {}) {
   const fullCrawlFinished=dependencies.onFullCrawlFinished||(()=>Promise.resolve());
   const now=dependencies.now||(()=>Date.now());
   const scheduleAt=dependencies.scheduleAt||((callback,delay)=>{const timer=setTimeout(callback,Math.max(0,delay));timer.unref?.();return timer;});
+  const globalSlots=dependencies.globalSlots||createGlobalSlotManager(db,{env:dependencies.env});
+  const globalSlotRetryMs=Math.max(100,Number(dependencies.globalSlotRetryMs||process.env.INGESTION_GLOBAL_SLOT_RETRY_MS||1000));
   const shadowPlanner=dependencies.planShadowRecovery||createShadowRecoveryPlanner(db,dependencies.recoveryDependencies);
   const fieldReview=createFieldReview(db);
   async function loadJob(id) {
@@ -158,7 +161,10 @@ function createRunner(db, dependencies = {}) {
   async function run(id) {
     if (running.has(Number(id))) return;
     running.add(Number(id));
+    let globalSlot;
     try {
+      globalSlot=await globalSlots.acquire({jobId:id,phase:'extraction'});
+      if(!globalSlot){scheduleAt(()=>launchWhenFree(Number(id),run),globalSlotRetryMs);return;}
       const job = await loadJob(id);
       if (!job.scope_snapshot || job.status !== 'queued') throw new Error('任务没有可执行的授权范围快照');
       const scope = {...job.scope_snapshot,job_id:Number(id),job_status:'running',source_status:job.source_status,policy_db:db};
@@ -282,13 +288,16 @@ function createRunner(db, dependencies = {}) {
         driftDetails={failed_url:progressRows[0]?.current_url||null,resume_checkpoint:Math.max(0,Number(progressRows[0]?.checkpoint_index||0)-1),preserve_discovery:true};
       }
       await fullCrawlFinished(Number(id),error.code==='SITE_RULE_TEMPLATE_STALE'?'template_drift':'execution_failed',{error_code:error.code||'JOB_FAILED',message:String(error.message||'任务执行失败').slice(0,1000),...driftDetails}).catch(()=>{});
-    } finally { running.delete(Number(id)); }
+    } finally { await globalSlot?.release(); running.delete(Number(id)); }
   }
   async function runDiscovery(id) {
     if (running.has(Number(id))) return;
     running.add(Number(id));
     let continueToExtraction=false;
+    let globalSlot;
     try {
+      globalSlot=await globalSlots.acquire({jobId:id,phase:'discovery'});
+      if(!globalSlot){scheduleAt(()=>launchWhenFree(Number(id),runDiscovery),globalSlotRetryMs);return;}
       const job = await loadJob(id);
       if (!job.scope_snapshot || job.status !== 'discovery_approved' || job.scope_snapshot.job_mode !== 'brand_scan') throw new Error('任务没有可执行的官网分析授权快照');
       const scope = {...job.scope_snapshot,job_id:Number(id),job_status:'discovering',source_status:job.source_status,policy_db:db};
@@ -353,6 +362,7 @@ function createRunner(db, dependencies = {}) {
       await db.query(`UPDATE product_ingestion_jobs SET status='discovery_failed',finished_at=NOW(),failure_code=?,last_error=?,current_stage='failed',heartbeat_at=NOW() WHERE id=? AND status IN ('discovery_approved','discovering')`, [String(error.code||'DISCOVERY_FAILED').slice(0,80),`${error.code||'DISCOVERY_FAILED'}: ${String(error.message || '官网分析失败')}`.slice(0,1000), id]).catch(() => {});
       await fullCrawlFinished(Number(id),error.code==='SITE_RULE_TEMPLATE_STALE'?'template_drift':'execution_failed',{error_code:error.code||'DISCOVERY_FAILED',message:String(error.message||'官网分析失败').slice(0,1000)}).catch(()=>{});
     } finally {
+      await globalSlot?.release();
       running.delete(Number(id));
       if(continueToExtraction)setImmediate(()=>run(Number(id)));
     }

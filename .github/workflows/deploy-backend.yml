@@ -374,6 +374,9 @@ jobs:
             echo 'Checking administrator authentication configuration.'
             node -e "require('./services/admin-auth').assertConfiguration()"
 
+            echo 'Checking the production environment contract and read-only service connectivity.'
+            npm run check:production-contract -- --connectivity
+
             echo 'Checking AI PPT v2 fonts and static PPTX generation.'
             npm run check:presentation-v2
             model_check_id="$(printf '%s' "$PRESENTATION_V2_BASE_URL|$PRESENTATION_V2_MODEL|$PRESENTATION_V2_API_KEY" | sha256sum | cut -c1-20)"

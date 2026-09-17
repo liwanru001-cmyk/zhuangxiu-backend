@@ -4,7 +4,7 @@ This repository contains a Node/Express backend in `server/`.
 
 ## Required Runtime
 
-- Node.js 20+
+- Node.js 22.x (must match CI and `PRODUCTION_NODE_MAJOR`)
 - MySQL 8+
 - PM2 for process management
 - Nginx or another reverse proxy in front of the backend
@@ -25,6 +25,12 @@ Required values:
 - `ADMIN_PASSWORD_HASH`
 - `ADMIN_TOKEN_VERSION`
 - `ADMIN_JWT_EXPIRES_IN`
+- `INGESTION_GLOBAL_CONCURRENCY`
+- `INGESTION_AI_API_KEY`
+- `INGESTION_AI_BASE_URL`
+- `INGESTION_AI_MODEL`
+- `INGESTION_CHROME_PATH`
+- `REDIS_URL`
 
 Generate `ADMIN_PASSWORD_HASH` locally; never store the plaintext password in
 Git or in the deployment workflow:
@@ -81,6 +87,21 @@ curl http://127.0.0.1:3001/health
 Deployment smoke checks run with `APP_RUNTIME_MODE=smoke`. This mode is only for
 the temporary validation process: it does not run schema initialization,
 product-ingestion recovery, presentation workers, or scheduled evaluations.
+
+Before migrations, deployment runs `npm run check:production-contract --
+--connectivity`. It validates the pinned Node major, administrator settings,
+bounded ingestion concurrency, AI configuration, Chromium, Redis, storage, and
+the configured fallback font. Connectivity checks are read-only: Redis `PING`,
+Chromium launch/close, and OSS bucket metadata when OSS storage is enabled.
+
+Product ingestion uses MySQL advisory-lock slots shared by every backend
+process. `INGESTION_GLOBAL_CONCURRENCY=2` is the initial production limit; a
+job that cannot obtain a slot remains queued and retries without being marked
+failed.
+
+Applied migration files are immutable. `scripts/run-pending-migrations.js`
+compares every recorded SHA-256 checksum with the file in the release and
+stops before applying pending migrations when any historical file has drifted.
 
 Database backups are stored outside the deployed application at
 `<APP_DIR>.private/db-backups` with directory mode `0700` and file mode `0600`.
