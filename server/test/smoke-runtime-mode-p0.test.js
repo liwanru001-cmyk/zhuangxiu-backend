@@ -36,7 +36,10 @@ test('deployment smoke command and every startup side-effect gate use smoke mode
   const dbSource = fs.readFileSync(require.resolve('../config/db'), 'utf8');
   const routeSource = fs.readFileSync(require.resolve('../routes/admin-product-ingestion.routes'), 'utf8');
   const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml'), 'utf8');
-  assert.match(workflow, /APP_RUNTIME_MODE=smoke PORT="\$smoke_port" node app\.js/);
+  assert.match(workflow, /APP_RUNTIME_MODE=smoke PORT="\$smoke_port" (?:nice -n 10 )?node app\.js/);
+  assert.match(workflow, /MemAvailable:/);
+  assert.match(workflow, /SwapFree:/);
+  assert.match(workflow, /ionice -c2 -n7 nice -n 10 tar/);
   assert.match(appSource, /if \(isSmokeMode\(\)\).*background schedulers and workers are disabled/s);
   assert.match(dbSource, /if \(!isSmokeMode\(\)\).*ensureAppTables/s);
   assert.match(routeSource, /if\(!isSmokeMode\(\)\).*recoverInterrupted/s);

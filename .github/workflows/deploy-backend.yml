@@ -69,7 +69,17 @@ jobs:
 
           for attempt in 1 2 3; do
             if timeout 25s ssh "${ssh_opts[@]}" "$remote" \
-              'curl --connect-timeout 5 --max-time 15 -fsS http://127.0.0.1:3001/health'; then
+              'set -euo pipefail
+               mem_available_kb=$(awk "/MemAvailable:/ {print \$2}" /proc/meminfo)
+               swap_free_kb=$(awk "/SwapFree:/ {print \$2}" /proc/meminfo)
+               disk_available_kb=$(df -Pk /opt | awk "NR==2 {print \$4}")
+               load_one=$(awk "{print \$1}" /proc/loadavg)
+               test "${mem_available_kb:-0}" -ge 262144
+               test "${swap_free_kb:-0}" -ge 524288
+               test "${disk_available_kb:-0}" -ge 2097152
+               awk -v load="$load_one" "BEGIN {exit !(load < 4)}"
+               ! pgrep -f "/opt/yinnkhome-chromium/.*/[c]hrome|[c]hrome-headless-shell" >/dev/null
+               curl --connect-timeout 5 --max-time 15 -fsS http://127.0.0.1:3001/health'; then
               exit 0
             fi
             echo "Backend health preflight attempt $attempt/3 failed."
@@ -438,7 +448,7 @@ jobs:
             release-manifest.json
 
           ssh "${ssh_opts[@]}" "$remote" "rm -rf '$staging_dir' && mkdir -p '$staging_dir'"
-          ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'" < /tmp/yinnkhome-backend.tar.gz
+          ssh "${ssh_opts[@]}" "$remote" "if command -v ionice >/dev/null 2>&1; then ionice -c2 -n7 nice -n 10 tar -xzf - -C '$staging_dir'; else nice -n 10 tar -xzf - -C '$staging_dir'; fi" < /tmp/yinnkhome-backend.tar.gz
 
       - name: Deploy backend over SSH
         id: deploy-backend
@@ -598,7 +608,7 @@ jobs:
             cd "$staging_dir"
             deployment_phase='verify_packaged_dependencies'
             test -d node_modules
-            npm ls --omit=dev --depth=0
+            nice -n 10 npm ls --omit=dev --depth=0
             test "$(node -p "require('./release-manifest.json').release_sha")" = "$RELEASE_SHA"
 
             if [ -d "$APP_DIR" ]; then
@@ -735,17 +745,17 @@ jobs:
 
             echo 'Checking the production environment contract and read-only service connectivity.'
             deployment_phase='production_contract'
-            timeout 120s npm run check:production-contract -- --connectivity
+            nice -n 10 timeout 120s npm run check:production-contract -- --connectivity
 
             echo 'Checking AI PPT v2 fonts and static PPTX generation.'
             deployment_phase='presentation_static_check'
-            npm run check:presentation-v2
+            nice -n 10 npm run check:presentation-v2
             model_check_id="$(printf '%s' "$PRESENTATION_V2_BASE_URL|$PRESENTATION_V2_MODEL|$PRESENTATION_V2_API_KEY" | sha256sum | cut -c1-20)"
             model_check_file="storage/presentation-v2-model-${model_check_id}.checked"
             if [ ! -f "$model_check_file" ]; then
               echo 'Checking AI PPT v2 multimodal model access.'
               deployment_phase='presentation_model_check'
-              timeout 180s npm run check:presentation-v2:model
+              nice -n 10 timeout 180s npm run check:presentation-v2:model
               mkdir -p storage
               : > "$model_check_file"
             fi
@@ -808,7 +818,7 @@ jobs:
             db_backup_file="$db_backup_dir/pre-deploy-${RELEASE_SHA:-unknown}-$(date +%Y%m%d_%H%M%S).sql.gz"
             echo "Creating database backup before smoke test: $db_backup_file"
             deployment_phase='database_backup'
-            MYSQL_PWD="$DB_PASSWORD" mysqldump \
+            MYSQL_PWD="$DB_PASSWORD" nice -n 10 mysqldump \
               --host="$DB_HOST" \
               --port="${DB_PORT:-3306}" \
               --user="$DB_USER" \
@@ -816,7 +826,7 @@ jobs:
               --quick \
               --skip-lock-tables \
               --no-tablespaces \
-              "$DB_NAME" | gzip -c > "$db_backup_file"
+              "$DB_NAME" | nice -n 10 gzip -c > "$db_backup_file"
             test -s "$db_backup_file"
             gzip -t "$db_backup_file"
             chmod 600 "$db_backup_file"
@@ -831,7 +841,7 @@ jobs:
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
             deployment_phase='side_effect_free_smoke'
-            APP_RUNTIME_MODE=smoke PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
+            APP_RUNTIME_MODE=smoke PORT="$smoke_port" nice -n 10 node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
             smoke_pid=$!
             smoke_ready="false"
             for attempt in $(seq 1 15); do
