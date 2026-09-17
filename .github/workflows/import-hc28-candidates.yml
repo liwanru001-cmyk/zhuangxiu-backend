@@ -1,0 +1,52 @@
+name: Import HC28 Candidates
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'outputs/furniture_brand_site_research_20260913/hc28-import-package-20260917/manifest.json'
+      - 'outputs/furniture_brand_site_research_20260913/hc28-import-package-20260917/import-records.ndjson'
+      - 'server/scripts/import-hc28-candidates.js'
+  workflow_dispatch:
+
+concurrency:
+  group: production-hc28-candidate-import
+  cancel-in-progress: false
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Wait for backend deploy on same commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          for attempt in $(seq 1 60); do
+            response="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/actions/workflows/deploy-backend.yml/runs?head_sha=$SHA&event=push&per_page=1")"
+            status="$(python3 -c 'import json,sys; r=(json.load(sys.stdin).get("workflow_runs") or []); print((r[0].get("status") if r else "missing"))' <<< "$response")"
+            conclusion="$(python3 -c 'import json,sys; r=(json.load(sys.stdin).get("workflow_runs") or []); print((r[0].get("conclusion") if r else ""))' <<< "$response")"
+            [ "$status" = completed ] && [ "$conclusion" = success ] && break
+            [ "$status" = completed ] && { echo "Backend deploy failed: $conclusion"; exit 1; }
+            sleep 5
+          done
+      - name: Upload audited candidate package and importer
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          test "$SSH_HOST" = 115.29.194.46
+          mkdir -p ~/.ssh; printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key; chmod 600 ~/.ssh/deploy_key
+          opts=(-i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          scp_opts=(-i ~/.ssh/deploy_key -P "${SSH_PORT:-22}" -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          remote="$SSH_USER@$SSH_HOST"
+          scp "${scp_opts[@]}" outputs/furniture_brand_site_research_20260913/hc28-import-package-20260917/import-records.ndjson "$remote:/tmp/hc28-import-records.ndjson"
+          scp "${scp_opts[@]}" server/scripts/import-hc28-candidates.js "$remote:/tmp/import-hc28-candidates.js"
+          ssh "${opts[@]}" "$remote" 'set -euo pipefail; cp /tmp/import-hc28-candidates.js /opt/yinnkhome-backend/server/scripts/import-hc28-candidates.js; cd /opt/yinnkhome-backend/server; node scripts/import-hc28-candidates.js /tmp/hc28-import-records.ndjson --apply; rm -f /tmp/hc28-import-records.ndjson /tmp/import-hc28-candidates.js'
