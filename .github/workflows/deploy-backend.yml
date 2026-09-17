@@ -215,6 +215,7 @@ jobs:
             fi
 
             chrome_archive='/tmp/yinnkhome-google-chrome-stable.tar.gz'
+            chrome_dependency_log='/tmp/yinnkhome-chrome-dependencies.log'
             chrome_diagnostic='/tmp/yinnkhome-chrome-install-error.log'
             trap '$runner rm -f "$chrome_archive"' EXIT
             $runner rm -f "$chrome_diagnostic"
@@ -232,6 +233,8 @@ jobs:
                 if [ -n "${chrome_release:-}" ] && [ -x "$chrome_release/chrome" ]; then
                   ldd "$chrome_release/chrome" 2>&1 | grep 'not found' || true
                 fi
+                echo '--- dependency installation tail ---'
+                tail -40 "$chrome_dependency_log" 2>/dev/null || true
                 echo '--- Chrome version error ---'
                 printf '%s\n' "${chrome_version_error:-not captured}"
               } > "$chrome_diagnostic"
@@ -256,6 +259,35 @@ jobs:
             $runner chmod 4755 "$chrome_release/chrome-sandbox"
             $runner ln -sfn "$chrome_release/google-chrome" /usr/local/bin/google-chrome-stable
 
+            chrome_runtime_dependencies=(
+              'libatk-1.0.so.0()(64bit)'
+              'libatk-bridge-2.0.so.0()(64bit)'
+              'libcups.so.2()(64bit)'
+              'libasound.so.2()(64bit)'
+              'libgbm.so.1()(64bit)'
+              'libpango-1.0.so.0()(64bit)'
+              'libXcomposite.so.1()(64bit)'
+              'libXdamage.so.1()(64bit)'
+              'libXfixes.so.3()(64bit)'
+              'libXrandr.so.2()(64bit)'
+              'libatspi.so.0()(64bit)'
+            )
+            if command -v dnf >/dev/null 2>&1; then
+              if ! $runner dnf install -y "${chrome_runtime_dependencies[@]}" 2>&1 | tee "$chrome_dependency_log"; then
+                write_chrome_diagnostic
+                exit 1
+              fi
+            elif command -v yum >/dev/null 2>&1; then
+              if ! $runner yum install -y "${chrome_runtime_dependencies[@]}" 2>&1 | tee "$chrome_dependency_log"; then
+                write_chrome_diagnostic
+                exit 1
+              fi
+            else
+              echo 'DNF or YUM is required to install Chrome runtime libraries.'
+              write_chrome_diagnostic
+              exit 1
+            fi
+
             chromium_path="$(find_chromium)" || {
               echo 'Chromium package installation completed without an executable on PATH.'
               write_chrome_diagnostic
@@ -267,6 +299,7 @@ jobs:
               exit 1
             fi
             echo "$chrome_version_error"
+            rm -f "$chrome_dependency_log" "$chrome_diagnostic"
 
       - name: Report Chromium provisioning diagnostics
         if: failure() && steps.chrome-package.conclusion == 'success' && steps.chrome-package.outputs.needed == 'true'
