@@ -14,6 +14,7 @@ const { classifyIngestionOutcome } = require('./product-ingestion-outcome-classi
 const { boundedBackoffAt } = require('./product-ingestion-access-preflight');
 const { fetchVirtualProduct } = require('./product-ingestion-public-json-api');
 const { createGlobalSlotManager } = require('./product-ingestion-global-slots');
+const { assessSingleProductEvidence,templateFailureSignature,recordTemplateObservation,templateDriftDecision } = require('./product-ingestion-page-role');
 const {
   loadFrozenSiteRules,
   discoverProductsWithSiteRule,
@@ -27,7 +28,7 @@ const NO_PROGRESS_TIMEOUT_MS = 120000;
 const MAX_FULL_CRAWL_RATE_LIMIT_WAITS = 3;
 function json(value) { return value == null ? null : JSON.stringify(value); }
 function parsed(value,fallback=null){if(typeof value!=='string')return value??fallback;try{return JSON.parse(value);}catch(_){return fallback;}}
-function issue(error) { return [{ code:error.code || 'EXTRACTION_FAILED', message:String(error.message || '产品解析失败').slice(0, 500) }]; }
+function issue(error) { return [{ code:error.code || 'EXTRACTION_FAILED', message:String(error.message || '产品解析失败').slice(0, 500),...(error.page_role_assessment?{page_role_assessment:error.page_role_assessment}:{}),...(error.template_drift_decision?{template_drift_decision:error.template_drift_decision}:{}) }]; }
 function digest(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
 function frozenDiscoveryMustStop(summary) { return summary?.discovery_coverage?.status === 'sample_only'; }
 function imageDecisionUrls(payload){
@@ -158,6 +159,15 @@ function createRunner(db, dependencies = {}) {
     }
     return storedId;
   }
+  async function classifyTemplateFailure(job,sourceUrl,page,error,checkpointIndex){
+    const assessment=assessSingleProductEvidence(page),signature=templateFailureSignature(page,error);
+    const observation={signature,source_url:sourceUrl,error_code:String(error.code||'SITE_RULE_TEMPLATE_STALE'),assessment,checkpoint_index:Number(checkpointIndex)};
+    job.scope_snapshot=recordTemplateObservation(job.scope_snapshot||{},observation);
+    const decision=templateDriftDecision(job.scope_snapshot,observation);
+    error.page_role_assessment=assessment;error.template_drift_decision={...decision,signature};
+    await db.query("UPDATE product_ingestion_jobs SET scope_snapshot=?,heartbeat_at=NOW() WHERE id=? AND status='running'",[JSON.stringify(job.scope_snapshot),job.id]);
+    return decision;
+  }
   async function run(id) {
     if (running.has(Number(id))) return;
     running.add(Number(id));
@@ -250,7 +260,10 @@ function createRunner(db, dependencies = {}) {
         } catch (error) {
           const rateLimit=fullCrawlRateLimitWait(error,scope,now());
           if(rateLimit){error.code=rateLimit.exhausted?'RATE_LIMIT_RETRY_EXHAUSTED':'RATE_LIMIT_WAITING';error.rate_limit=rateLimit;throw error;}
-          if(frozenRule&&error.code==='SITE_RULE_TEMPLATE_STALE')fatalError=error;
+          if(frozenRule&&error.code==='SITE_RULE_TEMPLATE_STALE'){
+            const decision=await classifyTemplateFailure(job,sourceUrl,page,error,processed);
+            if(decision.action==='learn_template')fatalError=error;
+          }
           const candidateId=await saveCandidate(job, sourceUrl, page, null, error, classification); found += 1; rejected += 1;
           if(shadowAttempts<3&&job.recovery_mode==='shadow'){
             shadowAttempts+=1;
@@ -282,10 +295,10 @@ function createRunner(db, dependencies = {}) {
         if(summary)summary={...summary,pipeline:{...(summary.pipeline||{}),extraction:{status:rejected?'incomplete':'completed',attempted:found,succeeded:accepted,failed:rejected},field_mapping:{status:rejected?'needs_attention':'completed',mapped:accepted,needs_attention:rejected},candidate_ingestion:{status:'completed',created_or_updated:found}}};
       }
       let siteValidation=null;if(frozenRule){const [metricRows]=await db.query('SELECT source_url,normalized_payload,validation_status,validation_issues FROM product_ingestion_candidates WHERE job_id=?',[id]);siteValidation=productSchemaSiteMetrics(metricRows);if(summary)summary={...summary,site_validation:siteValidation};}
-      const strictFailure=Boolean(frozenRule&&rejected>0),finalStatus=strictFailure?'failed':'completed';
-      if(frozenRule)await db.query(`UPDATE product_ingestion_jobs SET status=?,finished_at=NOW(),pages_fetched=?,candidates_found=?,accepted_count=?,rejected_count=?,checkpoint_index=?,discovery_summary=COALESCE(?,discovery_summary),current_stage=?,current_url=NULL,heartbeat_at=NOW(),failure_code=?,last_error=? WHERE id=? AND status='running'`, [finalStatus,pages,found,accepted,rejected,strictFailure?0:processed,json(summary),strictFailure?'failed':'completed',strictFailure?'SITE_RULE_FULL_CRAWL_INCOMPLETE':null,strictFailure?'部分页面在有限重试后仍未成功，候选已保留，可重新执行该任务':null,id]);
+      const partial=Boolean(frozenRule&&rejected>0);
+      if(frozenRule)await db.query(`UPDATE product_ingestion_jobs SET status='completed',finished_at=NOW(),pages_fetched=?,candidates_found=?,accepted_count=?,rejected_count=?,checkpoint_index=?,discovery_summary=COALESCE(?,discovery_summary),current_stage='completed',current_url=NULL,heartbeat_at=NOW(),failure_code=?,last_error=? WHERE id=? AND status='running'`, [pages,found,accepted,rejected,processed,json(summary),partial?'SITE_RULE_FULL_CRAWL_PARTIAL':null,partial?'全站采集已完成；个别疑似非产品页或解析异常已跳过并保留，等待人工检查':null,id]);
       else await db.query(`UPDATE product_ingestion_jobs SET status='completed',finished_at=NOW(),pages_fetched=?,candidates_found=?,accepted_count=?,rejected_count=?,discovery_summary=COALESCE(?,discovery_summary),current_stage='completed',current_url=NULL,heartbeat_at=NOW(),failure_code=NULL WHERE id=? AND status='running'`, [pages,found,accepted,rejected,json(summary),id]);
-      if(frozenRule)await fullCrawlFinished(Number(id),strictFailure?'execution_failed':'success',{pages_fetched:pages,candidates_found:found,accepted_count:accepted,rejected_count:rejected,site_validation:siteValidation});
+      if(frozenRule)await fullCrawlFinished(Number(id),'success',{pages_fetched:pages,candidates_found:found,accepted_count:accepted,rejected_count:rejected,partial,site_validation:siteValidation});
       } finally { clearInterval(watchdog); }
     } catch (error) {
       console.error('Product ingestion job failed:', { jobId:id, code:error.code || error.name, message:error.message });
@@ -301,7 +314,7 @@ function createRunner(db, dependencies = {}) {
       let driftDetails={};
       if(error.code==='SITE_RULE_TEMPLATE_STALE'){
         const [progressRows]=await db.query('SELECT checkpoint_index,current_url FROM product_ingestion_jobs WHERE id=?',[id]).catch(()=>[[]]);
-        driftDetails={failed_url:progressRows[0]?.current_url||null,resume_checkpoint:Math.max(0,Number(progressRows[0]?.checkpoint_index||0)-1),preserve_discovery:true};
+        driftDetails={failed_url:progressRows[0]?.current_url||null,resume_checkpoint:Math.max(0,Number(error.template_drift_decision?.resume_checkpoint??Number(progressRows[0]?.checkpoint_index||0)-1)),failure_signature:error.template_drift_decision?.signature||null,preserve_discovery:true};
       }
       await fullCrawlFinished(Number(id),error.code==='SITE_RULE_TEMPLATE_STALE'?'template_drift':'execution_failed',{error_code:error.code||'JOB_FAILED',message:String(error.message||'任务执行失败').slice(0,1000),...driftDetails}).catch(()=>{});
     } finally { await globalSlot?.release(); running.delete(Number(id)); }

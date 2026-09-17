@@ -163,7 +163,7 @@ test('extraction resume re-enters full crawl workflow before processing frozen-r
     if(sql.startsWith('SELECT source_url,extracted_payload'))return [[]];
     if(sql.startsWith('SELECT COUNT(*) candidates'))return [[{candidates:0,accepted:0,rejected:0}]];
     if(sql.startsWith('SELECT source_url,normalized_payload'))return [[]];
-    if(sql.includes('SET status=?'))return [{affectedRows:1}];
+    if(sql.includes("SET status='completed'")||sql.includes('SET status=?'))return [{affectedRows:1}];
     throw new Error(`Unexpected query: ${sql}`);
   }};
   const runner=createRunner(db,{
@@ -181,6 +181,32 @@ test('extraction resume restores page progress from the durable checkpoint',()=>
   assert.match(source,/let pages=checkpoint,/);
   assert.doesNotMatch(source,/let pages=checkpoint\?Number\(job\.pages_fetched/);
   assert.match(source,/Frozen-rule retries upsert the same URL/);
+});
+
+test('one low-evidence template failure is recorded and full-site collection continues to partial completion',async()=>{
+  const outcomes=[];let candidates=0;
+  const job={id:33,source_id:4,status:'queued',source_status:'active',frozen_site_rule_id:9,recovery_mode:'off',scope_snapshot:{adapter_key:'universal_web_v1',seed_urls:['https://example.com/view/scene'],allowed_hosts:['example.com'],allowed_path_prefixes:['/'],max_pages:1,max_products:10,request_interval_ms:1000,site_rule_ids:[9]}};
+  const db={query:async(sql)=>{
+    if(sql.startsWith('SELECT job.*'))return [[job]];
+    if(sql.includes("SET status='running'"))return [{affectedRows:1}];
+    if(sql.startsWith('SELECT source_url,extracted_payload'))return [[]];
+    if(sql.includes("SET current_stage='extraction'"))return [{affectedRows:1}];
+    if(sql.startsWith('UPDATE product_ingestion_jobs SET scope_snapshot=')){return [{affectedRows:1}];}
+    if(sql.startsWith('INSERT INTO product_ingestion_candidates')){candidates=1;return [{insertId:101}];}
+    if(sql.startsWith('SELECT id FROM product_ingestion_candidates'))return [[{id:101}]];
+    if(sql.startsWith('DELETE FROM product_ingestion_candidate_categories'))return [{affectedRows:0}];
+    if(sql.startsWith('INSERT INTO product_ingestion_candidate_categories'))return [{affectedRows:1}];
+    if(sql.startsWith('SELECT COUNT(*) candidates'))return [[{candidates,accepted:0,rejected:candidates}]];
+    if(sql.includes('SET pages_fetched=?'))return [{affectedRows:1}];
+    if(sql.startsWith('SELECT source_url,normalized_payload'))return [[{source_url:'https://example.com/view/scene',normalized_payload:null,validation_status:'invalid',validation_issues:'[]'}]];
+    if(sql.includes("SET status='completed'"))return [{affectedRows:1}];
+    throw new Error(`Unexpected query: ${sql}`);
+  }};
+  const stale=()=>{const error=new Error('template mismatch');error.code='SITE_RULE_TEMPLATE_STALE';throw error;};
+  await createRunner(db,{globalSlots:{acquire:async()=>({release:async()=>{}})},fetchHtml:async url=>({url,status:200,contentType:'text/html',html:'<main><h1>Living room inspiration</h1><p>A complete interior scene.</p></main>'}),loadFrozenSiteRules:async()=>[{id:9,version_number:1,config:{extraction:{product_type:'furniture'}}}],extractProductWithSiteRuleSet:stale,onFullCrawlStarted:async()=>{},onFullCrawlFinished:async(id,outcome,details)=>outcomes.push({id,outcome,details})}).run(33);
+  assert.equal(job.scope_snapshot.template_drift_observations!=null,true);
+  assert.equal(outcomes[0].outcome,'success');
+  assert.equal(outcomes[0].details.partial,true);
 });
 
 test('automatic collection continues from discovery to candidate ingestion without scope confirmation', async () => {

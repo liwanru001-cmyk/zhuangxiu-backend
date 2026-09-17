@@ -56,6 +56,19 @@ function evidenceUrls(...manifests){
   }
   return [...new Set(urls.filter(Boolean))];
 }
+function sandboxValidationRows(result={}){
+  return [...(result.accepted_products||[]).map(item=>({url:validationUrlKey(item.source_url),errors:[]})),...(result.rejected_products||[]).map(item=>({url:validationUrlKey(item.source_url),errors:[...(item.validation_errors||[])].sort()})),...(result.failures||[]).map(item=>({url:validationUrlKey(item.source_url||item.url),errors:[item.code||item.error_code||item.message||'EXECUTION_FAILED']}))].sort((a,b)=>a.url.localeCompare(b.url));
+}
+function sandboxValidationFingerprint(result={}){return digest(sandboxValidationRows(result));}
+function sandboxValidationProgress(previous,current){
+  if(!previous||!current)return {comparable:false,improved:true};
+  const before=sandboxValidationRows(previous),after=sandboxValidationRows(current),beforeUrls=before.map(item=>item.url),afterUrls=after.map(item=>item.url);
+  if(JSON.stringify(beforeUrls)!==JSON.stringify(afterUrls))return {comparable:false,improved:true};
+  const beforeTotal=Math.max(1,Number(previous.summary?.products_accepted||0)+Number(previous.summary?.products_rejected||0)+Number(previous.summary?.failures||0));
+  const afterTotal=Math.max(1,Number(current.summary?.products_accepted||0)+Number(current.summary?.products_rejected||0)+Number(current.summary?.failures||0));
+  const beforeRate=Number(previous.summary?.products_accepted||0)/beforeTotal,afterRate=Number(current.summary?.products_accepted||0)/afterTotal;
+  return {comparable:true,improved:current.passed===true||afterRate>beforeRate,before_rate:beforeRate,after_rate:afterRate,same_failure:sandboxValidationFingerprint(previous)===sandboxValidationFingerprint(current)};
+}
 
 function canAutoFreezeRule(rule,sandboxResult){
   const summary=sandboxResult?.summary||{},site=sandboxResult?.site_validation||{},minimum=Number(rule?.config?.validation?.minimum_accepted_products||0);
@@ -513,6 +526,12 @@ function createSiteCognitionControl(db, dependencies = {}) {
     return current;
   }
 
+  async function stopNoImprovement(workflow,result,comparison,actor,reason='新规则没有提高独立验证集通过率'){
+    const counters={...workflow.attempt_counters,handoff_retries:2,no_improvement_retry_blocked:true,no_improvement_fingerprint:sandboxValidationFingerprint(result)};
+    await db.query('UPDATE product_ingestion_site_cognition_workflows SET attempt_counters=? WHERE id=?',[json(counters),workflow.id]);workflow.attempt_counters=counters;
+    return moveToHandoff(workflow,'NO_IMPROVEMENT',{reason,retry_blocked:true,error_code:'SITE_RULE_NO_IMPROVEMENT',sandbox_result:result,comparison},actor);
+  }
+
   async function saveTests(workflow, rule, siteMap, sandboxResult, analyzedUrls=[]) {
     const analyzed=new Set(analyzedUrls.length?analyzedUrls:(siteMap.pages || []).slice(0,4).map(page=>page.url));
     for(const row of [...(sandboxResult.accepted_products || []),...(sandboxResult.rejected_products || [])]){
@@ -547,6 +566,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
   }
 
   async function generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback=null,{maxAttempts=1,discoveryTest=null,discoveryExposedUrls=[],requiredValidationUrls=[]}={}){
+    const baselineRule=workflow.rule_id?await siteRules.get(workflow.rule_id):null,baselineResult=baselineRule?.last_sandbox_result||null;
     let generated;
     const contexts=buildExtractionContexts(extractionMap,{feedback,discoveryRule});
     const reserve=contexts.reduce((sum,item)=>sum+Number(item.budget?.reserved_total_tokens||0),0);
@@ -563,6 +583,8 @@ function createSiteCognitionControl(db, dependencies = {}) {
     if(discoveryTest)await saveDiscoveryTests(workflow,rule,discoveryTest);
     await saveTests(workflow,rule,extractionMap,run.result,analyzedUrls);
     if(!run.result.passed) {
+      const baselineComparison=sandboxValidationProgress(baselineResult,run.result);
+      if(baselineComparison.comparable&&!baselineComparison.improved)return stopNoImprovement(workflow,run.result,baselineComparison,actor);
       const counters={...workflow.attempt_counters,rule_revisions:Number(workflow.attempt_counters.rule_revisions || 0)+1};
       await db.query('UPDATE product_ingestion_site_cognition_workflows SET attempt_counters=? WHERE id=?',[json(counters),workflow.id]);workflow.attempt_counters=counters;
       workflow=await move(workflow,'VALIDATION_FAILED',run.result.outcome,{sandbox_result:run.result,validation_errors:run.result.rejected_products.flatMap(item=>item.validation_errors),rule_id:rule.id},actor);
@@ -577,6 +599,8 @@ function createSiteCognitionControl(db, dependencies = {}) {
           return completeValidatedRule(workflow,refinedRule,refinedRun,actor);
         }
         workflow=await move(workflow,'VALIDATION_FAILED',refinedRun.result.outcome,{sandbox_result:refinedRun.result,validation_errors:refinedRun.result.rejected_products.flatMap(item=>item.validation_errors),rule_id:refinedRule.id},actor);
+        const comparison=sandboxValidationProgress(run.result,refinedRun.result);
+        if(comparison.comparable&&!comparison.improved)return stopNoImprovement(workflow,refinedRun.result,comparison,actor);
       }
       return revise(workflow,extractionMap,{error_types:['automatic_validation_failed'],sandbox_summary:run.result.summary,rejected_pages:(run.result.rejected_products||[]).map(item=>({url:item.source_url,validation_errors:item.validation_errors})),execution_failures:run.result.failures},actor);
     }
@@ -629,13 +653,15 @@ function createSiteCognitionControl(db, dependencies = {}) {
     await db.query('UPDATE product_ingestion_site_cognition_workflows SET rule_id=? WHERE id=?',[rule.id,workflow.id]);workflow.rule_id=rule.id;
     let run=await siteRules.runSandbox(rule.id,'system:site-cognition');await saveTests(workflow,rule,siteMap,run.result,analyzedUrls);
     if(!run.result.passed){
+      const comparison=sandboxValidationProgress(previous?.last_sandbox_result,run.result);
+      if(comparison.comparable&&!comparison.improved)return stopNoImprovement(workflow,run.result,comparison,actor);
       const refined=refineFromValidation(rule.config,run.result);
       if(refined){
         const refinedRule=await siteRules.create(workflow.source_id,refined,'system:validation-refinement');
         await db.query('UPDATE product_ingestion_site_cognition_workflows SET rule_id=? WHERE id=?',[refinedRule.id,workflow.id]);workflow.rule_id=refinedRule.id;
         const refinedRun=await siteRules.runSandbox(refinedRule.id,'system:site-cognition');await saveTests(workflow,refinedRule,siteMap,refinedRun.result,analyzedUrls);
         if(refinedRun.result.passed){run=refinedRun;rule=refinedRule;}
-        else return moveToHandoff(workflow,refinedRun.result.outcome,{sandbox_result:refinedRun.result,reason:'AI 修订和基于盲测证据的安全收敛均未通过'},actor);
+        else {const refinedComparison=sandboxValidationProgress(run.result,refinedRun.result);if(refinedComparison.comparable&&!refinedComparison.improved)return stopNoImprovement(workflow,refinedRun.result,refinedComparison,actor);return moveToHandoff(workflow,refinedRun.result.outcome,{sandbox_result:refinedRun.result,reason:'AI 修订和基于盲测证据的安全收敛均未通过'},actor);}
       }else return moveToHandoff(workflow,run.result.outcome,{sandbox_result:run.result,reason:'修订规则仍未通过抽样'},actor);
     }
     return completeValidatedRule(workflow,rule,run,actor);
@@ -762,6 +788,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
   async function retryHandoff(id, actor='system:operator') {
     let workflow=await get(id);if(!workflow)fail('网站认知流程不存在',404);
     if(workflow.state!=='HANDOFF_REQUIRED')fail('当前流程不需要人工重试',409,'SITE_COGNITION_RETRY_NOT_REQUIRED');
+    if(workflow.resume_payload?.retry_blocked||workflow.attempt_counters?.no_improvement_retry_blocked)fail('新规则未提高独立验证集通过率，已阻止再次进入相同 AI 路径；请直接检查异常候选',409,'SITE_COGNITION_NO_IMPROVEMENT_RETRY_BLOCKED');
     const checkpoint=await extractionCheckpoint(workflow),retries=Number(workflow.attempt_counters?.handoff_retries||0);
     if(retries>=2)fail('同一任务已完成两次受控重试，请新建任务或转人工检查',409,'SITE_COGNITION_RETRY_EXHAUSTED');
     const [[usage]]=await db.query('SELECT COALESCE(SUM(total_tokens),0) total_tokens FROM product_ingestion_site_cognition_ai_calls WHERE workflow_id=?',[workflow.id]);
@@ -936,4 +963,4 @@ function createSiteCognitionControl(db, dependencies = {}) {
   return {startForJob,execute,get,list,feedback,retryHandoff,approveAiBudget,latestForJob,recoverInterrupted,markFullCrawlStarted,markFullCrawlFinished,returnToHumanAnchor,stopForJob};
 }
 
-module.exports = { createSiteCognitionControl, businessCopy, BUSINESS_ERROR_TYPES, DISCOVERY_ERROR_TYPES, AI_TOKEN_BUDGET, MAX_AI_TOKEN_BUDGET, MAX_EVIDENCE_PROBE_ROUNDS, evidenceProbeFingerprint, canAutoFreezeRule, renderedEvidenceUsable, withBlindTestSeeds, withRequiredValidationSeeds, enforceRequiredValidation, refineFromValidation, validateDiscoveryAgainstMap, publicApiDiscovery, augmentEvidenceForRule, attemptBudgetUsed, aiBudgetLimit, nextAiBudgetLimit, evidenceUrls };
+module.exports = { createSiteCognitionControl, businessCopy, BUSINESS_ERROR_TYPES, DISCOVERY_ERROR_TYPES, AI_TOKEN_BUDGET, MAX_AI_TOKEN_BUDGET, MAX_EVIDENCE_PROBE_ROUNDS, evidenceProbeFingerprint, canAutoFreezeRule, renderedEvidenceUsable, withBlindTestSeeds, withRequiredValidationSeeds, enforceRequiredValidation, refineFromValidation, validateDiscoveryAgainstMap, publicApiDiscovery, augmentEvidenceForRule, attemptBudgetUsed, aiBudgetLimit, nextAiBudgetLimit, evidenceUrls, sandboxValidationRows, sandboxValidationFingerprint, sandboxValidationProgress };
