@@ -124,7 +124,19 @@ async function checkConnectivity(contract, env = process.env) {
     await redis.connect();
     const pong = await redis.ping();
     if (pong !== 'PONG') throw new Error('Redis did not return PONG');
-    browser = await chromium.launch({ headless: true, executablePath: contract.chromium_path, timeout: 15000, args: ['--disable-background-networking', '--no-first-run'] });
+    const configuredTimeout = Number(env.PRODUCTION_CHROMIUM_LAUNCH_TIMEOUT_MS || 30000);
+    const launchTimeout = Number.isFinite(configuredTimeout) ? Math.max(15000, Math.min(60000, configuredTimeout)) : 30000;
+    let launchError;
+    for (let attempt = 1; attempt <= 2; attempt++) {
+      try {
+        browser = await chromium.launch({ headless: true, executablePath: contract.chromium_path, timeout: launchTimeout, args: ['--disable-background-networking', '--no-first-run'] });
+        break;
+      } catch (error) {
+        launchError = error;
+        if (attempt < 2) await new Promise(resolve => setTimeout(resolve, 2000));
+      }
+    }
+    if (!browser) throw launchError;
     if (contract.storage_driver === 'oss') {
       const result = await storage.checkStorageConnection();
       if (!result.ok) throw new Error('OSS bucket check failed');
