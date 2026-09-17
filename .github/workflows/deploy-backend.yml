@@ -52,6 +52,78 @@ jobs:
             set -eu
             curl --max-time 15 -fsS http://127.0.0.1:3001/health
 
+      - name: Provision Chromium for controlled ingestion rendering
+        uses: appleboy/ssh-action@v1.0.3
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          EXPECTED_SSH_HOST: 115.29.194.46
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          envs: SSH_HOST,EXPECTED_SSH_HOST
+          script: |
+            set -euo pipefail
+
+            if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+              echo "Refusing to provision the stale or unrelated host: $SSH_HOST"
+              exit 1
+            fi
+            if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+              if ! getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"; then
+                echo "SSH_HOST must be $EXPECTED_SSH_HOST or resolve to it; got $SSH_HOST"
+                exit 1
+              fi
+            fi
+
+            find_chromium() {
+              for chrome_command in google-chrome-stable google-chrome chromium chromium-browser; do
+                chrome_candidate="$(command -v "$chrome_command" 2>/dev/null || true)"
+                if [ -n "$chrome_candidate" ] && [ -x "$chrome_candidate" ]; then
+                  printf '%s\n' "$chrome_candidate"
+                  return 0
+                fi
+              done
+              return 1
+            }
+
+            if chromium_path="$(find_chromium)"; then
+              echo "Chromium is already provisioned: $chromium_path"
+              "$chromium_path" --version
+              exit 0
+            fi
+
+            runner=''
+            if [ "$(id -u)" -ne 0 ]; then
+              if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+                runner='sudo'
+              else
+                echo 'Chromium provisioning requires root or passwordless sudo.'
+                exit 1
+              fi
+            fi
+
+            if command -v apt-get >/dev/null 2>&1; then
+              $runner apt-get update
+              $runner env DEBIAN_FRONTEND=noninteractive apt-get install -y chromium \
+                || $runner env DEBIAN_FRONTEND=noninteractive apt-get install -y chromium-browser
+            elif command -v dnf >/dev/null 2>&1; then
+              $runner dnf install -y chromium || $runner dnf install -y chromium-headless
+            elif command -v yum >/dev/null 2>&1; then
+              $runner yum install -y chromium || $runner yum install -y chromium-headless
+            else
+              echo 'No supported package manager is available to install Chromium.'
+              exit 1
+            fi
+
+            chromium_path="$(find_chromium)" || {
+              echo 'Chromium package installation completed without an executable on PATH.'
+              exit 1
+            }
+            echo "Chromium provisioned successfully: $chromium_path"
+            "$chromium_path" --version
+
       - name: Upload backend over SSH
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -197,8 +269,9 @@ jobs:
               npm install -g pm2
             fi
 
-            # Production deploys never install or upgrade operating-system packages.
-            # Static validation only requires the pre-provisioned Fontconfig + CJK font.
+            # Chromium is provisioned in the explicit, auditable step above. The
+            # application deployment itself does not install operating-system packages.
+            # Static validation also requires pre-provisioned Fontconfig + CJK font.
             if ! command -v fc-match >/dev/null 2>&1 || ! command -v fc-list >/dev/null 2>&1; then
               echo 'AI PPT v2 static validation requires pre-provisioned Fontconfig.'
               exit 1
