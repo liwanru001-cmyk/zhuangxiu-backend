@@ -197,7 +197,21 @@ jobs:
             fi
 
             chrome_rpm='/tmp/yinnkhome-google-chrome-stable.rpm'
+            chrome_install_log='/tmp/yinnkhome-chrome-install.log'
+            chrome_diagnostic='/tmp/yinnkhome-chrome-install-error.log'
             trap '$runner rm -f "$chrome_rpm"' EXIT
+            write_chrome_diagnostic() {
+              set +e
+              {
+                echo '--- operating system ---'
+                cat /etc/os-release
+                echo '--- architecture and RPM ---'
+                uname -m
+                rpm --version
+                echo '--- package-manager tail ---'
+                tail -40 "$chrome_install_log" 2>/dev/null || true
+              } > "$chrome_diagnostic"
+            }
             test -s "$chrome_rpm"
             printf '%s\n' "$CHROME_RPM_SHA256" | grep -Eq '^[0-9a-f]{64}$' || {
               echo 'The staged Chrome RPM SHA-256 is missing or invalid.'
@@ -211,21 +225,49 @@ jobs:
             $runner rm -f /etc/yum.repos.d/google-chrome.repo
 
             if command -v dnf >/dev/null 2>&1; then
-              $runner dnf install -y --nogpgcheck "$chrome_rpm"
+              if ! $runner dnf install -y --nogpgcheck "$chrome_rpm" 2>&1 | tee "$chrome_install_log"; then
+                write_chrome_diagnostic
+                exit 1
+              fi
             elif command -v yum >/dev/null 2>&1; then
-              $runner yum install -y --nogpgcheck "$chrome_rpm"
+              if ! $runner yum install -y --nogpgcheck "$chrome_rpm" 2>&1 | tee "$chrome_install_log"; then
+                write_chrome_diagnostic
+                exit 1
+              fi
             else
               echo 'DNF or YUM is required to install the verified Chrome RPM.'
+              write_chrome_diagnostic
               exit 1
             fi
             $runner rm -f /etc/yum.repos.d/google-chrome.repo
 
             chromium_path="$(find_chromium)" || {
               echo 'Chromium package installation completed without an executable on PATH.'
+              write_chrome_diagnostic
               exit 1
             }
             echo "Chromium provisioned successfully: $chromium_path"
             "$chromium_path" --version
+
+      - name: Report Chromium provisioning diagnostics
+        if: failure() && steps.chrome-package.conclusion == 'success' && steps.chrome-package.outputs.needed == 'true'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          diagnostic="$(ssh -i ~/.ssh/deploy_key -p "$ssh_port" \
+            -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
+            "${SSH_USER}@${SSH_HOST}" \
+            'cat /tmp/yinnkhome-chrome-install-error.log 2>/dev/null || echo "No remote Chrome diagnostic was recorded."' \
+            2>&1 || true)"
+          diagnostic="${diagnostic//'%'/'%25'}"
+          diagnostic="${diagnostic//$'\r'/'%0D'}"
+          diagnostic="${diagnostic//$'\n'/'%0A'}"
+          echo "::error title=Chromium provisioning failed::$diagnostic"
 
       - name: Upload backend over SSH
         env:
