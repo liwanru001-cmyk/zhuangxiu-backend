@@ -49,4 +49,16 @@ jobs:
           remote="$SSH_USER@$SSH_HOST"
           scp "${scp_opts[@]}" outputs/furniture_brand_site_research_20260913/hc28-import-package-20260917/import-records.ndjson "$remote:/tmp/hc28-import-records.ndjson"
           scp "${scp_opts[@]}" server/scripts/import-hc28-candidates.js "$remote:/tmp/import-hc28-candidates.js"
-          ssh "${opts[@]}" "$remote" 'set -euo pipefail; cp /tmp/import-hc28-candidates.js /opt/yinnkhome-backend/server/scripts/import-hc28-candidates.js; cd /opt/yinnkhome-backend/server; node scripts/import-hc28-candidates.js /tmp/hc28-import-records.ndjson --apply; rm -f /tmp/hc28-import-records.ndjson /tmp/import-hc28-candidates.js'
+          ssh "${opts[@]}" "$remote" 'set -euo pipefail; cp /tmp/import-hc28-candidates.js /opt/yinnkhome-backend/server/scripts/import-hc28-candidates.js; cd /opt/yinnkhome-backend/server; set +e; node scripts/import-hc28-candidates.js /tmp/hc28-import-records.ndjson --apply 2>&1 | tee /tmp/hc28-import.log; status=${PIPESTATUS[0]}; set -e; test "$status" -eq 0; rm -f /tmp/hc28-import-records.ndjson /tmp/import-hc28-candidates.js'
+
+      - name: Report import diagnostics
+        if: always()
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set +e
+          mkdir -p ~/.ssh; printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key; chmod 600 ~/.ssh/deploy_key
+          ssh -i ~/.ssh/deploy_key -p "${SSH_PORT:-22}" -o StrictHostKeyChecking=accept-new "$SSH_USER@$SSH_HOST" 'cat /tmp/hc28-import.log 2>/dev/null || true'
