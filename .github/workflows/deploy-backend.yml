@@ -52,17 +52,100 @@ jobs:
             set -eu
             curl --max-time 15 -fsS http://127.0.0.1:3001/health
 
+      - name: Stage verified Chrome RPM when the server needs it
+        id: chrome-package
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          EXPECTED_SSH_HOST: 115.29.194.46
+        run: |
+          set -euo pipefail
+
+          if [ "$SSH_HOST" = "47.114.87.69" ] || [ "$SSH_HOST" = "118.178.123.31" ]; then
+            echo "Refusing to provision the stale or unrelated host: $SSH_HOST"
+            exit 1
+          fi
+          if [ "$SSH_HOST" != "$EXPECTED_SSH_HOST" ]; then
+            if ! getent ahosts "$SSH_HOST" | awk '{print $1}' | grep -qx "$EXPECTED_SSH_HOST"; then
+              echo "SSH_HOST must be $EXPECTED_SSH_HOST or resolve to it; got $SSH_HOST"
+              exit 1
+            fi
+          fi
+
+          ssh_port="${SSH_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh_opts=(
+            -i ~/.ssh/deploy_key
+            -p "$ssh_port"
+            -o StrictHostKeyChecking=accept-new
+            -o ServerAliveInterval=15
+          )
+          remote="${SSH_USER}@${SSH_HOST}"
+
+          if ssh "${ssh_opts[@]}" "$remote" \
+            'command -v google-chrome-stable >/dev/null 2>&1 || command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1'; then
+            echo 'Chrome/Chromium is already installed; package staging is not required.'
+            echo 'needed=false' >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          remote_arch="$(ssh "${ssh_opts[@]}" "$remote" 'uname -m')"
+          if [ "$remote_arch" != 'x86_64' ]; then
+            echo "The official Google Chrome RPM requires x86_64; server reports $remote_arch."
+            exit 1
+          fi
+
+          chrome_rpm="$RUNNER_TEMP/google-chrome-stable.rpm"
+          chrome_key="$RUNNER_TEMP/google-linux-signing-key.pub"
+          curl --fail --silent --show-error --location \
+            https://dl.google.com/linux/direct/google-chrome-stable_current_x86_64.rpm \
+            --output "$chrome_rpm"
+          curl --fail --silent --show-error --location \
+            https://dl.google.com/linux/linux_signing_key.pub \
+            --output "$chrome_key"
+
+          google_key_fingerprint="$({ gpg --batch --show-keys --with-colons "$chrome_key" 2>/dev/null || true; } \
+            | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [ "$google_key_fingerprint" != 'EB4C1BFD4F042F6DDDCCEC917721F63BD38B4796' ]; then
+            echo "Unexpected Google Linux signing-key fingerprint: ${google_key_fingerprint:-missing}"
+            exit 1
+          fi
+
+          sudo apt-get update
+          sudo env DEBIAN_FRONTEND=noninteractive apt-get install -y rpm
+          sudo rpm --import "$chrome_key"
+          rpm_signature="$(sudo rpm --checksig "$chrome_rpm")"
+          echo "$rpm_signature"
+          case "$rpm_signature" in
+            *'NOT OK'*|*'NOKEY'*) echo 'Chrome RPM signature verification failed.'; exit 1 ;;
+            *'signatures OK'*) ;;
+            *) echo 'Chrome RPM did not return a valid signature result.'; exit 1 ;;
+          esac
+
+          scp -i ~/.ssh/deploy_key -P "$ssh_port" \
+            -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
+            "$chrome_rpm" "$remote:/tmp/yinnkhome-google-chrome-stable.rpm"
+          scp -i ~/.ssh/deploy_key -P "$ssh_port" \
+            -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
+            "$chrome_key" "$remote:/tmp/yinnkhome-google-linux-signing-key.pub"
+          echo 'needed=true' >> "$GITHUB_OUTPUT"
+
       - name: Provision Chromium for controlled ingestion rendering
         uses: appleboy/ssh-action@v1.0.3
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           EXPECTED_SSH_HOST: 115.29.194.46
+          CHROME_PACKAGE_NEEDED: ${{ steps.chrome-package.outputs.needed }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: SSH_HOST,EXPECTED_SSH_HOST
+          envs: SSH_HOST,EXPECTED_SSH_HOST,CHROME_PACKAGE_NEEDED
           script: |
             set -euo pipefail
 
@@ -104,74 +187,42 @@ jobs:
               fi
             fi
 
-            if command -v apt-get >/dev/null 2>&1; then
-              $runner apt-get update
-              $runner env DEBIAN_FRONTEND=noninteractive apt-get install -y chromium \
-                || $runner env DEBIAN_FRONTEND=noninteractive apt-get install -y chromium-browser
-            elif command -v dnf >/dev/null 2>&1; then
-              if ! $runner dnf install -y chromium && ! $runner dnf install -y chromium-headless; then
-                if [ "$(uname -m)" != 'x86_64' ]; then
-                  echo 'The official Google Chrome RPM fallback only supports x86_64.'
-                  exit 1
-                fi
-                command -v curl >/dev/null 2>&1 || {
-                  echo 'curl is required to bootstrap the official Google Chrome RPM signing key.'
-                  exit 1
-                }
-                chrome_key="$(mktemp)"
-                chrome_repo="$(mktemp)"
-                trap 'rm -f "$chrome_key" "$chrome_repo"' EXIT
-                curl --fail --silent --show-error --location \
-                  https://dl.google.com/linux/linux_signing_key.pub \
-                  --output "$chrome_key"
-                $runner rpm --import "$chrome_key"
-                cat > "$chrome_repo" <<'EOF'
-            [google-chrome]
-            name=Google Chrome
-            baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64
-            enabled=1
-            gpgcheck=1
-            repo_gpgcheck=0
-            gpgkey=https://dl.google.com/linux/linux_signing_key.pub
-            EOF
-                $runner install -m 0644 "$chrome_repo" /etc/yum.repos.d/google-chrome.repo
-                $runner dnf install -y google-chrome-stable
-                rm -f "$chrome_key" "$chrome_repo"
-                trap - EXIT
+            if [ "$CHROME_PACKAGE_NEEDED" != 'true' ]; then
+              echo 'Chrome package was not staged even though no executable is available.'
+              exit 1
+            fi
+
+            chrome_rpm='/tmp/yinnkhome-google-chrome-stable.rpm'
+            chrome_key='/tmp/yinnkhome-google-linux-signing-key.pub'
+            trap '$runner rm -f "$chrome_rpm" "$chrome_key"' EXIT
+            test -s "$chrome_rpm"
+            test -s "$chrome_key"
+
+            $runner rpm --import "$chrome_key"
+            rpm_signature="$($runner rpm --checksig "$chrome_rpm" || true)"
+            if printf '%s\n' "$rpm_signature" | grep -Eq 'NOKEY|NOT OK'; then
+              old_google_keys="$(rpm -qa 'gpg-pubkey-d38b4796-*' || true)"
+              if [ -n "$old_google_keys" ]; then
+                printf '%s\n' "$old_google_keys" | while IFS= read -r old_google_key; do
+                  [ -n "$old_google_key" ] && $runner rpm -e "$old_google_key"
+                done
               fi
+              $runner rpm --import "$chrome_key"
+              rpm_signature="$($runner rpm --checksig "$chrome_rpm")"
+            fi
+            echo "$rpm_signature"
+            case "$rpm_signature" in
+              *'NOT OK'*|*'NOKEY'*) echo 'Chrome RPM signature verification failed on the server.'; exit 1 ;;
+              *'signatures OK'*) ;;
+              *) echo 'Chrome RPM did not return a valid signature result on the server.'; exit 1 ;;
+            esac
+
+            if command -v dnf >/dev/null 2>&1; then
+              $runner dnf install -y "$chrome_rpm"
             elif command -v yum >/dev/null 2>&1; then
-              if ! $runner yum install -y chromium && ! $runner yum install -y chromium-headless; then
-                if [ "$(uname -m)" != 'x86_64' ]; then
-                  echo 'The official Google Chrome RPM fallback only supports x86_64.'
-                  exit 1
-                fi
-                command -v curl >/dev/null 2>&1 || {
-                  echo 'curl is required to bootstrap the official Google Chrome RPM signing key.'
-                  exit 1
-                }
-                chrome_key="$(mktemp)"
-                chrome_repo="$(mktemp)"
-                trap 'rm -f "$chrome_key" "$chrome_repo"' EXIT
-                curl --fail --silent --show-error --location \
-                  https://dl.google.com/linux/linux_signing_key.pub \
-                  --output "$chrome_key"
-                $runner rpm --import "$chrome_key"
-                cat > "$chrome_repo" <<'EOF'
-            [google-chrome]
-            name=Google Chrome
-            baseurl=https://dl.google.com/linux/chrome/rpm/stable/x86_64
-            enabled=1
-            gpgcheck=1
-            repo_gpgcheck=0
-            gpgkey=https://dl.google.com/linux/linux_signing_key.pub
-            EOF
-                $runner install -m 0644 "$chrome_repo" /etc/yum.repos.d/google-chrome.repo
-                $runner yum install -y google-chrome-stable
-                rm -f "$chrome_key" "$chrome_repo"
-                trap - EXIT
-              fi
+              $runner yum install -y "$chrome_rpm"
             else
-              echo 'No supported package manager is available to install Chromium.'
+              echo 'DNF or YUM is required to install the verified Chrome RPM.'
               exit 1
             fi
 
