@@ -1,5 +1,6 @@
 {
   "package_version": "hc28-gold-import-v1",
+  "import_target": "pending_candidates_only",
   "generated_at": "2026-09-17",
   "source_file": "outputs/furniture_brand_site_research_20260913/hc28_full_gold_v1.json",
   "source_sha256": "fe1c4f7c53b76d978a77d470d5f1b42b68763e9f50692853137421a573d8fb8e",
