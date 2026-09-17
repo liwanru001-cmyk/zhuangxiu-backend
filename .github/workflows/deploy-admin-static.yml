@@ -1,5 +1,7 @@
 name: Deploy Admin Static Page
 
+# Host recovery rerun marker: 2026-09-17T18:32+08:00.
+
 on:
   push:
     branches:

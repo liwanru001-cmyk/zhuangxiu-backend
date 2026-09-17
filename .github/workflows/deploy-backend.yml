@@ -15,7 +15,7 @@ on:
 concurrency:
   group: production-backend-deploy
   cancel-in-progress: false
-# Host recovery rerun marker: keep the deployment recipe unchanged after a reboot.
+# Host recovery rerun marker: 2026-09-17T18:32+08:00.
 
 jobs:
   deploy:
