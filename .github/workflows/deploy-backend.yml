@@ -372,6 +372,23 @@ jobs:
             set_env_value ADMIN_USERNAME "$ADMIN_USERNAME_SECRET"
             set_env_value ADMIN_PASSWORD_HASH "$ADMIN_PASSWORD_HASH_SECRET"
             set_env_value ADMIN_TOKEN_VERSION "$ADMIN_TOKEN_VERSION_SECRET"
+
+            ingestion_chrome_path="${INGESTION_CHROME_PATH:-}"
+            if [ -z "$ingestion_chrome_path" ] || [ ! -x "$ingestion_chrome_path" ]; then
+              ingestion_chrome_path=""
+              for chrome_command in google-chrome-stable google-chrome chromium chromium-browser; do
+                chrome_candidate="$(command -v "$chrome_command" 2>/dev/null || true)"
+                if [ -n "$chrome_candidate" ] && [ -x "$chrome_candidate" ]; then
+                  ingestion_chrome_path="$chrome_candidate"
+                  break
+                fi
+              done
+            fi
+            if [ -z "$ingestion_chrome_path" ]; then
+              echo 'No pre-provisioned Chrome/Chromium executable is available for controlled ingestion rendering.'
+              exit 1
+            fi
+            set_env_value INGESTION_CHROME_PATH "$ingestion_chrome_path"
             chmod 600 .env
             set -a
             . ./.env
