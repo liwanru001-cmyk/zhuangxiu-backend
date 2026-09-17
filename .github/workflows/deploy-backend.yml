@@ -408,6 +408,7 @@ jobs:
           ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'" < /tmp/yinnkhome-backend.tar.gz
 
       - name: Deploy backend over SSH
+        id: deploy-backend
         uses: appleboy/ssh-action@v1.0.3
         env:
           APP_DIR: ${{ secrets.APP_DIR }}
@@ -428,6 +429,11 @@ jobs:
           envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET,ADMIN_USERNAME_SECRET,ADMIN_PASSWORD_HASH_SECRET,ADMIN_TOKEN_VERSION_SECRET,RELEASE_SHA
           script: |
             set -euo pipefail
+            deploy_log='/tmp/yinnkhome-backend-deploy.log'
+            deploy_diagnostic='/tmp/yinnkhome-backend-deploy-error.log'
+            rm -f "$deploy_log" "$deploy_diagnostic"
+            exec > >(tee "$deploy_log") 2>&1
+            deployment_phase='initialization'
 
             APP_DIR="${APP_DIR:-/opt/yinnkhome-backend}"
 
@@ -484,6 +490,17 @@ jobs:
 
             rollback() {
               exit_code=$?
+              if [ "$exit_code" -ne 0 ]; then
+                set +e
+                {
+                  echo "deployment_phase=$deployment_phase"
+                  echo '--- deploy log tail ---'
+                  tail -120 "$deploy_log" 2>/dev/null || true
+                  echo '--- smoke stderr ---'
+                  tail -80 /tmp/yinnkhome-smoke-err.log 2>/dev/null || true
+                } > "$deploy_diagnostic"
+                set -e
+              fi
               if [ "$exit_code" -ne 0 ] && [ "$activated" = "true" ] && [ -d "$backup_dir" ]; then
                 echo "Deployment failed; printing diagnostics before rollback."
                 pm2 status || true
@@ -533,6 +550,7 @@ jobs:
             fi
 
             cd "$staging_dir"
+            deployment_phase='install_dependencies'
             npm ci --omit=dev
             test "$(node -p "require('./release-manifest.json').release_sha")" = "$RELEASE_SHA"
 
@@ -665,17 +683,21 @@ jobs:
             set +a
 
             echo 'Checking administrator authentication configuration.'
+            deployment_phase='admin_auth_contract'
             node -e "require('./services/admin-auth').assertConfiguration()"
 
             echo 'Checking the production environment contract and read-only service connectivity.'
+            deployment_phase='production_contract'
             npm run check:production-contract -- --connectivity
 
             echo 'Checking AI PPT v2 fonts and static PPTX generation.'
+            deployment_phase='presentation_static_check'
             npm run check:presentation-v2
             model_check_id="$(printf '%s' "$PRESENTATION_V2_BASE_URL|$PRESENTATION_V2_MODEL|$PRESENTATION_V2_API_KEY" | sha256sum | cut -c1-20)"
             model_check_file="storage/presentation-v2-model-${model_check_id}.checked"
             if [ ! -f "$model_check_file" ]; then
               echo 'Checking AI PPT v2 multimodal model access.'
+              deployment_phase='presentation_model_check'
               npm run check:presentation-v2:model
               mkdir -p storage
               : > "$model_check_file"
@@ -738,6 +760,7 @@ jobs:
             mkdir -p "$db_backup_dir"
             db_backup_file="$db_backup_dir/pre-deploy-${RELEASE_SHA:-unknown}-$(date +%Y%m%d_%H%M%S).sql.gz"
             echo "Creating database backup before smoke test: $db_backup_file"
+            deployment_phase='database_backup'
             MYSQL_PWD="$DB_PASSWORD" mysqldump \
               --host="$DB_HOST" \
               --port="${DB_PORT:-3306}" \
@@ -752,6 +775,7 @@ jobs:
             chmod 600 "$db_backup_file"
 
             echo "Applying recorded pending migrations before smoke test."
+            deployment_phase='database_migrations'
             node scripts/run-pending-migrations.js
             node scripts/check-independent-project-schema.js
             echo "Checking original backend after migration, before service cutover."
@@ -759,6 +783,7 @@ jobs:
 
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
+            deployment_phase='side_effect_free_smoke'
             APP_RUNTIME_MODE=smoke PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
             smoke_pid=$!
             smoke_ready="false"
@@ -793,6 +818,7 @@ jobs:
             mkdir -p "$(dirname "$APP_DIR")"
             mv "$staging_dir" "$APP_DIR"
             activated="true"
+            deployment_phase='service_activation'
             cd "$APP_DIR"
 
             mkdir -p uploads logs storage
@@ -820,6 +846,7 @@ jobs:
             pm2 startOrReload ecosystem.config.cjs --env production --update-env
             pm2 save
 
+            deployment_phase='post_activation_health'
             for attempt in $(seq 1 30); do
               if curl -fsS "http://127.0.0.1:${PORT:-3001}/health"; then
                 if [ -d "$backup_dir" ]; then
@@ -845,6 +872,25 @@ jobs:
 
             echo "Backend health check failed after waiting."
             exit 1
+
+      - name: Report backend deployment diagnostics
+        if: failure() && steps.deploy-backend.conclusion == 'failure'
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          diagnostic="$(ssh -i ~/.ssh/deploy_key -p "$ssh_port" \
+            -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15 \
+            "${SSH_USER}@${SSH_HOST}" \
+            'cat /tmp/yinnkhome-backend-deploy-error.log 2>/dev/null || echo "No remote backend diagnostic was recorded."' \
+            2>&1 || true)"
+          diagnostic="${diagnostic//'%'/'%25'}"
+          diagnostic="${diagnostic//$'\r'/'%0D'}"
+          diagnostic="${diagnostic//$'\n'/'%0A'}"
+          echo "::error title=Backend deployment failed::$diagnostic"
 
       - name: Configure Nginx release upload timeouts
         uses: appleboy/ssh-action@v1.0.3
