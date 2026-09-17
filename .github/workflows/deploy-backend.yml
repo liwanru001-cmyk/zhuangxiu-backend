@@ -40,26 +40,6 @@ jobs:
           node server/scripts/create-release-manifest.js --output server/release-manifest.json
           test "$(node -p "require('./server/release-manifest.json').release_sha")" = "$GITHUB_SHA"
 
-      - name: Recover stale controlled Chromium processes
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          command_timeout: 1m
-          script: |
-            set -eu
-            stale_pattern='/opt/yinnkhome-chromium/.*/chrome'
-            if command -v pgrep >/dev/null 2>&1; then
-              pgrep -af "$stale_pattern" || true
-            fi
-            if command -v pkill >/dev/null 2>&1; then
-              pkill -TERM -f "$stale_pattern" || true
-              sleep 2
-              pkill -KILL -f "$stale_pattern" || true
-            fi
-
       # Do not switch/recover services before migration has been validated.
       - name: Check current backend without changing it
         uses: appleboy/ssh-action@v1.0.3
@@ -111,6 +91,10 @@ jobs:
             exit 1
           }
           chrome_marker="/opt/yinnkhome-chromium/playwright-core-${playwright_version}.ready"
+
+          timeout 20s ssh "${ssh_opts[@]}" "$remote" \
+            "timeout 10s pkill -TERM -f '/opt/yinnkhome-chromium/.*/chrome' || true; sleep 2; timeout 10s pkill -KILL -f '/opt/yinnkhome-chromium/.*/chrome' || true" \
+            || echo 'Warning: stale Chromium cleanup did not complete within 20 seconds.'
 
           if ssh "${ssh_opts[@]}" "$remote" "CHROME_MARKER='$chrome_marker' bash -s" <<'REMOTE_CHECK'
             for chrome_command in google-chrome-stable google-chrome chromium chromium-browser; do
