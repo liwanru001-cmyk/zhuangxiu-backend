@@ -214,6 +214,29 @@ test('candidate review refuses invalid data and records a required rejection rea
   assert.deepEqual(updates[0], ['rejected', '官网缺少明确材质', 'reviewer', 7]);
 });
 
+test('candidate classification and standard categories save in one transaction',async()=>{
+  let committed=false,rolledBack=false,released=false;const statements=[];
+  const conn={beginTransaction:async()=>{},commit:async()=>{committed=true;},rollback:async()=>{rolledBack=true;},release:()=>{released=true;},query:async(sql,params=[])=>{
+    statements.push({sql,params});
+    if(sql.startsWith('SELECT candidate.*'))return [[{id:9,published_product_id:null,classification_suggestion:'{"product_group":"soft_furnishings","product_type":"furniture"}',classification_override:null}]];
+    if(sql.startsWith('SELECT id FROM public_product_categories'))return [[{id:7},{id:8}]];
+    if(sql.startsWith('DELETE FROM product_ingestion_candidate_categories'))return [{affectedRows:1}];
+    if(sql.startsWith('INSERT INTO product_ingestion_candidate_categories'))return [{affectedRows:1}];
+    throw new Error(`Unexpected query: ${sql}`);
+  }};
+  const result=await createControl({getConnection:async()=>conn}).saveCandidateClassification(9,{product_group:'soft_furnishings',product_type:'furniture',category_ids:[7,8]},'admin');
+  assert.deepEqual(result,{id:9,product_group:'soft_furnishings',product_type:'furniture',category_ids:[7,8],classification_updated:false,saved:true});
+  assert.equal(committed,true);assert.equal(rolledBack,false);assert.equal(released,true);
+  assert.equal(statements.filter(item=>item.sql.startsWith('INSERT INTO product_ingestion_candidate_categories')).length,2);
+});
+
+test('candidate list classification save has one live click handler and explicit feedback',()=>{
+  const ui=fs.readFileSync(require.resolve('../public/admin/modules/product-ingestion'),'utf8'),routes=fs.readFileSync(require.resolve('../routes/admin-product-ingestion.routes'),'utf8');
+  assert.doesNotMatch(ui,/panel\.addEventListener\('click'/);
+  assert.match(ui,/data-row-save-status/);assert.match(ui,/正在保存/);assert.match(ui,/保存成功/);assert.match(ui,/保存失败/);
+  assert.match(ui,/candidates\/\$\{id\}\/classification/);assert.match(routes,/candidates\/:id\/classification/);
+});
+
 test('candidate detail exposes parsed governance payloads but never raw HTML', async () => {
   const db = { query: async sql => {
     assert.match(sql, /OCTET_LENGTH\(candidate\.raw_html\)/);

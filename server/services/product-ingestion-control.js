@@ -444,6 +444,30 @@ function createControl(db) {
         await conn.commit();transaction=false;return {updated_count:candidateIds.length,product_group:productGroup,product_type:productType};
       }catch(error){if(transaction)await conn.rollback();throw error;}finally{if(conn!==db&&typeof conn.release==='function')conn.release();}
     },
+    async saveCandidateClassification(id,body,actor){
+      const candidateId=integer(id,1,Number.MAX_SAFE_INTEGER,'候选 ID'),productGroup=String(body.product_group||'soft_furnishings'),productType=String(body.product_type||'');
+      const categoryIds=[...new Set((Array.isArray(body.category_ids)?body.category_ids:[]).map(Number))];
+      if(productGroup!=='soft_furnishings'||!TYPES.includes(productType))fail('目标产品分类不受支持');
+      if(!categoryIds.length||categoryIds.length>20||categoryIds.some(value=>!Number.isSafeInteger(value)||value<1))fail('候选至少需要一个有效标准分类');
+      const conn=typeof db.getConnection==='function'?await db.getConnection():db;let transaction=false,classificationUpdated=false;
+      try{
+        await conn.beginTransaction();transaction=true;
+        const [rows]=await conn.query(`SELECT candidate.*,source.adapter_key FROM product_ingestion_candidates candidate JOIN product_ingestion_sources source ON source.id=candidate.source_id WHERE candidate.id=? FOR UPDATE`,[candidateId]);
+        const candidate=rows[0];if(!candidate)fail('候选不存在',404);if(candidate.published_product_id)fail('候选已经发布，请在正式产品中调整分类',409);
+        const [categoryRows]=await conn.query(`SELECT id FROM public_product_categories WHERE status='active' AND id IN (${categoryIds.map(()=>'?').join(',')})`,categoryIds);if(categoryRows.length!==categoryIds.length)fail('包含不存在或已停用的标准分类');
+        const previous=parseJsonValue(candidate.classification_override)||parseJsonValue(candidate.classification_suggestion)||{};
+        if(previous.product_type!==productType){
+          if(!candidate.raw_html)fail('候选缺少原始页面，无法重建产品结构',409);
+          const result=extractProduct(Buffer.from(candidate.raw_html).toString('utf8'),productType,candidate.source_url),override={product_group:productGroup,product_type:productType,method:'manual',updated_by:String(actor).slice(0,80),updated_at:new Date().toISOString()};
+          result.generatedFields.push({path:'classification',rule:'manual_override',value:`${productGroup}/${productType}`});
+          await conn.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,classification_override=?,validation_status='valid',validation_issues='[]',review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[JSON.stringify(result.payload),JSON.stringify(result.generatedFields),JSON.stringify(override),candidateId]);
+          await conn.query(`INSERT INTO product_ingestion_candidate_classification_changes (candidate_id,previous_product_group,previous_product_type,new_product_group,new_product_type,changed_by,changed_at) VALUES (?,?,?,?,?,?,NOW())`,[candidateId,previous.product_group||null,previous.product_type||null,productGroup,productType,String(actor).slice(0,80)]);classificationUpdated=true;
+        }
+        await conn.query('DELETE FROM product_ingestion_candidate_categories WHERE candidate_id=?',[candidateId]);
+        for(const categoryId of categoryIds)await conn.query(`INSERT INTO product_ingestion_candidate_categories (candidate_id,category_id,assigned_by,assigned_at,assignment_type) VALUES (?,?,?,NOW(),'manual')`,[candidateId,categoryId,String(actor).slice(0,80)]);
+        await conn.commit();transaction=false;return {id:candidateId,product_group:productGroup,product_type:productType,category_ids:categoryIds,classification_updated:classificationUpdated,saved:true};
+      }catch(error){if(transaction)await conn.rollback();throw error;}finally{if(conn!==db&&typeof conn.release==='function')conn.release();}
+    },
     async updateCandidateConfigurationImages(id, configurationValue, body, actor) {
       const candidateId=integer(id,1,Number.MAX_SAFE_INTEGER,'候选 ID');
       const configurationId=text(configurationValue,80,'型号 ID',true);

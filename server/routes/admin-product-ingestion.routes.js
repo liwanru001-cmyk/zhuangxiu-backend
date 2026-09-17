@@ -169,6 +169,7 @@ module.exports = function routes(db) {
   router.post('/candidates/:id/images/exclude', handle(req => fieldReview.excludeImage(req.params.id,req.body||{},actor(req))));
   router.put('/candidates/:id/configurations/:configurationId/images', handle(req => control.updateCandidateConfigurationImages(req.params.id, req.params.configurationId, req.body || {}, actor(req))));
   router.get('/candidates/:id/categories', handle(req => taxonomy.effectiveCandidateCategories(req.params.id)));
+  router.put('/candidates/:id/classification', handle(req => control.saveCandidateClassification(req.params.id,req.body||{},actor(req))));
   router.put('/candidates/:id/categories', handle(req => taxonomy.setCandidateCategories(req.params.id, req.body || {}, actor(req))));
   router.post('/candidates/:id/review', handle(req => control.reviewCandidate(req.params.id, req.body || {}, actor(req))));
   router.post('/candidates/:id/publish', handle(req => {
