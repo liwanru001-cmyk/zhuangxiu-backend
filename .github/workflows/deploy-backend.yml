@@ -408,9 +408,14 @@ jobs:
           remote="${SSH_USER}@${SSH_HOST}"
           staging_dir="${APP_DIR}.deploy-tmp"
 
+          # Build the immutable production dependency tree on the GitHub runner.
+          # The small ECS host must not unpack and resolve hundreds of packages
+          # while it is serving traffic and running background workers.
+          npm prune --omit=dev --no-audit --no-fund --prefix server
+          test -d server/node_modules
+
           tar -C server -czf /tmp/yinnkhome-backend.tar.gz \
             --exclude='./.env' \
-            --exclude='./node_modules' \
             --exclude='./public' \
             --exclude='./public_backup_*' \
             --exclude='./uploads' \
@@ -419,6 +424,7 @@ jobs:
             app.js \
             package.json \
             package-lock.json \
+            node_modules \
             ecosystem.config.cjs \
             .env.example \
             config \
@@ -590,8 +596,9 @@ jobs:
             fi
 
             cd "$staging_dir"
-            deployment_phase='install_dependencies'
-            npm ci --omit=dev
+            deployment_phase='verify_packaged_dependencies'
+            test -d node_modules
+            npm ls --omit=dev --depth=0
             test "$(node -p "require('./release-manifest.json').release_sha")" = "$RELEASE_SHA"
 
             if [ -d "$APP_DIR" ]; then

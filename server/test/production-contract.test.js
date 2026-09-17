@@ -71,3 +71,12 @@ test('deployment enforces the production contract before migrations', () => {
   assert.ok(contract > 0);
   assert.ok(migrations > contract);
 });
+
+test('deployment packages dependencies on GitHub instead of installing them on production', () => {
+  const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml'), 'utf8');
+  assert.match(workflow, /npm prune --omit=dev[^\n]*--prefix server/);
+  assert.match(workflow, /package-lock\.json \\\n\s+node_modules/);
+  const remoteDeploy = workflow.slice(workflow.indexOf("deployment_phase='initialization'"));
+  assert.doesNotMatch(remoteDeploy, /npm ci/);
+  assert.match(remoteDeploy, /npm ls --omit=dev --depth=0/);
+});
