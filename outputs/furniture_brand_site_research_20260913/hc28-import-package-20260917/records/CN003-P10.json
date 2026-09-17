@@ -1,0 +1,1415 @@
+{
+  "schema_version": "full-gold-v1.1",
+  "sample_id": "CN003",
+  "brand": "HC28 maison",
+  "product_id": "CN003-P10",
+  "product_index": 10,
+  "sample_slot": "新品/边界案例",
+  "page_role": {
+    "value": "configurable_product_detail",
+    "confidence": 1,
+    "evidence": [
+      "独立产品名称与说明",
+      "独立产品画廊",
+      "PRODUCT STANDARD 型号/尺寸卡",
+      "Material/3D/CAD 资源与产品 ID 关联"
+    ]
+  },
+  "product_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+  "final_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+  "http_status": 200,
+  "observed_at": "2026-09-13",
+  "content_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+  "template_fingerprint": "hc28-detail-cosmo-v1",
+  "fields": {
+    "product_name": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "ISLA",
+        "normalization_rule": "identity",
+        "rationale": "官网详情页的独立产品标题。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-product_name-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "h1.product-title",
+          "observed_raw": "ISLA",
+          "evidence_excerpt": "ISLA",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "brand": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "HC28 maison",
+        "normalization_rule": "identity",
+        "rationale": "官方域名和站点身份一致。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-brand-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "site_identity",
+          "locator": "官方域名、页头与页面模板",
+          "observed_raw": "HC28 maison",
+          "evidence_excerpt": "HC28 maison",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "category": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "coffee_table",
+        "normalization_rule": "manual_taxonomy_mapping",
+        "rationale": "根据产品说明和配置卡语义人工归一到受控家具分类。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-category-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "manual_semantic_review",
+          "locator": ".product-content 与 PRODUCT STANDARD 配置语义",
+          "observed_raw": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+          "evidence_excerpt": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "series": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "HC28 COSMO",
+        "normalization_rule": "identity",
+        "rationale": "URL 分区与官网导航共同指向 HC28 COSMO。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-series-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "url_and_navigation",
+          "locator": "URL 分区 /cosmo/ 与站点导航",
+          "observed_raw": "/cosmo/",
+          "evidence_excerpt": "/cosmo/",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "model": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "41C044",
+        "normalization_rule": "prefer_subtitle_code_then_first_variant",
+        "rationale": "优先采用产品副标题 Code；没有时采用首个型号卡代码。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-model-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": ".product-subtitle / .product-name.product_name",
+          "observed_raw": {
+            "subtitle_code": "41C044",
+            "variant_codes": [
+              "41C044-01",
+              "41C044-02",
+              "41C044-03",
+              "41C044-04"
+            ]
+          },
+          "evidence_excerpt": "{\"subtitle_code\":\"41C044\",\"variant_codes\":[\"41C044-01\",\"41C044-02\",\"41C044-03\",\"41C044-04\"]}",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "sku": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网未提供独立 SKU；Code 按型号保存，不臆断为 SKU",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-sku-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网未提供独立 SKU；Code 按型号保存，不臆断为 SKU",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "description": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+        "normalization_rule": "trim_whitespace_and_exact_deduplicate",
+        "rationale": "两个正文区内容相同时只保留一次。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-description-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": ".product-content",
+          "observed_raw": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+          "evidence_excerpt": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        },
+        {
+          "evidence_id": "CN003-P10-description-E02",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": ".product-con",
+          "observed_raw": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+          "evidence_excerpt": "ISLA suggests serenity and flow. The curvilinear form finished in lacquer subtly reflects light and accentuates its volume. A rich marble top is set within the frame, creating a smooth transition between materials. Designed for daily living, its simple shape and refined joinery details bring ease, balance, and a sense of calm to any setting.",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "designer": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "Yabu Pushelberg",
+        "normalization_rule": "split_designer_year",
+        "rationale": "从设计师与年份副标题中分离设计师。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-designer-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": ".product-subtitle a",
+          "observed_raw": "Yabu Pushelberg , 2025 Code：41C044",
+          "evidence_excerpt": "Yabu Pushelberg , 2025 Code：41C044",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "year": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": 2025,
+        "normalization_rule": "integer_year",
+        "rationale": "四位年份转换为整数。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-year-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": ".product-subtitle a",
+          "observed_raw": "Yabu Pushelberg , 2025 Code：41C044",
+          "evidence_excerpt": "Yabu Pushelberg , 2025 Code：41C044",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "origin": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网页面未提供",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-origin-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网页面未提供",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "materials": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": {
+          "option_codes": [
+            "Q31",
+            "Q32",
+            "Q33",
+            "Q34",
+            "Q37",
+            "Q40",
+            "Q41",
+            "Q42",
+            "Q43",
+            "Q44",
+            "Q46",
+            "Q49",
+            "Q53",
+            "Q54",
+            "Q55",
+            "Q56",
+            "Q58",
+            "Q59",
+            "Q60",
+            "Q61",
+            "Q62",
+            "Q63",
+            "Q88",
+            "S10",
+            "S02",
+            "S03",
+            "S05",
+            "S08",
+            "S11"
+          ]
+        },
+        "normalization_rule": "preserve_official_option_codes",
+        "rationale": "Material 页面明确列出可选材料代码；不据此推断材料化学成分。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-materials-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/material/detail/id/374",
+          "source_kind": "linked_material_page",
+          "locator": ".gdt-material NAME",
+          "observed_raw": [
+            "Q31",
+            "Q32",
+            "Q33",
+            "Q34",
+            "Q37",
+            "Q40",
+            "Q41",
+            "Q42",
+            "Q43",
+            "Q44",
+            "Q46",
+            "Q49",
+            "Q53",
+            "Q54",
+            "Q55",
+            "Q56",
+            "Q58",
+            "Q59",
+            "Q60",
+            "Q61",
+            "Q62",
+            "Q63",
+            "Q88",
+            "S10",
+            "S02",
+            "S03",
+            "S05",
+            "S08",
+            "S11"
+          ],
+          "evidence_excerpt": "[\"Q31\",\"Q32\",\"Q33\",\"Q34\",\"Q37\",\"Q40\",\"Q41\",\"Q42\",\"Q43\",\"Q44\",\"Q46\",\"Q49\",\"Q53\",\"Q54\",\"Q55\",\"Q56\",\"Q58\",\"Q59\",\"Q60\",\"Q61\",\"Q62\",\"Q63\",\"Q88\",\"S10\",\"S02\",\"S03\",\"S05\",\"S08\",\"S11\"]",
+          "page_fingerprint_sha256": "1b37170c812a2349ae08ae89746cb4f0ae0771696b7950a9b43c0f785ecabb47",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "colors": {
+      "gold_answer": {
+        "status": "evidence_insufficient",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "Material 代码可能混合面料、颜色与饰面，证据不足以单独形成颜色标准答案。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-colors-E01",
+          "evidence_type": "ambiguous_observation",
+          "source_url": "https://www.hc28maison.com/material/detail/id/374",
+          "source_kind": "linked_material_page",
+          "locator": ".gdt-material NAME",
+          "observed_raw": [
+            "Q31",
+            "Q32",
+            "Q33",
+            "Q34",
+            "Q37",
+            "Q40",
+            "Q41",
+            "Q42",
+            "Q43",
+            "Q44",
+            "Q46",
+            "Q49",
+            "Q53",
+            "Q54",
+            "Q55",
+            "Q56",
+            "Q58",
+            "Q59",
+            "Q60",
+            "Q61",
+            "Q62",
+            "Q63",
+            "Q88",
+            "S10",
+            "S02",
+            "S03",
+            "S05",
+            "S08",
+            "S11"
+          ],
+          "evidence_excerpt": "[\"Q31\",\"Q32\",\"Q33\",\"Q34\",\"Q37\",\"Q40\",\"Q41\",\"Q42\",\"Q43\",\"Q44\",\"Q46\",\"Q49\",\"Q53\",\"Q54\",\"Q55\",\"Q56\",\"Q58\",\"Q59\",\"Q60\",\"Q61\",\"Q62\",\"Q63\",\"Q88\",\"S10\",\"S02\",\"S03\",\"S05\",\"S08\",\"S11\"]",
+          "page_fingerprint_sha256": "1b37170c812a2349ae08ae89746cb4f0ae0771696b7950a9b43c0f785ecabb47",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "finish": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网页面未提供",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-finish-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网页面未提供",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "dimensions": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": [
+          {
+            "width": 1500,
+            "depth": 800,
+            "height": 328,
+            "unit": "mm"
+          },
+          {
+            "width": 1200,
+            "depth": 700,
+            "height": 328,
+            "unit": "mm"
+          },
+          {
+            "width": 1200,
+            "depth": 1200,
+            "height": 328,
+            "unit": "mm"
+          },
+          {
+            "width": 1000,
+            "depth": 1000,
+            "height": 328,
+            "unit": "mm"
+          }
+        ],
+        "normalization_rule": "parse_width_depth_height_mm",
+        "rationale": "按各型号卡解析宽、深、高并统一为毫米，保留原始尺寸字符串在证据层。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-dimensions-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product_spec",
+          "observed_raw": [
+            "1500×800×328MM",
+            "1200×700×328MM",
+            "1200×1200×328MM",
+            "1000×1000×328MM"
+          ],
+          "evidence_excerpt": "[\"1500×800×328MM\",\"1200×700×328MM\",\"1200×1200×328MM\",\"1000×1000×328MM\"]",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "price": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网未显示价格或询价状态",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-price-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网未显示价格或询价状态",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "currency": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "无价格，因此无币种",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-currency-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "无价格，因此无币种",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "customization": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": {
+          "material_option_codes": [
+            "Q31",
+            "Q32",
+            "Q33",
+            "Q34",
+            "Q37",
+            "Q40",
+            "Q41",
+            "Q42",
+            "Q43",
+            "Q44",
+            "Q46",
+            "Q49",
+            "Q53",
+            "Q54",
+            "Q55",
+            "Q56",
+            "Q58",
+            "Q59",
+            "Q60",
+            "Q61",
+            "Q62",
+            "Q63",
+            "Q88",
+            "S10",
+            "S02",
+            "S03",
+            "S05",
+            "S08",
+            "S11"
+          ]
+        },
+        "normalization_rule": "preserve_official_option_codes",
+        "rationale": "官网提供产品关联的 Material 选项页。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-customization-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/material/detail/id/374",
+          "source_kind": "linked_material_page",
+          "locator": ".gdt-material",
+          "observed_raw": [
+            "Q31",
+            "Q32",
+            "Q33",
+            "Q34",
+            "Q37",
+            "Q40",
+            "Q41",
+            "Q42",
+            "Q43",
+            "Q44",
+            "Q46",
+            "Q49",
+            "Q53",
+            "Q54",
+            "Q55",
+            "Q56",
+            "Q58",
+            "Q59",
+            "Q60",
+            "Q61",
+            "Q62",
+            "Q63",
+            "Q88",
+            "S10",
+            "S02",
+            "S03",
+            "S05",
+            "S08",
+            "S11"
+          ],
+          "evidence_excerpt": "[\"Q31\",\"Q32\",\"Q33\",\"Q34\",\"Q37\",\"Q40\",\"Q41\",\"Q42\",\"Q43\",\"Q44\",\"Q46\",\"Q49\",\"Q53\",\"Q54\",\"Q55\",\"Q56\",\"Q58\",\"Q59\",\"Q60\",\"Q61\",\"Q62\",\"Q63\",\"Q88\",\"S10\",\"S02\",\"S03\",\"S05\",\"S08\",\"S11\"]",
+          "page_fingerprint_sha256": "1b37170c812a2349ae08ae89746cb4f0ae0771696b7950a9b43c0f785ecabb47",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "variant_id": "CN003-P10-V001",
+      "variant_index": 1,
+      "model_code": "41C044-01",
+      "category": "COFFEE TABLE",
+      "dimensions_raw": "1500×800×328MM",
+      "dimensions_normalized_mm": {
+        "width": 1500,
+        "depth": 800,
+        "height": 328,
+        "unit": "mm"
+      },
+      "dimension_image_ids": [
+        "CN003-P10-IMG002",
+        "CN003-P10-IMG003"
+      ],
+      "shared_product_image_ids": [
+        "CN003-P10-IMG001"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-V001-E01",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD > product-card-bottom:nth-of-type(1)",
+          "observed_raw": {
+            "model_code": "41C044-01",
+            "category": "COFFEE TABLE",
+            "dimensions": "1500×800×328MM",
+            "image_urls": [
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109858749360ISLA_41C044-1%E6%AD%A3.png",
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109801265874ISLA_41C044-1%E4%BE%A7.png"
+            ]
+          },
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    {
+      "variant_id": "CN003-P10-V002",
+      "variant_index": 2,
+      "model_code": "41C044-02",
+      "category": "COFFEE TABLE",
+      "dimensions_raw": "1200×700×328MM",
+      "dimensions_normalized_mm": {
+        "width": 1200,
+        "depth": 700,
+        "height": 328,
+        "unit": "mm"
+      },
+      "dimension_image_ids": [
+        "CN003-P10-IMG004",
+        "CN003-P10-IMG005"
+      ],
+      "shared_product_image_ids": [
+        "CN003-P10-IMG001"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-V002-E01",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD > product-card-bottom:nth-of-type(2)",
+          "observed_raw": {
+            "model_code": "41C044-02",
+            "category": "COFFEE TABLE",
+            "dimensions": "1200×700×328MM",
+            "image_urls": [
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110003776578ISLA_41C044-2%E6%AD%A3.png",
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109966639629ISLA_41C044-2%E4%BE%A7.png"
+            ]
+          },
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    {
+      "variant_id": "CN003-P10-V003",
+      "variant_index": 3,
+      "model_code": "41C044-03",
+      "category": "COFFEE TABLE",
+      "dimensions_raw": "1200×1200×328MM",
+      "dimensions_normalized_mm": {
+        "width": 1200,
+        "depth": 1200,
+        "height": 328,
+        "unit": "mm"
+      },
+      "dimension_image_ids": [
+        "CN003-P10-IMG006",
+        "CN003-P10-IMG007"
+      ],
+      "shared_product_image_ids": [
+        "CN003-P10-IMG001"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-V003-E01",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD > product-card-bottom:nth-of-type(3)",
+          "observed_raw": {
+            "model_code": "41C044-03",
+            "category": "COFFEE TABLE",
+            "dimensions": "1200×1200×328MM",
+            "image_urls": [
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110128779010ISLA_41C044-3%E6%AD%A3.png",
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110092582026ISLA_41C044-3%E4%BE%A7.png"
+            ]
+          },
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    {
+      "variant_id": "CN003-P10-V004",
+      "variant_index": 4,
+      "model_code": "41C044-04",
+      "category": "COFFEE TABLE",
+      "dimensions_raw": "1000×1000×328MM",
+      "dimensions_normalized_mm": {
+        "width": 1000,
+        "depth": 1000,
+        "height": 328,
+        "unit": "mm"
+      },
+      "dimension_image_ids": [
+        "CN003-P10-IMG008",
+        "CN003-P10-IMG009"
+      ],
+      "shared_product_image_ids": [
+        "CN003-P10-IMG001"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "CN003-P10-V004-E01",
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD > product-card-bottom:nth-of-type(4)",
+          "observed_raw": {
+            "model_code": "41C044-04",
+            "category": "COFFEE TABLE",
+            "dimensions": "1000×1000×328MM",
+            "image_urls": [
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110531872023ISLA_41C044-4%E6%AD%A3.png",
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110243878576ISLA_41C044-4%E4%BE%A7.png"
+            ]
+          },
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    }
+  ],
+  "variant_image_links": [
+    {
+      "variant_id": "CN003-P10-V001",
+      "asset_id": "CN003-P10-IMG002",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V001-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V001",
+      "asset_id": "CN003-P10-IMG003",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V001-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V002",
+      "asset_id": "CN003-P10-IMG004",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V002-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V002",
+      "asset_id": "CN003-P10-IMG005",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V002-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V003",
+      "asset_id": "CN003-P10-IMG006",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V003-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V003",
+      "asset_id": "CN003-P10-IMG007",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V003-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V004",
+      "asset_id": "CN003-P10-IMG008",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V004-E01"
+    },
+    {
+      "variant_id": "CN003-P10-V004",
+      "asset_id": "CN003-P10-IMG009",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P10-V004-E01"
+    }
+  ],
+  "images": {
+    "correct_assets": [
+      {
+        "asset_id": "CN003-P10-IMG001",
+        "url": "https://www.hc28maison.com/uploads/20251031/2aaa45b24cae1fb1f3c14354dd71cb7e.jpg",
+        "alt": "",
+        "class_name": "active",
+        "role": "main",
+        "order": 1,
+        "container_order": 1,
+        "include": true,
+        "evidence": "首屏产品画廊 carousel-images",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "首屏产品画廊 carousel-images",
+          "observed_url": "https://www.hc28maison.com/uploads/20251031/2aaa45b24cae1fb1f3c14354dd71cb7e.jpg",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "main",
+          "rationale": "首屏产品画廊 carousel-images"
+        },
+        "top5_rank": 1,
+        "top5_label": "Top1",
+        "top5_basis": "官网产品画廊顺序；优先首屏画廊，其次叙事画廊；尺寸图不参与 Top5",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P10-IMG002",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109858749360ISLA_41C044-1%E6%AD%A3.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 2,
+        "container_order": 1,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109858749360ISLA_41C044-1%E6%AD%A3.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V001"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG003",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109801265874ISLA_41C044-1%E4%BE%A7.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 3,
+        "container_order": 2,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109801265874ISLA_41C044-1%E4%BE%A7.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V001"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG004",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110003776578ISLA_41C044-2%E6%AD%A3.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 4,
+        "container_order": 3,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110003776578ISLA_41C044-2%E6%AD%A3.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V002"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG005",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109966639629ISLA_41C044-2%E4%BE%A7.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 5,
+        "container_order": 4,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969109966639629ISLA_41C044-2%E4%BE%A7.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V002"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG006",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110128779010ISLA_41C044-3%E6%AD%A3.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 6,
+        "container_order": 5,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110128779010ISLA_41C044-3%E6%AD%A3.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V003"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG007",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110092582026ISLA_41C044-3%E4%BE%A7.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 7,
+        "container_order": 6,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110092582026ISLA_41C044-3%E4%BE%A7.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V003"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG008",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110531872023ISLA_41C044-4%E6%AD%A3.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 8,
+        "container_order": 7,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110531872023ISLA_41C044-4%E6%AD%A3.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V004"
+        ]
+      },
+      {
+        "asset_id": "CN003-P10-IMG009",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110243878576ISLA_41C044-4%E4%BE%A7.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 9,
+        "container_order": 8,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/2025-10/638969110243878576ISLA_41C044-4%E4%BE%A7.png",
+          "page_fingerprint_sha256": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P10-V004"
+        ]
+      }
+    ],
+    "correct_asset_count": 9,
+    "main_image_asset_id": "CN003-P10-IMG001",
+    "main_image_url": "https://www.hc28maison.com/uploads/20251031/2aaa45b24cae1fb1f3c14354dd71cb7e.jpg",
+    "top5_annotation": {
+      "requested_count": 5,
+      "annotated_count": 1,
+      "completeness": "site_has_fewer_than_5_non_dimension_images",
+      "meaning": "采集与展示优先级，不是审美评分",
+      "ranking_rule": "官网首屏产品画廊顺序优先，随后为叙事画廊顺序；尺寸图不参与。"
+    },
+    "duplicate_urls_removed": [],
+    "excluded_groups": [
+      {
+        "group": "product-files icons",
+        "roles": [
+          "3D icon",
+          "CAD icon",
+          "Material icon"
+        ],
+        "reason": "功能图标，不是产品图片"
+      },
+      {
+        "group": "MIX & MATCH / recommended products",
+        "reason": "推荐商品图片，不属于当前产品"
+      },
+      {
+        "group": "site chrome and footer",
+        "reason": "Logo、菜单、社交媒体、二维码和公共图片"
+      }
+    ],
+    "visual_review_status": "complete"
+  },
+  "attachments": [
+    {
+      "type": "3d",
+      "status": "provided_via_interaction",
+      "url": "https://www.hc28maison.com/hc28/download",
+      "request_method": "POST",
+      "request_parameters": {
+        "id": 374,
+        "type": "3D"
+      },
+      "evidence": "页面按钮 file_download(374, '3D')；脚本指向 /hc28/download",
+      "access_note": "下载动作可能要求登录；研究阶段不绕过登录，不执行自动下载"
+    },
+    {
+      "type": "cad",
+      "status": "provided_via_interaction",
+      "url": "https://www.hc28maison.com/hc28/download",
+      "request_method": "POST",
+      "request_parameters": {
+        "id": 374,
+        "type": "CAD"
+      },
+      "evidence": "页面按钮 file_download(374, 'CAD')；脚本指向 /hc28/download",
+      "access_note": "下载动作可能要求登录；研究阶段不绕过登录，不执行自动下载"
+    },
+    {
+      "type": "material_page",
+      "status": "provided",
+      "url": "https://www.hc28maison.com/material/detail/id/374",
+      "request_method": "GET",
+      "evidence": "产品页 Material 链接"
+    }
+  ],
+  "material_resource": {
+    "url": "https://www.hc28maison.com/material/detail/id/374",
+    "status": "provided",
+    "codes": [
+      "Q31",
+      "Q32",
+      "Q33",
+      "Q34",
+      "Q37",
+      "Q40",
+      "Q41",
+      "Q42",
+      "Q43",
+      "Q44",
+      "Q46",
+      "Q49",
+      "Q53",
+      "Q54",
+      "Q55",
+      "Q56",
+      "Q58",
+      "Q59",
+      "Q60",
+      "Q61",
+      "Q62",
+      "Q63",
+      "Q88",
+      "S10",
+      "S02",
+      "S03",
+      "S05",
+      "S08",
+      "S11"
+    ],
+    "images": [
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/ad0b372ce64825a48b7620eec5dc12b9.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 1
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0d0ede8a01cb292e17b847b1fa10fe50.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 2
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/fd656c583d4a2fab350ae38dfc663517.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 3
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/289cb448056eec27645428a2c604c7e1.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 4
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ae48b736c6ca6c961a00e93c79dca085.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 5
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/7840c582a2462fab6e7011b8e9ee2025.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 6
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/61611dc8b3c0c670a21a0db467951c37.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 7
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/397e92c1d8df4fd66a0a7ca519e1533b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 8
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/fbea72d33a7a17b2abe6880a44187eab.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 9
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0bd6db5fc683882bf5e4df7054dcd53b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 10
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/bf9d365a358826223b74ebe8b415c18b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 11
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/665612351fc7da2f0a5f577282b6da7d.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 12
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/5696db0f0cbdf2b52ba179603544c43c.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 13
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1f35ee206edca2ea935feb9383db3841.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 14
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/37392dc2411fe7fac56687a6401266bf.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 15
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1b49f1e658f2d4677362bed6e3d4f741.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 16
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250603/33b238423013cf5dbc2f970a98a1f554.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 17
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/661c78fc13297cfbe797a181c4b4eadf.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 18
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/4d088c0fefc6484f6f6ef7a30fcb0cec.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 19
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/c949a9c62667ba1a24287e63d20262eb.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 20
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250630/24ff7a27089b96168b72fcaf84993a02.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 21
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8f227d1503173c0100b9c0b777921c3e.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 22
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/31b0b45cd85b2b13e6ff38ecbc3659d0.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 23
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250826/4ad7e8856e14756733d85b04b369b318.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 24
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250603/cadc1d53b7118e21fd6560a909999931.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 25
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/22156ba0381df9e002927a80b6e06ca6.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 26
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250630/08ec054c62ef249c7f8436d4511ef9f0.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 27
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/a23a6e57640a0926b184ca51bc28d341.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 28
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250826/418ca50d56c0a46caffd6afd3a1ea4b4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 29
+      }
+    ],
+    "fingerprint_sha256": "1b37170c812a2349ae08ae89746cb4f0ae0771696b7950a9b43c0f785ecabb47"
+  },
+  "failure_recovery_case": {
+    "failure_type": "EXTRACT_PARTIAL_STATIC_HTML",
+    "available_evidence": "产品正文、首屏画廊、叙事画廊、PRODUCT STANDARD、Material 链接和 file_download 调用均在服务端 HTML 中；无 JSON-LD",
+    "ai_strategy_suggestion": "优先按语义区块抽取；把 product-card-bottom 视为型号/尺寸变体，把 Material 页按产品 ID 合并；排除 MIX & MATCH 与公共图片；下载按钮只生成受控 POST 建议，不绕过登录。",
+    "expected_validation": "名称=ISLA；至少 4 个型号卡；正确产品图 9 张；首图来自首屏画廊；推荐商品与功能图标污染为 0；字段均有独立证据与标准答案。",
+    "strategy_scope": "template",
+    "risk_level": "low",
+    "human_intervention_condition": "Material 页失配、多个型号卡无法与尺寸图配对、下载接口要求登录或叙事图角色无法自动区分时复核"
+  },
+  "review_status": "complete"
+}

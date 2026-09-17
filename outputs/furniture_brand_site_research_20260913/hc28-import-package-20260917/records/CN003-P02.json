@@ -1,0 +1,2437 @@
+{
+  "schema_version": "full-gold-v1.1",
+  "sample_id": "CN003",
+  "brand": "HC28 maison",
+  "product_id": "CN003-P02",
+  "product_index": 2,
+  "sample_slot": "常规产品-跨分类2",
+  "page_role": {
+    "value": "single_product_detail",
+    "confidence": 1,
+    "evidence": [
+      "独立产品名称与说明",
+      "独立产品画廊",
+      "PRODUCT STANDARD 型号/尺寸卡",
+      "Material/3D/CAD 资源与产品 ID 关联"
+    ]
+  },
+  "product_url": "https://www.hc28maison.com/hc28/detail/id/27",
+  "final_url": "https://www.hc28maison.com/hc28/detail/id/27",
+  "http_status": 200,
+  "observed_at": "2026-09-13",
+  "content_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+  "template_fingerprint": "hc28-detail-main-v1",
+  "fields": {
+    "product_name": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "BOLD",
+        "normalization_rule": "identity",
+        "rationale": "官网详情页的独立产品标题。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-product_name-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "h1.product-title",
+          "observed_raw": "BOLD",
+          "evidence_excerpt": "BOLD",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "brand": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "HC28 maison",
+        "normalization_rule": "identity",
+        "rationale": "官方域名和站点身份一致。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-brand-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "site_identity",
+          "locator": "官方域名、页头与页面模板",
+          "observed_raw": "HC28 maison",
+          "evidence_excerpt": "HC28 maison",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "category": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "armchair",
+        "normalization_rule": "manual_taxonomy_mapping",
+        "rationale": "根据产品说明和配置卡语义人工归一到受控家具分类。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-category-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "manual_semantic_review",
+          "locator": ".product-content 与 PRODUCT STANDARD 配置语义",
+          "observed_raw": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+          "evidence_excerpt": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "series": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "HC28",
+        "normalization_rule": "identity",
+        "rationale": "URL 分区与官网导航共同指向 HC28。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-series-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "url_and_navigation",
+          "locator": "URL 分区 /hc28/ 与站点导航",
+          "observed_raw": "/hc28/",
+          "evidence_excerpt": "/hc28/",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "model": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "B03",
+        "normalization_rule": "prefer_subtitle_code_then_first_variant",
+        "rationale": "优先采用产品副标题 Code；没有时采用首个型号卡代码。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-model-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": ".product-subtitle / .product-name.product_name",
+          "observed_raw": {
+            "subtitle_code": "B03",
+            "variant_codes": [
+              "B03"
+            ]
+          },
+          "evidence_excerpt": "{\"subtitle_code\":\"B03\",\"variant_codes\":[\"B03\"]}",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "sku": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网未提供独立 SKU；Code 按型号保存，不臆断为 SKU",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-sku-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网未提供独立 SKU；Code 按型号保存，不臆断为 SKU",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "description": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+        "normalization_rule": "trim_whitespace_and_exact_deduplicate",
+        "rationale": "两个正文区内容相同时只保留一次。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-description-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": ".product-content",
+          "observed_raw": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+          "evidence_excerpt": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        },
+        {
+          "evidence_id": "CN003-P02-description-E02",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": ".product-con",
+          "observed_raw": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+          "evidence_excerpt": "The BOLD armchair is characterized by audacious lines paired with a rounded, solid wooden frame that cradles the upholstered chair. Available in fabric or leather, as well as multiple wood finishes, the design can be custom-styled to suit any interior.",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "designer": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": "Frank Chou",
+        "normalization_rule": "split_designer_year",
+        "rationale": "从设计师与年份副标题中分离设计师。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-designer-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": ".product-subtitle a",
+          "observed_raw": "Frank Chou , 2016 Code：B03",
+          "evidence_excerpt": "Frank Chou , 2016 Code：B03",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "year": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": 2016,
+        "normalization_rule": "integer_year",
+        "rationale": "四位年份转换为整数。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-year-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": ".product-subtitle a",
+          "observed_raw": "Frank Chou , 2016 Code：B03",
+          "evidence_excerpt": "Frank Chou , 2016 Code：B03",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "origin": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网页面未提供",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-origin-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网页面未提供",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "materials": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": {
+          "option_codes": [
+            "22956-02",
+            "22956-07",
+            "50051-COL.02",
+            "50051-COL.04",
+            "81928-1",
+            "81928-2",
+            "A2007-15A",
+            "A2007-2A",
+            "A835-1A",
+            "A835-7A",
+            "AMURSK col. 14",
+            "AMURSK col. 25",
+            "AMURSK col. 68",
+            "CARMIDE-2",
+            "CARNIVAL col.01",
+            "CARNIVAL col.01/1",
+            "CARNIVAL col.100/17",
+            "COPACABANA 01/1",
+            "DOMMEL 10",
+            "DOMMEL 24",
+            "DOMMEL 5",
+            "DOMMEL 9",
+            "ELUM 21",
+            "FEDONE-10",
+            "FORMA N°02",
+            "FORMA N°24",
+            "FORMA N°38",
+            "FORMA N°39",
+            "FORMA N°52",
+            "FUNKY COL.01",
+            "FUNKY COL.99",
+            "GLOW 5",
+            "GLOW 50",
+            "GLOW 51",
+            "GLOW 54",
+            "GLOW 7",
+            "GORKY 01-5-3",
+            "GORKY 01-70",
+            "GORKY 01-81-5",
+            "GRIAZ 11",
+            "GRIAZ 14",
+            "GRIAZ 2",
+            "GUAREI-15",
+            "GUAREI-188",
+            "GUAREI-27",
+            "GUAREI-32",
+            "GUAREI-36",
+            "GUAREI-6",
+            "H22811-1A",
+            "H22811-4A",
+            "JK12982AKS-1",
+            "JK12982AKS-8",
+            "JK12982AS- 14",
+            "JK12982AS- 25",
+            "JK12982AS- 35",
+            "KIMI 2",
+            "LARIO 1101",
+            "LARIO 1401",
+            "LARIO 1403",
+            "LARIO 28",
+            "MELLEA 9",
+            "MOULIN-05",
+            "MOULIN-54",
+            "NELI LIGHT 11",
+            "NELI LIGHT 27",
+            "NOAH-26",
+            "NOAH-33",
+            "NOAH-38",
+            "NOAH-45",
+            "NOAH-5",
+            "PANCRATE-10",
+            "PANCRATE-2",
+            "POSIDONIO-10",
+            "POSIDONIO-2",
+            "RICCIOLONE-39",
+            "RICCIOLONE-98/4",
+            "SARSINA-03",
+            "TF14582-00001",
+            "VERCANA 1",
+            "VW-21910-02",
+            "VW-21910-06",
+            "VW-21910-09",
+            "VW-21910-10",
+            "VW-21912-02",
+            "VW-21912-05",
+            "VW-21912-08",
+            "VW-21912-09",
+            "VW-22954-01",
+            "13451",
+            "13452",
+            "13456",
+            "13458",
+            "13465",
+            "13472",
+            "BOX-280",
+            "BOX-281",
+            "BOX-282",
+            "BOX-283",
+            "STAR-007",
+            "STAR-201",
+            "STAR-401",
+            "STAR-480",
+            "STAR-481",
+            "STAR-482",
+            "STAR-483",
+            "STAR-484",
+            "STAR-485",
+            "STAR-486",
+            "STAR-900",
+            "Q11",
+            "Q12",
+            "Q13",
+            "Q14",
+            "Q15",
+            "Q16"
+          ]
+        },
+        "normalization_rule": "preserve_official_option_codes",
+        "rationale": "Material 页面明确列出可选材料代码；不据此推断材料化学成分。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-materials-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/material/detail/id/27",
+          "source_kind": "linked_material_page",
+          "locator": ".gdt-material NAME",
+          "observed_raw": [
+            "22956-02",
+            "22956-07",
+            "50051-COL.02",
+            "50051-COL.04",
+            "81928-1",
+            "81928-2",
+            "A2007-15A",
+            "A2007-2A",
+            "A835-1A",
+            "A835-7A",
+            "AMURSK col. 14",
+            "AMURSK col. 25",
+            "AMURSK col. 68",
+            "CARMIDE-2",
+            "CARNIVAL col.01",
+            "CARNIVAL col.01/1",
+            "CARNIVAL col.100/17",
+            "COPACABANA 01/1",
+            "DOMMEL 10",
+            "DOMMEL 24",
+            "DOMMEL 5",
+            "DOMMEL 9",
+            "ELUM 21",
+            "FEDONE-10",
+            "FORMA N°02",
+            "FORMA N°24",
+            "FORMA N°38",
+            "FORMA N°39",
+            "FORMA N°52",
+            "FUNKY COL.01",
+            "FUNKY COL.99",
+            "GLOW 5",
+            "GLOW 50",
+            "GLOW 51",
+            "GLOW 54",
+            "GLOW 7",
+            "GORKY 01-5-3",
+            "GORKY 01-70",
+            "GORKY 01-81-5",
+            "GRIAZ 11",
+            "GRIAZ 14",
+            "GRIAZ 2",
+            "GUAREI-15",
+            "GUAREI-188",
+            "GUAREI-27",
+            "GUAREI-32",
+            "GUAREI-36",
+            "GUAREI-6",
+            "H22811-1A",
+            "H22811-4A",
+            "JK12982AKS-1",
+            "JK12982AKS-8",
+            "JK12982AS- 14",
+            "JK12982AS- 25",
+            "JK12982AS- 35",
+            "KIMI 2",
+            "LARIO 1101",
+            "LARIO 1401",
+            "LARIO 1403",
+            "LARIO 28",
+            "MELLEA 9",
+            "MOULIN-05",
+            "MOULIN-54",
+            "NELI LIGHT 11",
+            "NELI LIGHT 27",
+            "NOAH-26",
+            "NOAH-33",
+            "NOAH-38",
+            "NOAH-45",
+            "NOAH-5",
+            "PANCRATE-10",
+            "PANCRATE-2",
+            "POSIDONIO-10",
+            "POSIDONIO-2",
+            "RICCIOLONE-39",
+            "RICCIOLONE-98/4",
+            "SARSINA-03",
+            "TF14582-00001",
+            "VERCANA 1",
+            "VW-21910-02",
+            "VW-21910-06",
+            "VW-21910-09",
+            "VW-21910-10",
+            "VW-21912-02",
+            "VW-21912-05",
+            "VW-21912-08",
+            "VW-21912-09",
+            "VW-22954-01",
+            "13451",
+            "13452",
+            "13456",
+            "13458",
+            "13465",
+            "13472",
+            "BOX-280",
+            "BOX-281",
+            "BOX-282",
+            "BOX-283",
+            "STAR-007",
+            "STAR-201",
+            "STAR-401",
+            "STAR-480",
+            "STAR-481",
+            "STAR-482",
+            "STAR-483",
+            "STAR-484",
+            "STAR-485",
+            "STAR-486",
+            "STAR-900",
+            "Q11",
+            "Q12",
+            "Q13",
+            "Q14",
+            "Q15",
+            "Q16"
+          ],
+          "evidence_excerpt": "[\"22956-02\",\"22956-07\",\"50051-COL.02\",\"50051-COL.04\",\"81928-1\",\"81928-2\",\"A2007-15A\",\"A2007-2A\",\"A835-1A\",\"A835-7A\",\"AMURSK col. 14\",\"AMURSK col. 25\",\"AMURSK col. 68\",\"CARMIDE-2\",\"CARNIVAL col.01\",\"CARNIVAL col.01/1\",\"CARNIVAL col.100/17\",\"COPACABANA 01/1\",\"DOMMEL 10\",\"DOMMEL 24\",\"DOMMEL 5\",\"DOMMEL 9\",\"ELUM 21\",\"FEDONE-10\",\"FORMA N°02\",\"FORMA N°24\",\"FORMA N°…",
+          "page_fingerprint_sha256": "eed02defb2e259f24777c0388ff36121bdc7d3587add1c4124b4f2c9212767fb",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "colors": {
+      "gold_answer": {
+        "status": "evidence_insufficient",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "Material 代码可能混合面料、颜色与饰面，证据不足以单独形成颜色标准答案。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-colors-E01",
+          "evidence_type": "ambiguous_observation",
+          "source_url": "https://www.hc28maison.com/material/detail/id/27",
+          "source_kind": "linked_material_page",
+          "locator": ".gdt-material NAME",
+          "observed_raw": [
+            "22956-02",
+            "22956-07",
+            "50051-COL.02",
+            "50051-COL.04",
+            "81928-1",
+            "81928-2",
+            "A2007-15A",
+            "A2007-2A",
+            "A835-1A",
+            "A835-7A",
+            "AMURSK col. 14",
+            "AMURSK col. 25",
+            "AMURSK col. 68",
+            "CARMIDE-2",
+            "CARNIVAL col.01",
+            "CARNIVAL col.01/1",
+            "CARNIVAL col.100/17",
+            "COPACABANA 01/1",
+            "DOMMEL 10",
+            "DOMMEL 24",
+            "DOMMEL 5",
+            "DOMMEL 9",
+            "ELUM 21",
+            "FEDONE-10",
+            "FORMA N°02",
+            "FORMA N°24",
+            "FORMA N°38",
+            "FORMA N°39",
+            "FORMA N°52",
+            "FUNKY COL.01",
+            "FUNKY COL.99",
+            "GLOW 5",
+            "GLOW 50",
+            "GLOW 51",
+            "GLOW 54",
+            "GLOW 7",
+            "GORKY 01-5-3",
+            "GORKY 01-70",
+            "GORKY 01-81-5",
+            "GRIAZ 11",
+            "GRIAZ 14",
+            "GRIAZ 2",
+            "GUAREI-15",
+            "GUAREI-188",
+            "GUAREI-27",
+            "GUAREI-32",
+            "GUAREI-36",
+            "GUAREI-6",
+            "H22811-1A",
+            "H22811-4A",
+            "JK12982AKS-1",
+            "JK12982AKS-8",
+            "JK12982AS- 14",
+            "JK12982AS- 25",
+            "JK12982AS- 35",
+            "KIMI 2",
+            "LARIO 1101",
+            "LARIO 1401",
+            "LARIO 1403",
+            "LARIO 28",
+            "MELLEA 9",
+            "MOULIN-05",
+            "MOULIN-54",
+            "NELI LIGHT 11",
+            "NELI LIGHT 27",
+            "NOAH-26",
+            "NOAH-33",
+            "NOAH-38",
+            "NOAH-45",
+            "NOAH-5",
+            "PANCRATE-10",
+            "PANCRATE-2",
+            "POSIDONIO-10",
+            "POSIDONIO-2",
+            "RICCIOLONE-39",
+            "RICCIOLONE-98/4",
+            "SARSINA-03",
+            "TF14582-00001",
+            "VERCANA 1",
+            "VW-21910-02",
+            "VW-21910-06",
+            "VW-21910-09",
+            "VW-21910-10",
+            "VW-21912-02",
+            "VW-21912-05",
+            "VW-21912-08",
+            "VW-21912-09",
+            "VW-22954-01",
+            "13451",
+            "13452",
+            "13456",
+            "13458",
+            "13465",
+            "13472",
+            "BOX-280",
+            "BOX-281",
+            "BOX-282",
+            "BOX-283",
+            "STAR-007",
+            "STAR-201",
+            "STAR-401",
+            "STAR-480",
+            "STAR-481",
+            "STAR-482",
+            "STAR-483",
+            "STAR-484",
+            "STAR-485",
+            "STAR-486",
+            "STAR-900",
+            "Q11",
+            "Q12",
+            "Q13",
+            "Q14",
+            "Q15",
+            "Q16"
+          ],
+          "evidence_excerpt": "[\"22956-02\",\"22956-07\",\"50051-COL.02\",\"50051-COL.04\",\"81928-1\",\"81928-2\",\"A2007-15A\",\"A2007-2A\",\"A835-1A\",\"A835-7A\",\"AMURSK col. 14\",\"AMURSK col. 25\",\"AMURSK col. 68\",\"CARMIDE-2\",\"CARNIVAL col.01\",\"CARNIVAL col.01/1\",\"CARNIVAL col.100/17\",\"COPACABANA 01/1\",\"DOMMEL 10\",\"DOMMEL 24\",\"DOMMEL 5\",\"DOMMEL 9\",\"ELUM 21\",\"FEDONE-10\",\"FORMA N°02\",\"FORMA N°24\",\"FORMA N°…",
+          "page_fingerprint_sha256": "eed02defb2e259f24777c0388ff36121bdc7d3587add1c4124b4f2c9212767fb",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "finish": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网页面未提供",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-finish-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网页面未提供",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "dimensions": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": [
+          {
+            "width": 770,
+            "depth": 890,
+            "height": 795,
+            "unit": "mm"
+          }
+        ],
+        "normalization_rule": "parse_width_depth_height_mm",
+        "rationale": "按各型号卡解析宽、深、高并统一为毫米，保留原始尺寸字符串在证据层。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-dimensions-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product_spec",
+          "observed_raw": [
+            "770×890×795MM"
+          ],
+          "evidence_excerpt": "[\"770×890×795MM\"]",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "price": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "官网未显示价格或询价状态",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-price-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "官网未显示价格或询价状态",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "currency": {
+      "gold_answer": {
+        "status": "not_provided",
+        "normalized_value": null,
+        "normalization_rule": "none",
+        "rationale": "无价格，因此无币种",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-currency-E01",
+          "evidence_type": "absence_review",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "manual_absence_review",
+          "locator": "产品正文、标题、PRODUCT STANDARD、Material 与下载区域",
+          "observed_raw": null,
+          "evidence_excerpt": "无价格，因此无币种",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    },
+    "customization": {
+      "gold_answer": {
+        "status": "provided",
+        "normalized_value": {
+          "material_option_codes": [
+            "22956-02",
+            "22956-07",
+            "50051-COL.02",
+            "50051-COL.04",
+            "81928-1",
+            "81928-2",
+            "A2007-15A",
+            "A2007-2A",
+            "A835-1A",
+            "A835-7A",
+            "AMURSK col. 14",
+            "AMURSK col. 25",
+            "AMURSK col. 68",
+            "CARMIDE-2",
+            "CARNIVAL col.01",
+            "CARNIVAL col.01/1",
+            "CARNIVAL col.100/17",
+            "COPACABANA 01/1",
+            "DOMMEL 10",
+            "DOMMEL 24",
+            "DOMMEL 5",
+            "DOMMEL 9",
+            "ELUM 21",
+            "FEDONE-10",
+            "FORMA N°02",
+            "FORMA N°24",
+            "FORMA N°38",
+            "FORMA N°39",
+            "FORMA N°52",
+            "FUNKY COL.01",
+            "FUNKY COL.99",
+            "GLOW 5",
+            "GLOW 50",
+            "GLOW 51",
+            "GLOW 54",
+            "GLOW 7",
+            "GORKY 01-5-3",
+            "GORKY 01-70",
+            "GORKY 01-81-5",
+            "GRIAZ 11",
+            "GRIAZ 14",
+            "GRIAZ 2",
+            "GUAREI-15",
+            "GUAREI-188",
+            "GUAREI-27",
+            "GUAREI-32",
+            "GUAREI-36",
+            "GUAREI-6",
+            "H22811-1A",
+            "H22811-4A",
+            "JK12982AKS-1",
+            "JK12982AKS-8",
+            "JK12982AS- 14",
+            "JK12982AS- 25",
+            "JK12982AS- 35",
+            "KIMI 2",
+            "LARIO 1101",
+            "LARIO 1401",
+            "LARIO 1403",
+            "LARIO 28",
+            "MELLEA 9",
+            "MOULIN-05",
+            "MOULIN-54",
+            "NELI LIGHT 11",
+            "NELI LIGHT 27",
+            "NOAH-26",
+            "NOAH-33",
+            "NOAH-38",
+            "NOAH-45",
+            "NOAH-5",
+            "PANCRATE-10",
+            "PANCRATE-2",
+            "POSIDONIO-10",
+            "POSIDONIO-2",
+            "RICCIOLONE-39",
+            "RICCIOLONE-98/4",
+            "SARSINA-03",
+            "TF14582-00001",
+            "VERCANA 1",
+            "VW-21910-02",
+            "VW-21910-06",
+            "VW-21910-09",
+            "VW-21910-10",
+            "VW-21912-02",
+            "VW-21912-05",
+            "VW-21912-08",
+            "VW-21912-09",
+            "VW-22954-01",
+            "13451",
+            "13452",
+            "13456",
+            "13458",
+            "13465",
+            "13472",
+            "BOX-280",
+            "BOX-281",
+            "BOX-282",
+            "BOX-283",
+            "STAR-007",
+            "STAR-201",
+            "STAR-401",
+            "STAR-480",
+            "STAR-481",
+            "STAR-482",
+            "STAR-483",
+            "STAR-484",
+            "STAR-485",
+            "STAR-486",
+            "STAR-900",
+            "Q11",
+            "Q12",
+            "Q13",
+            "Q14",
+            "Q15",
+            "Q16"
+          ]
+        },
+        "normalization_rule": "preserve_official_option_codes",
+        "rationale": "官网提供产品关联的 Material 选项页。",
+        "reviewer": "manual_research",
+        "reviewed_at": "2026-09-13"
+      },
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-customization-E01",
+          "evidence_type": "positive_observation",
+          "source_url": "https://www.hc28maison.com/material/detail/id/27",
+          "source_kind": "linked_material_page",
+          "locator": ".gdt-material",
+          "observed_raw": [
+            "22956-02",
+            "22956-07",
+            "50051-COL.02",
+            "50051-COL.04",
+            "81928-1",
+            "81928-2",
+            "A2007-15A",
+            "A2007-2A",
+            "A835-1A",
+            "A835-7A",
+            "AMURSK col. 14",
+            "AMURSK col. 25",
+            "AMURSK col. 68",
+            "CARMIDE-2",
+            "CARNIVAL col.01",
+            "CARNIVAL col.01/1",
+            "CARNIVAL col.100/17",
+            "COPACABANA 01/1",
+            "DOMMEL 10",
+            "DOMMEL 24",
+            "DOMMEL 5",
+            "DOMMEL 9",
+            "ELUM 21",
+            "FEDONE-10",
+            "FORMA N°02",
+            "FORMA N°24",
+            "FORMA N°38",
+            "FORMA N°39",
+            "FORMA N°52",
+            "FUNKY COL.01",
+            "FUNKY COL.99",
+            "GLOW 5",
+            "GLOW 50",
+            "GLOW 51",
+            "GLOW 54",
+            "GLOW 7",
+            "GORKY 01-5-3",
+            "GORKY 01-70",
+            "GORKY 01-81-5",
+            "GRIAZ 11",
+            "GRIAZ 14",
+            "GRIAZ 2",
+            "GUAREI-15",
+            "GUAREI-188",
+            "GUAREI-27",
+            "GUAREI-32",
+            "GUAREI-36",
+            "GUAREI-6",
+            "H22811-1A",
+            "H22811-4A",
+            "JK12982AKS-1",
+            "JK12982AKS-8",
+            "JK12982AS- 14",
+            "JK12982AS- 25",
+            "JK12982AS- 35",
+            "KIMI 2",
+            "LARIO 1101",
+            "LARIO 1401",
+            "LARIO 1403",
+            "LARIO 28",
+            "MELLEA 9",
+            "MOULIN-05",
+            "MOULIN-54",
+            "NELI LIGHT 11",
+            "NELI LIGHT 27",
+            "NOAH-26",
+            "NOAH-33",
+            "NOAH-38",
+            "NOAH-45",
+            "NOAH-5",
+            "PANCRATE-10",
+            "PANCRATE-2",
+            "POSIDONIO-10",
+            "POSIDONIO-2",
+            "RICCIOLONE-39",
+            "RICCIOLONE-98/4",
+            "SARSINA-03",
+            "TF14582-00001",
+            "VERCANA 1",
+            "VW-21910-02",
+            "VW-21910-06",
+            "VW-21910-09",
+            "VW-21910-10",
+            "VW-21912-02",
+            "VW-21912-05",
+            "VW-21912-08",
+            "VW-21912-09",
+            "VW-22954-01",
+            "13451",
+            "13452",
+            "13456",
+            "13458",
+            "13465",
+            "13472",
+            "BOX-280",
+            "BOX-281",
+            "BOX-282",
+            "BOX-283",
+            "STAR-007",
+            "STAR-201",
+            "STAR-401",
+            "STAR-480",
+            "STAR-481",
+            "STAR-482",
+            "STAR-483",
+            "STAR-484",
+            "STAR-485",
+            "STAR-486",
+            "STAR-900",
+            "Q11",
+            "Q12",
+            "Q13",
+            "Q14",
+            "Q15",
+            "Q16"
+          ],
+          "evidence_excerpt": "[\"22956-02\",\"22956-07\",\"50051-COL.02\",\"50051-COL.04\",\"81928-1\",\"81928-2\",\"A2007-15A\",\"A2007-2A\",\"A835-1A\",\"A835-7A\",\"AMURSK col. 14\",\"AMURSK col. 25\",\"AMURSK col. 68\",\"CARMIDE-2\",\"CARNIVAL col.01\",\"CARNIVAL col.01/1\",\"CARNIVAL col.100/17\",\"COPACABANA 01/1\",\"DOMMEL 10\",\"DOMMEL 24\",\"DOMMEL 5\",\"DOMMEL 9\",\"ELUM 21\",\"FEDONE-10\",\"FORMA N°02\",\"FORMA N°24\",\"FORMA N°…",
+          "page_fingerprint_sha256": "eed02defb2e259f24777c0388ff36121bdc7d3587add1c4124b4f2c9212767fb",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    }
+  },
+  "variants": [
+    {
+      "variant_id": "CN003-P02-V001",
+      "variant_index": 1,
+      "model_code": "B03",
+      "category": "ARMCHAIR",
+      "dimensions_raw": "770×890×795MM",
+      "dimensions_normalized_mm": {
+        "width": 770,
+        "depth": 890,
+        "height": 795,
+        "unit": "mm"
+      },
+      "dimension_image_ids": [
+        "CN003-P02-IMG011",
+        "CN003-P02-IMG012"
+      ],
+      "shared_product_image_ids": [
+        "CN003-P02-IMG001",
+        "CN003-P02-IMG002",
+        "CN003-P02-IMG003",
+        "CN003-P02-IMG004",
+        "CN003-P02-IMG005",
+        "CN003-P02-IMG006",
+        "CN003-P02-IMG007",
+        "CN003-P02-IMG008",
+        "CN003-P02-IMG009",
+        "CN003-P02-IMG010"
+      ],
+      "evidence": [
+        {
+          "evidence_id": "CN003-P02-V001-E01",
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD > product-card-bottom:nth-of-type(1)",
+          "observed_raw": {
+            "model_code": "B03",
+            "category": "ARMCHAIR",
+            "dimensions": "770×890×795MM",
+            "image_urls": [
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/HC28%E4%BC%91%E9%97%B2%E6%A4%85/%E4%BC%91%E9%97%B2%E6%A4%85_BOLD%20B03%E6%AD%A3.png",
+              "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/HC28%E4%BC%91%E9%97%B2%E6%A4%85/%E4%BC%91%E9%97%B2%E6%A4%85_BOLD%20B03%E4%BE%A7.png"
+            ]
+          },
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+          "observed_at": "2026-09-13"
+        }
+      ]
+    }
+  ],
+  "variant_image_links": [
+    {
+      "variant_id": "CN003-P02-V001",
+      "asset_id": "CN003-P02-IMG011",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P02-V001-E01"
+    },
+    {
+      "variant_id": "CN003-P02-V001",
+      "asset_id": "CN003-P02-IMG012",
+      "relationship": "dimension_diagram_for_variant",
+      "evidence_id": "CN003-P02-V001-E01"
+    }
+  ],
+  "images": {
+    "correct_assets": [
+      {
+        "asset_id": "CN003-P02-IMG001",
+        "url": "https://www.hc28maison.com/uploads/20250714/821e5dac1a4c54bcca723ec5a9eea026.jpg",
+        "alt": "",
+        "class_name": "active",
+        "role": "main",
+        "order": 1,
+        "container_order": 1,
+        "include": true,
+        "evidence": "首屏产品画廊 carousel-images",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "首屏产品画廊 carousel-images",
+          "observed_url": "https://www.hc28maison.com/uploads/20250714/821e5dac1a4c54bcca723ec5a9eea026.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "main",
+          "rationale": "首屏产品画廊 carousel-images"
+        },
+        "top5_rank": 1,
+        "top5_label": "Top1",
+        "top5_basis": "官网产品画廊顺序；优先首屏画廊，其次叙事画廊；尺寸图不参与 Top5",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG002",
+        "url": "https://www.hc28maison.com/uploads/20250714/86e2eacdd71bc9bf7e2488027b508307.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "angle",
+        "order": 2,
+        "container_order": 2,
+        "include": true,
+        "evidence": "首屏产品画廊 carousel-images",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "首屏产品画廊 carousel-images",
+          "observed_url": "https://www.hc28maison.com/uploads/20250714/86e2eacdd71bc9bf7e2488027b508307.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "angle",
+          "rationale": "首屏产品画廊 carousel-images"
+        },
+        "top5_rank": 2,
+        "top5_label": "Top2",
+        "top5_basis": "官网产品画廊顺序；优先首屏画廊，其次叙事画廊；尺寸图不参与 Top5",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG003",
+        "url": "https://www.hc28maison.com/uploads/20250721/633a7239031817eaa521840513034b23.jpg",
+        "alt": "",
+        "class_name": "wide",
+        "role": "scene",
+        "order": 3,
+        "container_order": 1,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/633a7239031817eaa521840513034b23.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": 3,
+        "top5_label": "Top3",
+        "top5_basis": "官网产品画廊顺序；优先首屏画廊，其次叙事画廊；尺寸图不参与 Top5",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG004",
+        "url": "https://www.hc28maison.com/uploads/20250721/9f7307b84ff2c170211b963652fffb83.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "scene",
+        "order": 4,
+        "container_order": 2,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/9f7307b84ff2c170211b963652fffb83.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": 4,
+        "top5_label": "Top4",
+        "top5_basis": "官网产品画廊顺序；优先首屏画廊，其次叙事画廊；尺寸图不参与 Top5",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG005",
+        "url": "https://www.hc28maison.com/uploads/20250721/d078a0625c3d69e07c8c6d77a10f6621.jpg",
+        "alt": "",
+        "class_name": "wide",
+        "role": "scene",
+        "order": 5,
+        "container_order": 3,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/d078a0625c3d69e07c8c6d77a10f6621.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": 5,
+        "top5_label": "Top5",
+        "top5_basis": "官网产品画廊顺序；优先首屏画廊，其次叙事画廊；尺寸图不参与 Top5",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG006",
+        "url": "https://www.hc28maison.com/uploads/20250721/c0f4d5cc188ee9a576058f65d5d7e908.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "scene",
+        "order": 6,
+        "container_order": 4,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/c0f4d5cc188ee9a576058f65d5d7e908.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG007",
+        "url": "https://www.hc28maison.com/uploads/20250721/1a1429f15ff63d9dcc07c6e37344bcc5.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "scene",
+        "order": 7,
+        "container_order": 5,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/1a1429f15ff63d9dcc07c6e37344bcc5.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG008",
+        "url": "https://www.hc28maison.com/uploads/20250721/1f0122d61153d44edc16544d117465c7.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "scene",
+        "order": 8,
+        "container_order": 6,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/1f0122d61153d44edc16544d117465c7.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG009",
+        "url": "https://www.hc28maison.com/uploads/20250721/d476c50edd67afeb366fd5f8bae39f9d.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "scene",
+        "order": 9,
+        "container_order": 7,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/d476c50edd67afeb366fd5f8bae39f9d.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG010",
+        "url": "https://www.hc28maison.com/uploads/20250721/057773c4c6c2255552e028adf348a180.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "scene",
+        "order": 10,
+        "container_order": 8,
+        "include": true,
+        "evidence": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色",
+          "observed_url": "https://www.hc28maison.com/uploads/20250721/057773c4c6c2255552e028adf348a180.jpg",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "scene",
+          "rationale": "产品叙事画廊 irregular-track；人工查看原图后判定场景/细节角色"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "product_shared",
+        "variant_ids": []
+      },
+      {
+        "asset_id": "CN003-P02-IMG011",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/HC28%E4%BC%91%E9%97%B2%E6%A4%85/%E4%BC%91%E9%97%B2%E6%A4%85_BOLD%20B03%E6%AD%A3.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 11,
+        "container_order": 1,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/HC28%E4%BC%91%E9%97%B2%E6%A4%85/%E4%BC%91%E9%97%B2%E6%A4%85_BOLD%20B03%E6%AD%A3.png",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P02-V001"
+        ]
+      },
+      {
+        "asset_id": "CN003-P02-IMG012",
+        "url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/HC28%E4%BC%91%E9%97%B2%E6%A4%85/%E4%BC%91%E9%97%B2%E6%A4%85_BOLD%20B03%E4%BE%A7.png",
+        "alt": "",
+        "class_name": "",
+        "role": "dimension_diagram",
+        "order": 12,
+        "container_order": 2,
+        "include": true,
+        "evidence": "PRODUCT STANDARD 尺寸区",
+        "raw_evidence": {
+          "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+          "source_kind": "rendered_html",
+          "locator": "PRODUCT STANDARD .product-card-bottom img",
+          "observed_url": "https://hc28study.oss-cn-beijing.aliyuncs.com/RJFile/Model/HC28%E4%BC%91%E9%97%B2%E6%A4%85/%E4%BC%91%E9%97%B2%E6%A4%85_BOLD%20B03%E4%BE%A7.png",
+          "page_fingerprint_sha256": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37"
+        },
+        "gold_answer": {
+          "include": true,
+          "role": "dimension_diagram",
+          "rationale": "PRODUCT STANDARD 尺寸区"
+        },
+        "top5_rank": null,
+        "top5_label": "",
+        "top5_basis": "",
+        "binding_scope": "variant_specific",
+        "variant_ids": [
+          "CN003-P02-V001"
+        ]
+      }
+    ],
+    "correct_asset_count": 12,
+    "main_image_asset_id": "CN003-P02-IMG001",
+    "main_image_url": "https://www.hc28maison.com/uploads/20250714/821e5dac1a4c54bcca723ec5a9eea026.jpg",
+    "top5_annotation": {
+      "requested_count": 5,
+      "annotated_count": 5,
+      "completeness": "complete",
+      "meaning": "采集与展示优先级，不是审美评分",
+      "ranking_rule": "官网首屏产品画廊顺序优先，随后为叙事画廊顺序；尺寸图不参与。"
+    },
+    "duplicate_urls_removed": [],
+    "excluded_groups": [
+      {
+        "group": "product-files icons",
+        "roles": [
+          "3D icon",
+          "CAD icon",
+          "Material icon"
+        ],
+        "reason": "功能图标，不是产品图片"
+      },
+      {
+        "group": "MIX & MATCH / recommended products",
+        "reason": "推荐商品图片，不属于当前产品"
+      },
+      {
+        "group": "site chrome and footer",
+        "reason": "Logo、菜单、社交媒体、二维码和公共图片"
+      }
+    ],
+    "visual_review_status": "complete"
+  },
+  "attachments": [
+    {
+      "type": "3d",
+      "status": "provided_via_interaction",
+      "url": "https://www.hc28maison.com/hc28/download",
+      "request_method": "POST",
+      "request_parameters": {
+        "id": 27,
+        "type": "3D"
+      },
+      "evidence": "页面按钮 file_download(27, '3D')；脚本指向 /hc28/download",
+      "access_note": "下载动作可能要求登录；研究阶段不绕过登录，不执行自动下载"
+    },
+    {
+      "type": "cad",
+      "status": "provided_via_interaction",
+      "url": "https://www.hc28maison.com/hc28/download",
+      "request_method": "POST",
+      "request_parameters": {
+        "id": 27,
+        "type": "CAD"
+      },
+      "evidence": "页面按钮 file_download(27, 'CAD')；脚本指向 /hc28/download",
+      "access_note": "下载动作可能要求登录；研究阶段不绕过登录，不执行自动下载"
+    },
+    {
+      "type": "material_page",
+      "status": "provided",
+      "url": "https://www.hc28maison.com/material/detail/id/27",
+      "request_method": "GET",
+      "evidence": "产品页 Material 链接"
+    }
+  ],
+  "material_resource": {
+    "url": "https://www.hc28maison.com/material/detail/id/27",
+    "status": "provided",
+    "codes": [
+      "22956-02",
+      "22956-07",
+      "50051-COL.02",
+      "50051-COL.04",
+      "81928-1",
+      "81928-2",
+      "A2007-15A",
+      "A2007-2A",
+      "A835-1A",
+      "A835-7A",
+      "AMURSK col. 14",
+      "AMURSK col. 25",
+      "AMURSK col. 68",
+      "CARMIDE-2",
+      "CARNIVAL col.01",
+      "CARNIVAL col.01/1",
+      "CARNIVAL col.100/17",
+      "COPACABANA 01/1",
+      "DOMMEL 10",
+      "DOMMEL 24",
+      "DOMMEL 5",
+      "DOMMEL 9",
+      "ELUM 21",
+      "FEDONE-10",
+      "FORMA N°02",
+      "FORMA N°24",
+      "FORMA N°38",
+      "FORMA N°39",
+      "FORMA N°52",
+      "FUNKY COL.01",
+      "FUNKY COL.99",
+      "GLOW 5",
+      "GLOW 50",
+      "GLOW 51",
+      "GLOW 54",
+      "GLOW 7",
+      "GORKY 01-5-3",
+      "GORKY 01-70",
+      "GORKY 01-81-5",
+      "GRIAZ 11",
+      "GRIAZ 14",
+      "GRIAZ 2",
+      "GUAREI-15",
+      "GUAREI-188",
+      "GUAREI-27",
+      "GUAREI-32",
+      "GUAREI-36",
+      "GUAREI-6",
+      "H22811-1A",
+      "H22811-4A",
+      "JK12982AKS-1",
+      "JK12982AKS-8",
+      "JK12982AS- 14",
+      "JK12982AS- 25",
+      "JK12982AS- 35",
+      "KIMI 2",
+      "LARIO 1101",
+      "LARIO 1401",
+      "LARIO 1403",
+      "LARIO 28",
+      "MELLEA 9",
+      "MOULIN-05",
+      "MOULIN-54",
+      "NELI LIGHT 11",
+      "NELI LIGHT 27",
+      "NOAH-26",
+      "NOAH-33",
+      "NOAH-38",
+      "NOAH-45",
+      "NOAH-5",
+      "PANCRATE-10",
+      "PANCRATE-2",
+      "POSIDONIO-10",
+      "POSIDONIO-2",
+      "RICCIOLONE-39",
+      "RICCIOLONE-98/4",
+      "SARSINA-03",
+      "TF14582-00001",
+      "VERCANA 1",
+      "VW-21910-02",
+      "VW-21910-06",
+      "VW-21910-09",
+      "VW-21910-10",
+      "VW-21912-02",
+      "VW-21912-05",
+      "VW-21912-08",
+      "VW-21912-09",
+      "VW-22954-01",
+      "13451",
+      "13452",
+      "13456",
+      "13458",
+      "13465",
+      "13472",
+      "BOX-280",
+      "BOX-281",
+      "BOX-282",
+      "BOX-283",
+      "STAR-007",
+      "STAR-201",
+      "STAR-401",
+      "STAR-480",
+      "STAR-481",
+      "STAR-482",
+      "STAR-483",
+      "STAR-484",
+      "STAR-485",
+      "STAR-486",
+      "STAR-900",
+      "Q11",
+      "Q12",
+      "Q13",
+      "Q14",
+      "Q15",
+      "Q16"
+    ],
+    "images": [
+      {
+        "url": "https://www.hc28maison.com/uploads/20250610/efd600ef314d86ffdf0df1dd8e1b2a57.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 1
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/d4da8c0bf5868684db3805acf7f951b2.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 2
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/33cbdb61b028096206e1ae526a1732c3.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 3
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/252bd5f868862adcb2ced81e068e23a2.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 4
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/133e4fd0e4e74baaab7e7bb31abe4a92.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 5
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/5ec33bf656d2f9790a31c3dbc613e435.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 6
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/e0f51605bc018ed2b21daaeff32315ca.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 7
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/26e602cddab5a50134447d1938ec4d73.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 8
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/a13540c051f39c5cf702932464ec1ada.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 9
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/06fcfcfd0105cfa42fa15b3834449dc4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 10
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/31bd64666fdc9ddde0c867d21beaa583.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 11
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1745cfe3190c6dbe22ce083fef7e5cef.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 12
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1a39a992cb7bf9357204e80902c79603.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 13
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6832267991bf19169076b4b7d15fabbd.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 14
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ed6598d1d6a5da1b6c19755c94acb72f.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 15
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0c5ca4ef0f9021fc8fba61bf4b4e5741.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 16
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/7f1378f201668940b5abcc43104dfc20.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 17
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8c75fe91709a24e2331af1ece5fd4e1a.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 18
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/5865c59073ba13bdc9364a8119232526.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 19
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/33616048ddea00bcc4aa317dcaf758b7.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 20
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/d2a981ee8ebe7748d77433f3cf9c51bd.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 21
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6faf4f24da04d4daffb8010a8d96abc4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 22
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/62df611f251c169b14b832dd4850e62c.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 23
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0875fcfd3b1849c8a67c25fef44e31e4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 24
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/b6c2fa70eb90e9327a9033cdb582a5ef.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 25
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/c9bf129af9bd1dbabc41a86fe8b66f47.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 26
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/53d6ec1d9c0baa036c37fced6f1da551.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 27
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/fc50ce34d669c11aa3ec670f334504d9.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 28
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/b980db562dea437de71194b69a29cad3.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 29
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/21f18b21120d1ee5b8d56697dd9595f9.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 30
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/07afc18700ba74fa739c0ea9233b5054.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 31
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/3291cd162f5b429aa59d4a12246885c0.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 32
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/4882bdf43c77160f0bc5e60b02e40f65.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 33
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/49b50cfe82eead5b16b5a8e4c5518d52.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 34
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/acd6dd03605763d31658c667a799439b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 35
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/369f9d3a987c8b545b10b9b475f2ed28.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 36
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/79a78716091beac8e5eb181ecee68f64.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 37
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/f1865d54a8f26d9f18942bb834ec1fbc.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 38
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1bd71416f32e755c5c85429cb5b4af2a.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 39
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/b850f25060d369888755055309d522a8.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 40
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/5a05b8b39e608469cfc21db0698ec9c4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 41
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/907a31226a3a3801cf259a0800ef6bba.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 42
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/782a70ee54f5a5abf7622103d524d004.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 43
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/f652d6b3c28adb028f222a88eeca1bf1.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 44
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/bc6dcc198f542cdc11162242457a894f.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 45
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/31ea26150e3a04bdf190f0d764ed2e00.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 46
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/e34bbdf30f636f42f75ee075ea0c0815.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 47
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1f51d93882fb0ec5d2ff819928705071.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 48
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/e14b8eee3ab600f8ed79f3bc7b3d81cd.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 49
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/b1e294e60dabba00e6e6ad9fddefd92e.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 50
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ece00f323902375d2c36e84348bd522e.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 51
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/699ea9b78f86822bfb2030f915b09445.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 52
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/efd4154ef534c3136ff8562cd08986f8.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 53
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/42a9b71a541667ffd6534f69b18bc5e0.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 54
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0986af742d1f6b6ac27b65fe663f8c9d.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 55
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/fbd678c07c916d48fc6e2be4a2035584.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 56
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/f5cbf43424c3b346e2324963d51f0d71.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 57
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8f05858b93f8e276b7e6080fceb09994.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 58
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6e6bd6178d71b77980adecadebac552b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 59
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8401ee0de8101814e9f437c9259f7ce8.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 60
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6db0bfa91cd4040e1b937a317737d4c9.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 61
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6b3889fba576c392cfabc58475c53bb7.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 62
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/13ed54a1bb4d8181f8af2a03c4e17676.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 63
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/301f7a7fea522cefd0d4646005f05325.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 64
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/9ac8ef4cc55326d35044913e0a4e9fb4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 65
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/49deeca0a1be13ac6bc98ee86a2cbabf.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 66
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8ceb48738d36a727e25d7639c26ed47a.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 67
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/daff4493c28dc34b94591657788dec6b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 68
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6a0c223f472e11e84772919e7c6c1556.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 69
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/9107050e0a400207f5d071b10762229b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 70
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/725abd8b7cbfe91f425769be89d5ee71.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 71
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ba55fb462dc223a429aab9c0683826c8.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 72
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/1e1b226551136168e92719c85565c0ad.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 73
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/bd075ad62a053dbffded30ee4c648f71.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 74
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8d829d9d35901b02d1c6b71274fe894f.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 75
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/a8d9c135884623bdde35bde9b8317e52.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 76
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/4c1f0726a818ea8625228173defed24a.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 77
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/3792083b44ecededa27dfd40c09220b6.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 78
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/161af3d43260363ff353ad74e20264dd.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 79
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ce3120c77dc3dd8411a09f81bb6e75d1.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 80
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/923027f30f32d0b4d6bf228156c145e5.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 81
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ce093c73826c4c6ae40dbaeef61882c7.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 82
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/42f7f6fb8bc2362caafe7ab7f48b4e01.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 83
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/e844a192c274879d63f994b873df4da2.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 84
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/8fab79c22ae16f1082d5b39b7d2f6dfb.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 85
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/58be2953b805870ec0ce85207a5bdeb9.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 86
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/9d5d4a61b019cfa60ddc003d27038bd8.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 87
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/d8eab0a555d42658dfe3159e0e835d0b.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 88
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/faa488a58a3d54012e959f8b53ad2b02.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 89
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250603/676a89c15bcf0b0794a52a732d06030d.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 90
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250603/71d5beda6fa8dc46ed19737c3cd18767.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 91
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/589cfa6cf103034c291f253b93a5cc19.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 92
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/d3f117fd395f73f8835ec709956fcb82.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 93
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/0b560642535f3d6011c98dbb369fe5ba.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 94
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/710c3204a4d4d7c7c62967753a2aae4f.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 95
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/ad676091472cd677a97947075c0ad53a.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 96
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/d5305ccb35f8002390f7e4f72a4cfbaf.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 97
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/4f7eb88226e0934dd8ab62ecbe16d8fd.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 98
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/4d46b61e54e7cf5390d2b7a75fc964bc.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 99
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/ce391d965b24627535aa277302671171.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 100
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/df499cab3cfe92b786211f42d41606c4.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 101
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/9236206bde8d78be765c0febaeeaa697.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 102
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/6dba47834d8e78db1935ce53141f246a.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 103
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0a31513815cb85d3d11d8e03a38f19d9.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 104
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/c900e367257aceb03ca27cf96ea7acb6.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 105
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/0f5411b2d4efefaafce71c65fcea568d.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 106
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/3be01ff87af866c8e2db4a475f7579af.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 107
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/7abd602b955828f335f6d230a137f2a5.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 108
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250621/c0c038279fc59aafa603f1a4e9422748.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 109
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/7bc92ba143973647761a66622088dd79.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 110
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/6a9a53e014e4b153501cdf5ef2f9853e.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 111
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/e8226f008fca6a221c1ae977ca64ac38.png",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 112
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/feef525babf476ce778ac8f91ea54218.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 113
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/76856b8277a662c74e5d106d0a4ad845.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 114
+      },
+      {
+        "url": "https://www.hc28maison.com/uploads/20250608/df879a697e5c231850d0978fe2cf4ad6.jpg",
+        "alt": "",
+        "class_name": "",
+        "role": "material_swatch",
+        "order": 115
+      }
+    ],
+    "fingerprint_sha256": "eed02defb2e259f24777c0388ff36121bdc7d3587add1c4124b4f2c9212767fb"
+  },
+  "failure_recovery_case": {
+    "failure_type": "EXTRACT_PARTIAL_STATIC_HTML",
+    "available_evidence": "产品正文、首屏画廊、叙事画廊、PRODUCT STANDARD、Material 链接和 file_download 调用均在服务端 HTML 中；无 JSON-LD",
+    "ai_strategy_suggestion": "优先按语义区块抽取；把 product-card-bottom 视为型号/尺寸变体，把 Material 页按产品 ID 合并；排除 MIX & MATCH 与公共图片；下载按钮只生成受控 POST 建议，不绕过登录。",
+    "expected_validation": "名称=BOLD；至少 1 个型号卡；正确产品图 12 张；首图来自首屏画廊；推荐商品与功能图标污染为 0；字段均有独立证据与标准答案。",
+    "strategy_scope": "template",
+    "risk_level": "low",
+    "human_intervention_condition": "Material 页失配、多个型号卡无法与尺寸图配对、下载接口要求登录或叙事图角色无法自动区分时复核"
+  },
+  "review_status": "complete"
+}

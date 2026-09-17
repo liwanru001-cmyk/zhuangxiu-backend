@@ -1,0 +1,133 @@
+{
+  "package_version": "hc28-gold-import-v1",
+  "generated_at": "2026-09-17",
+  "source_file": "outputs/furniture_brand_site_research_20260913/hc28_full_gold_v1.json",
+  "source_sha256": "fe1c4f7c53b76d978a77d470d5f1b42b68763e9f50692853137421a573d8fb8e",
+  "record_count": 10,
+  "variant_count": 111,
+  "asset_count": 239,
+  "material_code_count": 476,
+  "quality_audit": {
+    "schema_version": "full-gold-v1.1",
+    "validated_at": "2026-09-13",
+    "products": 10,
+    "fields": 170,
+    "field_evidence": 180,
+    "variants": 111,
+    "variant_image_links": 144,
+    "images": 239,
+    "top5_annotations": 43,
+    "errors": []
+  },
+  "checks": [
+    {
+      "name": "product_id 唯一",
+      "passed": true,
+      "detail": "10 records"
+    },
+    {
+      "name": "内容指纹完整且唯一",
+      "passed": true,
+      "detail": "10 fingerprints"
+    },
+    {
+      "name": "来源与素材 URL 白名单",
+      "passed": true,
+      "detail": "745 URLs; allowed_hosts=['hc28study.oss-cn-beijing.aliyuncs.com', 'www.hc28maison.com']; bad=0"
+    },
+    {
+      "name": "variant_id 唯一",
+      "passed": true,
+      "detail": "111 variants"
+    },
+    {
+      "name": "原始质量审计无错误",
+      "passed": true,
+      "detail": "errors=0"
+    }
+  ],
+  "records": [
+    {
+      "product_id": "CN003-P01",
+      "source_url": "https://www.hc28maison.com/hc28/detail/id/12",
+      "fingerprint": "b11da5cd27d17c629e1cd5cadad91f9ba934ee9520e0f670d69c441d9c32a52e",
+      "variants": 27,
+      "assets": 45,
+      "material_codes": 47
+    },
+    {
+      "product_id": "CN003-P02",
+      "source_url": "https://www.hc28maison.com/hc28/detail/id/27",
+      "fingerprint": "50d3d0d75f1a2c562de90ffbe119928f2c5ad853d8290984f9244c6f07b2ae37",
+      "variants": 1,
+      "assets": 12,
+      "material_codes": 115
+    },
+    {
+      "product_id": "CN003-P03",
+      "source_url": "https://www.hc28maison.com/hc28/detail/id/47",
+      "fingerprint": "bb2f79a759a694bb9f05db985d923b7968e5c32781a82e7e22c672bb24b5d426",
+      "variants": 6,
+      "assets": 22,
+      "material_codes": 8
+    },
+    {
+      "product_id": "CN003-P04",
+      "source_url": "https://www.hc28maison.com/hc28/detail/id/57",
+      "fingerprint": "3c4c9ef7e35f9ce189224d17370fe55adcbc13d36ddf16a216a7bc0c3b475cfc",
+      "variants": 1,
+      "assets": 10,
+      "material_codes": 20
+    },
+    {
+      "product_id": "CN003-P05",
+      "source_url": "https://www.hc28maison.com/cosmo/detail/id/242",
+      "fingerprint": "f30174a67df23206ef912bffd28c46ed60aac5f65cece093c609de4f77a10d59",
+      "variants": 9,
+      "assets": 29,
+      "material_codes": 30
+    },
+    {
+      "product_id": "CN003-P06",
+      "source_url": "https://www.hc28maison.com/cosmo/detail/id/169",
+      "fingerprint": "348e43f11a2f2bf099461e4e76c0303b4362c05807f9e6e06619ea82e9394243",
+      "variants": 27,
+      "assets": 39,
+      "material_codes": 47
+    },
+    {
+      "product_id": "CN003-P07",
+      "source_url": "https://www.hc28maison.com/cosmo/detail/id/366",
+      "fingerprint": "9d8257d26cb3bdfa3dc40656599ff4590a47b2b2eaa6c532a3ff9a1a1236f72e",
+      "variants": 25,
+      "assets": 37,
+      "material_codes": 146
+    },
+    {
+      "product_id": "CN003-P08",
+      "source_url": "https://www.hc28maison.com/cosmo/detail/id/316",
+      "fingerprint": "43f5079dd0dbb6274a05631afeb612a4d87d326f53a3a2456cea443ced5d419b",
+      "variants": 1,
+      "assets": 14,
+      "material_codes": 3
+    },
+    {
+      "product_id": "CN003-P09",
+      "source_url": "https://www.hc28maison.com/cosmo/detail/id/370",
+      "fingerprint": "8d0696485e2ad579b93d6f3e012e5db26ceaf1a2f8591f0f55ba28058a3521cb",
+      "variants": 10,
+      "assets": 22,
+      "material_codes": 31
+    },
+    {
+      "product_id": "CN003-P10",
+      "source_url": "https://www.hc28maison.com/cosmo/detail/id/374",
+      "fingerprint": "f2767b9622b9673303412afe9e3c7c4b3fb085f55ae84842fa32d6e7e7b6a624",
+      "variants": 4,
+      "assets": 9,
+      "material_codes": 29
+    }
+  ],
+  "write_performed": false,
+  "production_import_status": "not_started"
+}
