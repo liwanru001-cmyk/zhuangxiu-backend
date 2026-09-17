@@ -86,8 +86,15 @@ jobs:
           )
           remote="${SSH_USER}@${SSH_HOST}"
 
-          if ssh "${ssh_opts[@]}" "$remote" \
-            'command -v google-chrome-stable >/dev/null 2>&1 || command -v google-chrome >/dev/null 2>&1 || command -v chromium >/dev/null 2>&1 || command -v chromium-browser >/dev/null 2>&1'; then
+          if ssh "${ssh_opts[@]}" "$remote" '
+            for chrome_command in google-chrome-stable google-chrome chromium chromium-browser; do
+              chrome_candidate="$(command -v "$chrome_command" 2>/dev/null || true)"
+              if [ -n "$chrome_candidate" ] && [ -x "$chrome_candidate" ] && "$chrome_candidate" --version >/dev/null 2>&1; then
+                exit 0
+              fi
+            done
+            exit 1
+          '; then
             echo 'Chrome/Chromium is already installed; package staging is not required.'
             echo 'needed=false' >> "$GITHUB_OUTPUT"
             exit 0
@@ -185,9 +192,11 @@ jobs:
             }
 
             if chromium_path="$(find_chromium)"; then
-              echo "Chromium is already provisioned: $chromium_path"
-              "$chromium_path" --version
-              exit 0
+              if "$chromium_path" --version; then
+                echo "Chromium is already provisioned: $chromium_path"
+                exit 0
+              fi
+              echo "The existing Chromium executable is not runnable: $chromium_path"
             fi
 
             runner=''
@@ -208,6 +217,7 @@ jobs:
             chrome_archive='/tmp/yinnkhome-google-chrome-stable.tar.gz'
             chrome_diagnostic='/tmp/yinnkhome-chrome-install-error.log'
             trap '$runner rm -f "$chrome_archive"' EXIT
+            $runner rm -f "$chrome_diagnostic"
             write_chrome_diagnostic() {
               set +e
               {
@@ -218,6 +228,12 @@ jobs:
                 rpm --version
                 echo '--- managed Chrome files ---'
                 find /opt/yinnkhome-chromium -maxdepth 2 -type f -name chrome -o -name google-chrome 2>/dev/null | head -20
+                echo '--- missing shared libraries ---'
+                if [ -n "${chrome_release:-}" ] && [ -x "$chrome_release/chrome" ]; then
+                  ldd "$chrome_release/chrome" 2>&1 | grep 'not found' || true
+                fi
+                echo '--- Chrome version error ---'
+                printf '%s\n' "${chrome_version_error:-not captured}"
               } > "$chrome_diagnostic"
             }
             test -s "$chrome_archive"
@@ -246,7 +262,11 @@ jobs:
               exit 1
             }
             echo "Chromium provisioned successfully: $chromium_path"
-            "$chromium_path" --version
+            if ! chrome_version_error="$("$chromium_path" --version 2>&1)"; then
+              write_chrome_diagnostic
+              exit 1
+            fi
+            echo "$chrome_version_error"
 
       - name: Report Chromium provisioning diagnostics
         if: failure() && steps.chrome-package.conclusion == 'success' && steps.chrome-package.outputs.needed == 'true'
