@@ -147,13 +147,16 @@ jobs:
           PRESENTATION_V2_API_KEY_SECRET: ${{ secrets.PRESENTATION_V2_API_KEY }}
           PRESENTATION_V2_BASE_URL_SECRET: ${{ secrets.PRESENTATION_V2_BASE_URL }}
           PRESENTATION_V2_MODEL_SECRET: ${{ secrets.PRESENTATION_V2_MODEL }}
+          ADMIN_USERNAME_SECRET: ${{ secrets.ADMIN_USERNAME }}
+          ADMIN_PASSWORD_HASH_SECRET: ${{ secrets.ADMIN_PASSWORD_HASH }}
+          ADMIN_TOKEN_VERSION_SECRET: ${{ secrets.ADMIN_TOKEN_VERSION }}
           RELEASE_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET,RELEASE_SHA
+          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET,ADMIN_USERNAME_SECRET,ADMIN_PASSWORD_HASH_SECRET,ADMIN_TOKEN_VERSION_SECRET,RELEASE_SHA
           script: |
             set -euo pipefail
 
@@ -366,6 +369,9 @@ jobs:
             set_env_value PRESENTATION_V2_RENDER_VALIDATION 'static'
             set_env_value PRESENTATION_FC_MATCH "$(command -v fc-match)"
             set_env_value PRESENTATION_V2_FALLBACK_FONT 'Noto Sans CJK SC'
+            set_env_value ADMIN_USERNAME "$ADMIN_USERNAME_SECRET"
+            set_env_value ADMIN_PASSWORD_HASH "$ADMIN_PASSWORD_HASH_SECRET"
+            set_env_value ADMIN_TOKEN_VERSION "$ADMIN_TOKEN_VERSION_SECRET"
             chmod 600 .env
             set -a
             . ./.env
