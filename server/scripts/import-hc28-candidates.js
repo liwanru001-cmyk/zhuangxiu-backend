@@ -56,8 +56,8 @@ async function main() {
     if (sources[0]) sourceId = sources[0].id;
     else {
       const [r] = await conn.query(`INSERT INTO product_ingestion_sources
-        (brand_name,base_url,allowed_hosts,allowed_asset_hosts,allowed_path_prefixes,adapter_key,status,max_pages_per_run,max_products_per_run,request_interval_ms,obey_robots,manual_review_required,notes,created_by)
-        VALUES (?,?,?,?,?,'universal_web_v1','active',500,500,2000,1,1,?,?)`,
+        (brand_name,base_url,allowed_hosts,allowed_asset_hosts,allowed_path_prefixes,product_group,product_type,adapter_key,status,max_pages_per_run,max_products_per_run,request_interval_ms,obey_robots,manual_review_required,notes,created_by)
+        VALUES (?,?,?,?,?,'soft_furnishings','furniture','universal_web_v1','active',500,500,2000,1,1,?,?)`,
         ['HC28 maison','https://www.hc28maison.com/','["www.hc28maison.com"]','["www.hc28maison.com","hc28study.oss-cn-beijing.aliyuncs.com"]','["/"]','Audited local HC28 import; no crawl; pending review',actor]);
       sourceId = r.insertId;
     }
