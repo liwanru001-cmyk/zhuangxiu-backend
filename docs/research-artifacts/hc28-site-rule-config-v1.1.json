@@ -1,0 +1,101 @@
+{
+  "schema_version": "site-rule-config-v1.1",
+  "site_id": "hc28maison-cn",
+  "brand": "HC28 maison",
+  "scope": {
+    "base_url": "https://www.hc28maison.com/",
+    "allowed_page_hosts": ["www.hc28maison.com"],
+    "allowed_asset_hosts": ["www.hc28maison.com", "hc28study.oss-cn-beijing.aliyuncs.com"],
+    "allowed_path_prefixes": ["/hc28/", "/cosmo/"]
+  },
+  "template": {
+    "fingerprint_algorithm": "site-template-fingerprint-v1",
+    "required_signals": ["H1", "PRODUCT_DESCRIPTION", "PRODUCT_GALLERY", "PRODUCT_SPECIFICATION"]
+  },
+  "discovery": {
+    "seed_urls": [
+      "https://www.hc28maison.com/hc28/detail/id/12",
+      "https://www.hc28maison.com/hc28/detail/id/27",
+      "https://www.hc28maison.com/hc28/detail/id/47"
+    ],
+    "matching_priority": ["exclude", "product_detail", "listing"],
+    "product_detail_path_prefixes": ["/hc28/detail/", "/cosmo/detail/"],
+    "listing_path_prefixes": ["/hc28/product/", "/cosmo/product/"],
+    "exclude_path_prefixes": ["/hc28/news/", "/cosmo/news/"],
+    "follow_same_role_links": false,
+    "max_candidates": 50,
+    "link_sources": [{"selector": "a[href]", "attribute": "href"}]
+  },
+  "extraction": {
+    "product_type": "furniture",
+    "fields": {
+      "name": {"required": true, "sources": [{"type": "css_text", "selector": "h1.product-title"}]},
+      "description": {"required": true, "sources": [{"type": "css_text", "selector": ".product-content"}]},
+      "model": {"required": false, "sources": [{"type": "body_regex", "pattern": "编码[\\s：:]*([A-Za-z0-9._/-]+)", "group": 1}]}
+    },
+    "images": {
+      "sources": [{"type": "dom_attribute", "role": "main", "selector": ".carousel-images img", "attribute": "src"}],
+      "max_images": 20,
+      "prefer_tokens": ["uploads"],
+      "exclude_tokens": ["logo", "nav", "icon"],
+      "top5_roles": ["main", "angle", "scene", "detail"]
+    },
+    "variants": {
+      "mode": "same_page",
+      "identity_fields": ["name", "model", "size"],
+      "item_selector": ".product-card.product-card-bottom"
+    },
+    "attachments": {
+      "link_sources": [
+        {"selector": "a[href$='.pdf']", "attribute": "href", "kind": "technical"},
+        {"selector": "[data-file-url]", "attribute": "data-file-url", "kind": "drawing"}
+      ],
+      "allowed_extensions": ["pdf", "dwg", "dxf", "zip", "3dm", "fbx", "max", "skp"]
+    },
+    "relationships": {"mode": "standalone", "component_link_sources": []},
+    "structured": {
+      "furniture_type": "sofa",
+      "furniture_type_rule": {
+        "source": {"required": false, "sources": [{"type": "css_text", "selector": ".product-info"}]},
+        "keywords": {
+          "sofa": ["沙发", "SOFA"],
+          "chair": ["椅", "CHAIR", "STOOL", "BENCH"],
+          "table": ["桌", "几", "TABLE", "DESK"],
+          "bed": ["床", "BED"],
+          "cabinet": ["柜", "架", "CABINET", "SHELF"]
+        }
+      },
+      "configurations": {
+        "mode": "repeated",
+        "item_selector": ".product-card.product-card-bottom",
+        "max_items": 100,
+        "fields": {
+          "name": {"required": true, "sources": [{"type": "css_text", "selector": ".product_name"}]},
+          "code": {"required": true, "sources": [{"type": "css_text", "selector": ".product_name"}]},
+          "includes": {"required": false, "sources": [{"type": "css_text", "selector": ".product_series p"}]},
+          "price": {"required": false, "sources": [{"type": "body_regex", "pattern": "￥\\s*([0-9]+(?:\\.[0-9]+)?)", "group": 1}]}
+        },
+        "dimensions": {
+          "source": {"required": true, "sources": [{"type": "css_text", "selector": ".product_spec p"}]},
+          "format": "width_depth_height",
+          "default_unit": "mm"
+        },
+        "images": [{"type": "dom_attribute", "role": "dimension_diagram", "selector": ".product_img img", "attribute": "src"}],
+        "parts": {
+          "mode": "none",
+          "item_selector": null,
+          "part": {"required": false, "sources": [{"type": "css_text", "selector": ".material-part"}]},
+          "material": {"required": false, "sources": [{"type": "css_text", "selector": ".material-name"}]},
+          "color": {"required": false, "sources": [{"type": "css_text", "selector": ".material-color"}]},
+          "code": {"required": false, "sources": [{"type": "css_text", "selector": ".material-code"}]},
+          "swatch": null
+        }
+      },
+      "ocr": {"enabled": false, "max_images": 0, "roles": [], "outputs": []},
+      "customization": {"enabled": true, "fields": ["material", "color", "combination"], "limits": "以官网材质库和可售模块为准", "pricing_note": "定制选项价格需询价"}
+    }
+  },
+  "sandbox": {"max_pages": 5, "max_products": 5, "request_interval_ms": 1000, "request_method": "GET", "write_candidates": false, "publish_products": false},
+  "validation": {"required_fields": ["name", "description"], "minimum_images": 1, "minimum_accepted_products": 3, "require_template_match": true},
+  "provenance": {"generator": "ai-site-rule-generator", "prompt_version": "site-rule-generator-v1.1", "evidence_ids": ["CN003-P01-product_name-E01", "CN003-P01-variant-E01", "CN003-P01-image-E01"], "generated_at": "2026-09-14T16:00:00+08:00", "model": "qwen3.8-max"}
+}

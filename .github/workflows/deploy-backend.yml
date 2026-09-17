@@ -35,7 +35,10 @@ jobs:
       - name: Validate backend before touching production
         run: |
           npm ci --no-audit --no-fund --prefix server
+          npm run check:public-backups --prefix server
           npm test --prefix server
+          node server/scripts/create-release-manifest.js --output server/release-manifest.json
+          test "$(node -p "require('./server/release-manifest.json').release_sha")" = "$GITHUB_SHA"
 
       # Do not switch/recover services before migration has been validated.
       - name: Check current backend without changing it
@@ -129,7 +132,8 @@ jobs:
             routes \
             scripts \
             services \
-            utils
+            utils \
+            release-manifest.json
 
           ssh "${ssh_opts[@]}" "$remote" "rm -rf '$staging_dir' && mkdir -p '$staging_dir'"
           ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging_dir'" < /tmp/yinnkhome-backend.tar.gz
@@ -143,12 +147,13 @@ jobs:
           PRESENTATION_V2_API_KEY_SECRET: ${{ secrets.PRESENTATION_V2_API_KEY }}
           PRESENTATION_V2_BASE_URL_SECRET: ${{ secrets.PRESENTATION_V2_BASE_URL }}
           PRESENTATION_V2_MODEL_SECRET: ${{ secrets.PRESENTATION_V2_MODEL }}
+          RELEASE_SHA: ${{ github.sha }}
         with:
           host: ${{ secrets.SSH_HOST }}
           username: ${{ secrets.SSH_USER }}
           key: ${{ secrets.SSH_PRIVATE_KEY }}
           port: ${{ secrets.SSH_PORT }}
-          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET
+          envs: APP_DIR,SSH_HOST,EXPECTED_SSH_HOST,PRESENTATION_V2_API_KEY_SECRET,PRESENTATION_V2_BASE_URL_SECRET,PRESENTATION_V2_MODEL_SECRET,RELEASE_SHA
           script: |
             set -euo pipefail
 
@@ -256,6 +261,7 @@ jobs:
 
             cd "$staging_dir"
             npm ci --omit=dev
+            test "$(node -p "require('./release-manifest.json').release_sha")" = "$RELEASE_SHA"
 
             if [ -d "$APP_DIR" ]; then
               if [ -f "$APP_DIR/.env" ]; then
@@ -365,6 +371,9 @@ jobs:
             . ./.env
             set +a
 
+            echo 'Checking administrator authentication configuration.'
+            node -e "require('./services/admin-auth').assertConfiguration()"
+
             echo 'Checking AI PPT v2 fonts and static PPTX generation.'
             npm run check:presentation-v2
             model_check_id="$(printf '%s' "$PRESENTATION_V2_BASE_URL|$PRESENTATION_V2_MODEL|$PRESENTATION_V2_API_KEY" | sha256sum | cut -c1-20)"
@@ -380,9 +389,58 @@ jobs:
               echo "mysqldump is required before starting the new backend code"
               exit 1
             fi
-            db_backup_dir="$staging_dir/storage/db-backups"
+            private_root="${APP_DIR}.private"
+            db_backup_dir="$private_root/db-backups"
+            case "$db_backup_dir" in
+              "$APP_DIR"|"$APP_DIR"/*)
+                echo "Database backup directory must be outside the deployed application: $db_backup_dir"
+                exit 1
+                ;;
+            esac
+            install -m 700 -d "$private_root" "$db_backup_dir"
+
+            # Older releases wrote backups below storage/, which is served by
+            # Express. Relocate any such files before the new release starts.
+            legacy_backup_batch="$db_backup_dir/legacy-$(date +%Y%m%d_%H%M%S)"
+            legacy_found="false"
+            relocate_legacy_backup_dir() {
+              legacy_dir="$1"
+              legacy_label="$2"
+              if [ -L "$legacy_dir" ]; then
+                echo "Refusing to relocate a symbolic-link backup directory: $legacy_dir"
+                exit 1
+              fi
+              if [ -e "$legacy_dir" ]; then
+                if [ ! -d "$legacy_dir" ]; then
+                  echo "Legacy backup path is not a directory: $legacy_dir"
+                  exit 1
+                fi
+                if [ "$legacy_found" = "false" ]; then
+                  install -m 700 -d "$legacy_backup_batch"
+                  legacy_found="true"
+                fi
+                echo "Relocating legacy database backup directory out of public storage: $legacy_dir"
+                mv -- "$legacy_dir" "$legacy_backup_batch/$legacy_label"
+              fi
+            }
+            relocate_legacy_backup_dir "$APP_DIR/storage/db-backups" app-storage
+            relocate_legacy_backup_dir "$APP_DIR/server/storage/db-backups" server-storage
+            if [ "$legacy_found" = "true" ]; then
+              find "$legacy_backup_batch" -type f -exec chmod 600 {} +
+            fi
+
+            # storage/ is copied into staging to preserve runtime assets. Never
+            # carry a legacy database backup copy into the activated release.
+            rm -rf "$staging_dir/storage/db-backups" "$staging_dir/server/storage/db-backups"
+            for legacy_dir in "$APP_DIR/storage/db-backups" "$APP_DIR/server/storage/db-backups"; do
+              if [ -e "$legacy_dir" ] || [ -L "$legacy_dir" ]; then
+                echo "Legacy public database backup path remains: $legacy_dir"
+                exit 1
+              fi
+            done
+
             mkdir -p "$db_backup_dir"
-            db_backup_file="$db_backup_dir/pre-deploy-$(date +%Y%m%d_%H%M%S).sql.gz"
+            db_backup_file="$db_backup_dir/pre-deploy-${RELEASE_SHA:-unknown}-$(date +%Y%m%d_%H%M%S).sql.gz"
             echo "Creating database backup before smoke test: $db_backup_file"
             MYSQL_PWD="$DB_PASSWORD" mysqldump \
               --host="$DB_HOST" \
@@ -395,6 +453,7 @@ jobs:
               "$DB_NAME" | gzip -c > "$db_backup_file"
             test -s "$db_backup_file"
             gzip -t "$db_backup_file"
+            chmod 600 "$db_backup_file"
 
             echo "Applying recorded pending migrations before smoke test."
             node scripts/run-pending-migrations.js
@@ -404,7 +463,7 @@ jobs:
 
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
-            PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
+            APP_RUNTIME_MODE=smoke PORT="$smoke_port" node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
             smoke_pid=$!
             smoke_ready="false"
             for attempt in $(seq 1 15); do

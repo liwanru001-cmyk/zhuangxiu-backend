@@ -1,0 +1,42 @@
+CREATE TABLE IF NOT EXISTS product_ingestion_site_rules (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  source_id BIGINT UNSIGNED NOT NULL,
+  schema_version VARCHAR(80) NOT NULL,
+  version_number INT UNSIGNED NOT NULL,
+  status ENUM('draft','sandbox_passed','frozen','invalidated') NOT NULL DEFAULT 'draft',
+  config JSON NOT NULL,
+  config_hash CHAR(64) NOT NULL,
+  validation_result JSON NOT NULL,
+  last_sandbox_result JSON NULL,
+  last_sandbox_run_id BIGINT UNSIGNED NULL,
+  created_by VARCHAR(80) NOT NULL,
+  frozen_by VARCHAR(80) NULL,
+  frozen_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_site_rule_source_version (source_id,version_number),
+  KEY idx_site_rule_source_status (source_id,status),
+  KEY idx_site_rule_hash (config_hash)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS product_ingestion_rule_sandbox_runs (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  rule_id BIGINT UNSIGNED NOT NULL,
+  source_id BIGINT UNSIGNED NOT NULL,
+  status ENUM('running','completed','no_improvement','failed','interrupted') NOT NULL DEFAULT 'running',
+  config_hash CHAR(64) NOT NULL,
+  max_pages TINYINT UNSIGNED NOT NULL,
+  max_products TINYINT UNSIGNED NOT NULL,
+  request_interval_ms INT UNSIGNED NOT NULL,
+  result JSON NULL,
+  failure_code VARCHAR(80) NULL,
+  last_error VARCHAR(1000) NULL,
+  created_by VARCHAR(80) NOT NULL,
+  started_at DATETIME NOT NULL,
+  finished_at DATETIME NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_rule_sandbox_rule (rule_id,id),
+  KEY idx_rule_sandbox_source_status (source_id,status)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

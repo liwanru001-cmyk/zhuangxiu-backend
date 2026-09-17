@@ -19,6 +19,9 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 server/uploads/
+server/storage/
+server/tmp/
+server/.codex_pptx_validation/
 
 # Build artifacts
 build/

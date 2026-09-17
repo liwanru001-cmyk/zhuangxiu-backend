@@ -65,18 +65,29 @@ test('diagnosis preserves input, output and repair events, performs only SELECT 
   await assert.rejects(createMonitor(db).diagnosis('../etc/passwd'), { status: 400 });
 });
 test('all monitor routes use existing administrator authentication and return no-store responses', async t => {
-  const fs = require('fs'), vm = require('vm'), jwt = require('jsonwebtoken'), express = require('express');
+  const fs = require('fs'), vm = require('vm'), jwt = require('jsonwebtoken'), express = require('express'), bcrypt = require('bcryptjs');
   const source = fs.readFileSync(require.resolve('../app'), 'utf8');
   assert.match(source, /app\.use\('\/api\/admin\/presentations', adminAuth,/);
   const authSource = source.slice(source.indexOf('function adminAuth('), source.indexOf("app.use('/api/admin/presentations'"));
-  const auth = vm.runInNewContext(`(${authSource.trim()})`, { jwt, process: { env: { JWT_SECRET: 'test-only-key' } }, error: require('../utils/response').error });
+  const authEnv = {
+    JWT_SECRET: 'test-only-key-that-is-longer-than-thirty-two-characters',
+    ADMIN_USERNAME: 'admin',
+    ADMIN_PASSWORD_HASH: bcrypt.hashSync('test-only-password', 4),
+    ADMIN_TOKEN_VERSION: '1',
+    ADMIN_JWT_EXPIRES_IN: '8h',
+  };
+  const adminAuthentication = {
+    verifyToken: token => require('../services/admin-auth').verifyToken(token, authEnv),
+  };
+  const auth = vm.runInNewContext(`(${authSource.trim()})`, { adminAuthentication, error: require('../utils/response').error });
   const app = express(); app.use('/api/admin/presentations', auth, require('../routes/admin-presentations.routes')({ query: async () => [[]] }));
   const server = app.listen(0, '127.0.0.1'); await new Promise(resolve => server.once('listening', resolve)); t.after(() => new Promise(resolve => server.close(resolve)));
   const base = `http://127.0.0.1:${server.address().port}/api/admin/presentations`;
   for (const endpoint of ['/summary', '/jobs', `/jobs/${v2.id}/diagnosis`]) {
     assert.equal((await fetch(base + endpoint)).status, 401);
-    assert.equal((await fetch(base + endpoint, { headers: { Authorization: `Bearer ${jwt.sign({ role: 'owner' }, 'test-only-key')}` } })).status, 403);
+    assert.equal((await fetch(base + endpoint, { headers: { Authorization: `Bearer ${jwt.sign({ role: 'owner' }, authEnv.JWT_SECRET)}` } })).status, 403);
   }
-  const r = await fetch(base + '/summary', { headers: { Authorization: `Bearer ${jwt.sign({ role: 'admin' }, 'test-only-key')}` } });
+  const validAdminToken = jwt.sign({ role: 'admin', adminUsername: 'admin', adminTokenVersion: 1 }, authEnv.JWT_SECRET);
+  const r = await fetch(base + '/summary', { headers: { Authorization: `Bearer ${validAdminToken}` } });
   assert.equal(r.status, 200); assert.equal(r.headers.get('cache-control'), 'no-store'); assert.equal((await r.json()).data.total, 0);
 });

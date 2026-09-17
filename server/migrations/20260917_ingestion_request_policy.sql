@@ -1,0 +1,43 @@
+CREATE TABLE IF NOT EXISTS product_ingestion_robots_snapshots (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  source_id BIGINT UNSIGNED NOT NULL,
+  host VARCHAR(253) NOT NULL,
+  fetched_url VARCHAR(1000) NOT NULL,
+  final_url VARCHAR(1000) NOT NULL,
+  status_code SMALLINT UNSIGNED NOT NULL,
+  content_hash CHAR(64) NOT NULL,
+  content MEDIUMTEXT NOT NULL,
+  etag VARCHAR(500) DEFAULT NULL,
+  last_modified VARCHAR(255) DEFAULT NULL,
+  parser_name VARCHAR(100) NOT NULL,
+  parser_version VARCHAR(40) NOT NULL,
+  fetched_at DATETIME NOT NULL,
+  last_checked_at DATETIME NOT NULL,
+  PRIMARY KEY (id),
+  UNIQUE KEY uk_ingestion_robots_source_host_hash (source_id,host,content_hash),
+  KEY idx_ingestion_robots_source_checked (source_id,last_checked_at),
+  CONSTRAINT fk_ingestion_robots_source FOREIGN KEY (source_id) REFERENCES product_ingestion_sources(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS product_ingestion_request_decisions (
+  id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
+  source_id BIGINT UNSIGNED DEFAULT NULL,
+  job_id BIGINT UNSIGNED DEFAULT NULL,
+  purpose VARCHAR(30) NOT NULL,
+  url VARCHAR(1000) NOT NULL,
+  url_hash CHAR(64) NOT NULL,
+  decision VARCHAR(16) NOT NULL,
+  reason_code VARCHAR(80) NOT NULL,
+  reason_text VARCHAR(500) DEFAULT NULL,
+  matched_rule VARCHAR(1000) DEFAULT NULL,
+  robots_snapshot_id BIGINT UNSIGNED DEFAULT NULL,
+  redirect_from VARCHAR(1000) DEFAULT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (id),
+  KEY idx_ingestion_decision_job_time (job_id,created_at),
+  KEY idx_ingestion_decision_source_reason (source_id,reason_code,created_at),
+  KEY idx_ingestion_decision_url (url_hash,created_at),
+  CONSTRAINT fk_ingestion_decision_source FOREIGN KEY (source_id) REFERENCES product_ingestion_sources(id),
+  CONSTRAINT fk_ingestion_decision_job FOREIGN KEY (job_id) REFERENCES product_ingestion_jobs(id),
+  CONSTRAINT fk_ingestion_decision_robots FOREIGN KEY (robots_snapshot_id) REFERENCES product_ingestion_robots_snapshots(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

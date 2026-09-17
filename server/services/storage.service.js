@@ -167,7 +167,7 @@ async function putLocalFile({ sourcePath, key, req }) {
   }
   return {
     key,
-    url: `${publicBaseUrl(req)}${publicPrefix}/${key.replace(/\\/g, '/')}`,
+    url: `${req ? publicBaseUrl(req) : ''}${publicPrefix}/${key.replace(/\\/g, '/')}`,
     path: targetPath,
   };
 }

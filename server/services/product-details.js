@@ -15,6 +15,11 @@ function url(v) {
   if (!isProductUrl(s)) throw new Error('图片或来源链接无效，请重新上传图片或填写有效的 http/https 地址');
   return s;
 }
+function urls(v, max = 5) {
+  if (v == null) return [];
+  if (!Array.isArray(v) || v.length > max) throw new Error(`每个型号最多保留 ${max} 张图片`);
+  return [...new Set(v.map(url).filter(Boolean))];
+}
 function number(v, max, decimals) {
   if (v == null || v === '') return null;
   if (!['number', 'string'].includes(typeof v) || (typeof v === 'string' && !/^\d+(\.\d+)?$/.test(v))) throw new Error('数量或金额格式不正确');
@@ -54,11 +59,13 @@ function normalizeDetails(raw, productType = 'furniture') {
     const price = priceState === 'known' ? number(c.price, 9999999999.99, 2) : null;
     if (priceState === 'known' && price === null) throw new Error('请填写参考单价');
     const curtainSpecs = curtain ? normalizeCurtainSpecs(c.curtain_specs, priceState) : null;
+    const legacyImage = url(c.image_url);
+    const imageUrls = c.image_urls === undefined ? (legacyImage ? [legacyImage] : []) : urls(c.image_urls, 5);
     return { ...(accessory ? { accessory_specs: normalizeAccessorySpecs(c.accessory_specs) } : {}), ...(art ? { artwork_specs: normalizeArtworkSpecs(c.artwork_specs) } : {}), ...(rug ? { rug_specs: normalizeRugSpecs(c.rug_specs, priceState, c.unit) } : {}), ...(curtain ? { curtain_specs: curtainSpecs } : {}), id, name, code: text(c.code), shape, dimensions,
       dimension_unit: choice(c.dimension_unit, ['mm', 'cm'], '尺寸单位'), dimension_note: text(c.dimension_note, 500),
-      parts: c.parts.map(rawPart => { const p = object(rawPart); return { part: text(p.part) || '整体', material: text(p.material), color: text(p.color), code: text(p.code), swatch_url: url(p.swatch_url), ...(p.material_id != null ? { material_id: positiveId(p.material_id), material_revision: p.material_revision == null ? null : positiveId(p.material_revision) } : {}), ...(curtain ? { fabric_width_cm: positiveMeasurement(p.fabric_width_cm), repeat_height_cm: positiveMeasurement(p.repeat_height_cm), blackout_note: text(p.blackout_note, 300) } : {}) }; }),
+      parts: c.parts.map(rawPart => { const p = object(rawPart); return { part: text(p.part), material: text(p.material), color: text(p.color), code: text(p.code), swatch_url: url(p.swatch_url), ...(p.material_id != null ? { material_id: positiveId(p.material_id), material_revision: p.material_revision == null ? null : positiveId(p.material_revision) } : {}), ...(curtain ? { fabric_width_cm: positiveMeasurement(p.fabric_width_cm), repeat_height_cm: positiveMeasurement(p.repeat_height_cm), blackout_note: text(p.blackout_note, 300) } : {}) }; }),
       material_options: normalizeConfigurationMaterialOptions(c.material_options),
-      image_url: url(c.image_url), drawing_url: url(c.drawing_url), drawing_name: text(c.drawing_name, 255),
+      image_urls: imageUrls, image_url: imageUrls[0] || '', drawing_url: url(c.drawing_url), drawing_name: text(c.drawing_name, 255),
       unit: choice(c.unit, accessory ? ['件', '个', '只', '对', '套', '组'] : art ? ['幅', '套', '件'] : rug ? ['张', '块', '㎡', '套'] : curtain ? ['米', '㎡', '幅', '套', '樘'] : ['件', '把', '张', '套'], '销售单位'), price_state: priceState, currency: 'CNY', price,
       includes: text(c.includes, 500) };
   });

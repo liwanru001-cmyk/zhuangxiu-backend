@@ -21,6 +21,22 @@ Required values:
 - `DB_PASSWORD`
 - `DB_NAME`
 - `JWT_SECRET`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD_HASH`
+- `ADMIN_TOKEN_VERSION`
+- `ADMIN_JWT_EXPIRES_IN`
+
+Generate `ADMIN_PASSWORD_HASH` locally; never store the plaintext password in
+Git or in the deployment workflow:
+
+```sh
+cd server
+node -e "console.log(require('bcryptjs').hashSync(process.argv[1], 12))" 'replace-with-the-new-password'
+```
+
+Incrementing `ADMIN_TOKEN_VERSION` invalidates every administrator token issued
+with an older version. Tokens created before versioning was introduced are also
+rejected. The default administrator token lifetime is 8 hours.
 
 ## GitHub Actions Secrets
 
@@ -61,6 +77,15 @@ pm2 startOrReload ecosystem.config.cjs --env production
 pm2 save
 curl http://127.0.0.1:3001/health
 ```
+
+Deployment smoke checks run with `APP_RUNTIME_MODE=smoke`. This mode is only for
+the temporary validation process: it does not run schema initialization,
+product-ingestion recovery, presentation workers, or scheduled evaluations.
+
+Database backups are stored outside the deployed application at
+`<APP_DIR>.private/db-backups` with directory mode `0700` and file mode `0600`.
+They must never be placed below `server/storage`, `server/uploads`, or
+`server/public`, because those directories may be served over HTTP.
 
 ## Nginx Example
 

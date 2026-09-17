@@ -2,6 +2,7 @@ const API = window.ADMIN_API_BASE || localStorage.getItem('admin_api_base') || '
 const menus = [
   { key: 'overview', label: '概览', icon: '📊', subtitle: '查看平台关键数据' },
   { key: 'presentations', label: 'AI PPT → 生成监控', icon: '📑', subtitle: '查看 V2 交付率、问题排行、任务诊断和版本效果' },
+  { key: 'productIngestion', label: '好物集 → 产品抓取', icon: '🧲', subtitle: '管理官网白名单、抓取授权、候选数据和入库要求' },
   { key: 'users', label: '用户管理', icon: '👤', subtitle: '管理用户账号、新建账户审核与身份信息' },
   { key: 'companies', label: '公司管理', icon: '🏢', subtitle: '查看装修市场公司、业务分类、成员与项目关联' },
   { key: 'billing', label: '商户管理', icon: '💰', subtitle: '管理商户订单、支付、订阅、展示权益和操作记录' },
@@ -21,7 +22,9 @@ const menus = [
 const rememberedToken = localStorage.getItem('admin_remember_token') || '';
 let token = sessionStorage.getItem('admin_token') || rememberedToken;
 const requestedAdminSection = new URLSearchParams(window.location.search).get('section');
-let activeMenu = requestedAdminSection === 'presentations' ? 'presentations' : window.location.pathname.includes('/admin/billing') ? 'billing' : 'overview';
+let activeMenu = requestedAdminSection === 'presentations' ? 'presentations'
+  : requestedAdminSection === 'product-ingestion' || window.location.pathname.includes('/admin/product-ingestion') ? 'productIngestion'
+  : window.location.pathname.includes('/admin/billing') ? 'billing' : 'overview';
 let page = 1;
 let total = 0;
 let userTab = 'accounts';
@@ -159,6 +162,7 @@ function switchMenu(key) {
   document.getElementById('page-subtitle').textContent = item.subtitle;
   if (key === 'overview') renderOverview();
   else if (key === 'presentations') PresentationMonitor.mount({ root: document.getElementById('page-content'), request: adminFetch });
+  else if (key === 'productIngestion') ProductIngestionConsole.mount({ root: document.getElementById('page-content'), request: adminFetch });
   else if (key === 'users') renderUsers();
   else if (key === 'companies') renderCompanies();
   else if (key === 'billing') renderBilling();
@@ -176,6 +180,7 @@ function switchMenu(key) {
 function refreshCurrent() {
   if (activeMenu === 'overview') renderOverview();
   else if (activeMenu === 'presentations') PresentationMonitor.refresh();
+  else if (activeMenu === 'productIngestion') ProductIngestionConsole.refresh();
   else if (activeMenu === 'users') {
     if (userTab === 'wechatAppeals') loadWechatBindingAppeals(wechatAppealPage);
     else loadUsers(page);

@@ -4,6 +4,9 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
+const adminAuthentication = require('./services/admin-auth');
+const { isSmokeMode } = require('./services/startup-mode');
+adminAuthentication.assertConfiguration();
 const db = require('./config/db');
 const authRoutes = require('./routes/auth.routes');
 const noteRoutes = require('./routes/note.routes');
@@ -25,7 +28,6 @@ const {
 const app = express();
 const PORT = process.env.PORT || 3001;
 const path = require('path');
-const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const fs = require('fs');
 const fsPromises = require('fs/promises');
@@ -41,7 +43,7 @@ const {
 } = require('./utils/release-platform');
 
 const releaseUploadDir = path.join(__dirname, 'storage', 'release-uploads');
-fs.mkdirSync(releaseUploadDir, { recursive: true });
+if (!isSmokeMode()) fs.mkdirSync(releaseUploadDir, { recursive: true });
 const releaseUpload = multer({
   storage: multer.diskStorage({
     destination: releaseUploadDir,
@@ -116,9 +118,9 @@ app.use('/api/entity-relations', entityRelationsRoutes);
 app.use('/api/billing', billingRoutes);
 app.use('/api/location', locationRoutes);
 app.use('/api/public', publicRoutes);
+app.use('/api/product-library', require('./middleware/auth'), require('./routes/public-product-library.routes')(db));
 
 // ===================== Admin =====================
-const ADMIN_CREDENTIALS = { username: 'admin', password: 'admin123' };
 const adminProgressStages = [
   { id: 1, name: '设计准备' },
   { id: 2, name: '主体拆改' },
@@ -131,13 +133,21 @@ const adminProgressStages = [
 ];
 
 // admin 登录
-app.post('/api/admin/login', (req, res) => {
-  const { username, password } = req.body || {};
-  if (username !== ADMIN_CREDENTIALS.username || password !== ADMIN_CREDENTIALS.password) {
-    return error(res, '用户名或密码错误', 401);
+app.post('/api/admin/login', async (req, res, next) => {
+  try {
+    const { username, password } = req.body || {};
+    if (!await adminAuthentication.authenticate(username, password)) {
+      return error(res, '用户名或密码错误', 401);
+    }
+    const token = adminAuthentication.issueToken();
+    return success(res, { token, user: { username: String(process.env.ADMIN_USERNAME) } });
+  } catch (authError) {
+    if (authError.code === 'ADMIN_AUTH_NOT_CONFIGURED') {
+      console.error('Administrator authentication is not configured');
+      return error(res, '管理后台暂不可用', 503);
+    }
+    return next(authError);
   }
-  const token = jwt.sign({ role: 'admin' }, process.env.JWT_SECRET, { expiresIn: '30d' });
-  return success(res, { token, user: { username: 'admin' } });
 });
 
 // admin 鉴权中间件
@@ -145,16 +155,17 @@ function adminAuth(req, res, next) {
   const token = req.headers.authorization?.replace('Bearer ', '');
   if (!token) return error(res, '未登录', 401);
   try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    if (decoded.role !== 'admin') return error(res, '无权限', 403);
+    const decoded = adminAuthentication.verifyToken(token);
     req.admin = decoded;
     next();
-  } catch {
+  } catch (authError) {
+    if (authError.code === 'ADMIN_FORBIDDEN') return error(res, '无权限', 403);
     return error(res, '登录已过期', 401);
   }
 }
 
 app.use('/api/admin/presentations', adminAuth, require('./routes/admin-presentations.routes')(db));
+app.use('/api/admin/product-ingestion', adminAuth, require('./routes/admin-product-ingestion.routes')(db));
 
 function desktopReleaseRow(row) {
   return {
@@ -4663,6 +4674,9 @@ app.get('/admin/billing', (req, res) => {
 app.get('/admin/presentations', (req, res) => {
   res.sendFile(path.join(__dirname, 'public/admin/index.html'));
 });
+app.get('/admin/product-ingestion', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public/admin/index.html'));
+});
 app.use('/admin', express.static(path.join(__dirname, 'public/admin')));
 
 // 官网静态文件
@@ -4723,8 +4737,12 @@ app.use((err, req, res, next) => {
 require('./config/db').schemaReady.then(() => app.listen(PORT, () => {
   console.log(`🚀 装筱窝后端启动: http://localhost:${PORT}`);
   console.log(`📋 管理后台: http://localhost:${PORT}/admin/`);
-  startCompanyEvaluationScheduler();
-  require('./services/presentation-jobs').start();
+  if (isSmokeMode()) {
+    console.log('Smoke mode: background schedulers and workers are disabled.');
+  } else {
+    startCompanyEvaluationScheduler();
+    require('./services/presentation-jobs').start();
+  }
 })).catch(err => {
   console.error('Backend startup refused: database migration is not ready.', err.message);
   process.exit(1);

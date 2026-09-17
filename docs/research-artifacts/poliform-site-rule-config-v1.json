@@ -1,0 +1,102 @@
+{
+  "schema_version": "site-rule-config-v1.0",
+  "site_id": "poliform-cn",
+  "brand": "Poliform",
+  "scope": {
+    "base_url": "https://www.poliform.cn/",
+    "allowed_page_hosts": ["www.poliform.cn"],
+    "allowed_asset_hosts": ["www.poliform.cn", "s3.poliform.cn"],
+    "allowed_path_prefixes": ["/产品/"]
+  },
+  "template": {
+    "fingerprint_algorithm": "site-template-fingerprint-v1",
+    "required_signals": ["JSON_LD_PRODUCT", "H1", "OG_IMAGE", "PRODUCT_DESCRIPTION", "TECHNICAL_HEADING"]
+  },
+  "discovery": {
+    "seed_urls": ["https://www.poliform.cn/%E4%BA%A7%E5%93%81/alfred-%E6%89%B6%E6%89%8B%E6%A4%85/"],
+    "matching_priority": ["exclude", "product_detail", "listing"],
+    "product_detail_path_prefixes": ["/产品/"],
+    "listing_path_prefixes": [],
+    "exclude_path_prefixes": [],
+    "follow_same_role_links": true,
+    "max_candidates": 5,
+    "link_sources": [
+      {"selector": "a[href]", "attribute": "href"}
+    ]
+  },
+  "extraction": {
+    "product_type": "furniture",
+    "fields": {
+      "name": {
+        "required": true,
+        "sources": [
+          {"type": "json_ld_product", "path": "name"},
+          {"type": "css_text", "selector": "h1"}
+        ]
+      },
+      "description": {
+        "required": true,
+        "sources": [
+          {"type": "json_ld_product", "path": "description"},
+          {"type": "meta", "property": "og:description", "attribute": "content"}
+        ]
+      },
+      "designer": {
+        "required": true,
+        "sources": [
+          {"type": "body_regex", "pattern": "\\d{4}年\\s*由\\s*([^。\\n]+?)\\s*设计", "group": 1}
+        ]
+      },
+      "design_year": {
+        "required": true,
+        "sources": [
+          {"type": "body_regex", "pattern": "(\\d{4})年\\s*由\\s*[^。\\n]+?\\s*设计", "group": 1}
+        ]
+      }
+    },
+    "images": {
+      "sources": [
+        {"type": "meta", "property": "og:image"},
+        {"type": "dom_attribute", "selector": ".projects-item__product img", "attribute": "src"},
+        {"type": "dom_attribute", "selector": ".gallery-slider__slide img", "attribute": "src"}
+      ],
+      "max_images": 5,
+      "prefer_tokens": ["/2026/04/"],
+      "exclude_tokens": ["logo", "tessuti", "material", "related"]
+    },
+    "variants": {
+      "mode": "none",
+      "identity_fields": [],
+      "item_selector": null
+    },
+    "attachments": {
+      "link_sources": [],
+      "allowed_extensions": ["pdf", "dwg", "dxf", "zip"]
+    },
+    "relationships": {
+      "mode": "standalone",
+      "component_link_sources": []
+    }
+  },
+  "sandbox": {
+    "max_pages": 3,
+    "max_products": 3,
+    "request_interval_ms": 2000,
+    "request_method": "GET",
+    "write_candidates": false,
+    "publish_products": false
+  },
+  "validation": {
+    "required_fields": ["name", "description", "designer", "design_year"],
+    "minimum_images": 1,
+    "minimum_accepted_products": 3,
+    "require_template_match": true
+  },
+  "provenance": {
+    "generator": "qwen-responses-input-validation-v1.1",
+    "prompt_version": "site-cognition-input-v1.1",
+    "evidence_ids": ["poliform-alfred-direct-web-extractor", "poliform-alfred-raw-html"],
+    "generated_at": "2026-09-14T00:00:00+08:00",
+    "model": "qwen3.8-max"
+  }
+}

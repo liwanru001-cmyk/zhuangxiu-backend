@@ -3,6 +3,7 @@ const fs = require('fs');
 const path = require('path');
 require('dotenv').config();
 const { workItemTemplates } = require('./workItemTemplates');
+const { isSmokeMode } = require('../services/startup-mode');
 
 const progressStageNames = {
   1: '设计准备',
@@ -66,9 +67,11 @@ pool.schemaReady = pool.getConnection()
     try { await require('../services/independent-project-schema').assertSchema(conn); }
     finally { conn.release(); }
     console.log('✅ MySQL connected:', process.env.DB_NAME);
-    ensureAppTables().catch(err => {
-      console.error('❌ App table init failed:', err.message);
-    });
+    if (!isSmokeMode()) {
+      ensureAppTables().catch(err => {
+        console.error('❌ App table init failed:', err.message);
+      });
+    }
   });
 // Attach a rejection handler immediately; app.js also refuses to listen on failure.
 pool.schemaReady.catch(err => console.error('❌ Database readiness failed:', err.message));
