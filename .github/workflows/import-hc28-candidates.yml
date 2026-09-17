@@ -30,6 +30,7 @@ jobs:
             response="$(curl -fsS -H "Authorization: Bearer $GH_TOKEN" "https://api.github.com/repos/$REPO/actions/workflows/deploy-backend.yml/runs?head_sha=$SHA&event=push&per_page=1")"
             status="$(python3 -c 'import json,sys; r=(json.load(sys.stdin).get("workflow_runs") or []); print((r[0].get("status") if r else "missing"))' <<< "$response")"
             conclusion="$(python3 -c 'import json,sys; r=(json.load(sys.stdin).get("workflow_runs") or []); print((r[0].get("conclusion") if r else ""))' <<< "$response")"
+            [ "$status" = missing ] && break
             [ "$status" = completed ] && [ "$conclusion" = success ] && break
             [ "$status" = completed ] && { echo "Backend deploy failed: $conclusion"; exit 1; }
             sleep 5
