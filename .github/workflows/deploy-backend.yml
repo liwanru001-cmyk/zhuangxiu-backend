@@ -20,7 +20,7 @@ concurrency:
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 35
 
     steps:
       - name: Checkout
@@ -43,15 +43,43 @@ jobs:
 
       # Do not switch/recover services before migration has been validated.
       - name: Check current backend without changing it
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_PRIVATE_KEY }}
-          port: ${{ secrets.SSH_PORT }}
-          script: |
-            set -eu
-            curl --max-time 15 -fsS http://127.0.0.1:3001/health
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+
+          ssh_port="${SSH_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh_opts=(
+            -i ~/.ssh/deploy_key
+            -p "$ssh_port"
+            -o BatchMode=yes
+            -o ConnectTimeout=10
+            -o ConnectionAttempts=1
+            -o ServerAliveInterval=5
+            -o ServerAliveCountMax=2
+            -o StrictHostKeyChecking=accept-new
+          )
+          remote="${SSH_USER}@${SSH_HOST}"
+
+          for attempt in 1 2 3; do
+            if timeout 25s ssh "${ssh_opts[@]}" "$remote" \
+              'curl --connect-timeout 5 --max-time 15 -fsS http://127.0.0.1:3001/health'; then
+              exit 0
+            fi
+            echo "Backend health preflight attempt $attempt/3 failed."
+            if [ "$attempt" -lt 3 ]; then
+              sleep 5
+            fi
+          done
+
+          echo 'Production SSH/backend health preflight failed after three bounded attempts.'
+          exit 1
 
       - name: Stage Playwright-matched Chromium when the server needs it
         id: chrome-package
