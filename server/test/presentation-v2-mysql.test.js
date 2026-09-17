@@ -37,16 +37,27 @@ test('durable MySQL reservations survive recovery and serialize competing reques
   const first = await createContext(args);
   const competition = await Promise.allSettled([first.reserve('initial'), first.reserve('initial')]);
   assert.equal(competition.filter(r => r.status === 'fulfilled').length, 1);
-  await first.save({ design: { unchanged: true } });
+  const reservation = competition.find(result => result.status === 'fulfilled').value;
   const recovered = await createContext(args);
-  assert.deepEqual(recovered.state, { design: { unchanged: true } });
-  await assert.rejects(recovered.reserve('initial'), /额度已占用/);
+  const resumed = await recovered.reserve('initial');
+  assert.equal(resumed.attempt_id, reservation.attempt_id);
+  let [[row]] = await db.query("SELECT * FROM project_presentation_runs WHERE job_id = 'j'");
+  assert.equal(row.model_requests, 1);
+  await recovered.markModelDispatched('initial', resumed.attempt_id, { model: 'test' });
+  await recovered.persistModelResponse('initial', resumed.attempt_id, { raw: '{}', ok: true, http_status: 200 });
+  await recovered.save({ design: { unchanged: true } });
+  await recovered.commitModelAttempt('initial');
+  const completed = await createContext(args);
+  assert.deepEqual(completed.state, { design: { unchanged: true } });
+  await assert.rejects(completed.reserve('initial'), /额度已占用/);
   await recovered.claimRepair('model'); await recovered.reserve('model_repair');
   await assert.rejects(recovered.claimRepair('server'), /修正额度已使用/);
-  await recovered.claimFallback({ code: 'test' }); await recovered.reserve('legacy');
-  const [[row]] = await db.query("SELECT * FROM project_presentation_runs WHERE job_id = 'j'");
+  await recovered.claimFallback({ code: 'test' });
+  const legacyReservation = await recovered.reserve('legacy');
+  await recovered.markModelDispatched('legacy', legacyReservation.attempt_id, { model: 'legacy-test' });
+  [[row]] = await db.query("SELECT * FROM project_presentation_runs WHERE job_id = 'j'");
   assert.equal(row.model_requests, 3); assert.equal(row.repair_used, 1); assert.equal(row.fallback_used, 1);
-  const again = await createContext(args); await assert.rejects(again.reserve('legacy'));
+  const again = await createContext(args); await assert.rejects(again.reserve('legacy'), /响应未持久化/);
   await db.query("UPDATE project_presentation_jobs SET worker_token = 'new-owner' WHERE id = 'j'");
   await assert.rejects(again.checkpoint(), /执行权已失效/);
   const current = await createContext({ ...args, token: 'new-owner' });
@@ -80,10 +91,16 @@ test('durable MySQL reservations survive recovery and serialize competing reques
       } }),
     });
     const [[completed]] = await db.query('SELECT * FROM project_presentation_jobs WHERE id = ?', [id]);
-    assert.equal(completed.status, 'completed', completed.error_message);
     const [[generation]] = await db.query('SELECT * FROM project_presentation_runs WHERE job_id = ?', [id]);
-    assert.equal(generation.model_requests, useFallback ? 2 : 1);
-    assert.equal(JSON.parse(generation.result_json).generation_status, useFallback ? 'legacy_fallback_success' : 'ai_success_unverified_render');
+    if (useFallback) {
+      assert.equal(completed.status, 'failed');
+      assert.equal(generation.model_requests, 1);
+      assert.equal(JSON.parse(generation.result_json).generation_status, 'failed');
+      continue;
+    }
+    assert.equal(completed.status, 'completed', completed.error_message);
+    assert.equal(generation.model_requests, 1);
+    assert.equal(JSON.parse(generation.result_json).generation_status, 'ai_success_unverified_render');
     assert.ok(await fs.readFile(path.join(dir, completed.result_file)));
   }
 

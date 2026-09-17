@@ -152,8 +152,12 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
         if (!settings.sections.space_solutions) { space.documents = []; space.renderings = []; }
         if (!settings.sections.product_summary && !settings.sections.space_solutions) space.products = [];
       }
-      const design = await generate({ source: sourceForModel, settings, manifest: state.manifest, limits, signal, reserve: context.reserve, record });
+      const design = await generate({ source: sourceForModel, settings, manifest: state.manifest, limits, signal, reserve: context.reserve, record,
+        modelAttempt: { inspect: context.inspectModelAttempt, markDispatched: context.markModelDispatched, persistResponse: context.persistModelResponse, fail: context.failModelAttempt } });
       await save({ design, model_source: sourceForModel });
+      await context.commitModelAttempt?.('initial');
+    } else {
+      await context.commitModelAttempt?.('initial');
     }
     let design = structuredClone(state.repaired_design || state.initial_fitted_design || state.design);
     draftCandidate = structuredClone(design);
@@ -182,7 +186,8 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       await context.claimRepair('model');
       const ids = [...new Set(errors.map(e => e.slide_id))];
       const result = await generate({ source: state.model_source, settings, manifest: state.manifest, limits, signal,
-        repair: { design, ids, errors }, reserve: context.reserve, record });
+        repair: { design, ids, errors }, reserve: context.reserve, record,
+        modelAttempt: { inspect: context.inspectModelAttempt, markDispatched: context.markModelDispatched, persistResponse: context.persistModelResponse, fail: context.failModelAttempt } });
       if (!result || Object.keys(result).some(k => k !== 'slides') || !Array.isArray(result.slides) || result.slides.length !== ids.length || new Set(result.slides.map(s => s.id)).size !== ids.length || result.slides.some(s => !ids.includes(s.id))) throw failure('repair_page_ids', '模型修正页 ID 与失败页不一致');
       const restoredText = [];
       // The model owns repair geometry, while the server owns the exact copy.
@@ -207,6 +212,7 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       repairStructureFailures = structuralFailures;
       const next = { ...design, slides: design.slides.map(s => result.slides.find(r => r.id === s.id) || s) };
       await save({ repaired_design: next, repair_mode: 'model', repair_structure_failures: structuralFailures });
+      await context.commitModelAttempt?.('model_repair');
       await record({ event: 'repair_actions', mode: 'model', restored_text: restoredText, pre_repair_layout: design, post_repair_layout: next });
       design = structuredClone(next); repaired = true;
       issues = await check(design, 'model_repaired');

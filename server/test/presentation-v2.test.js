@@ -440,6 +440,34 @@ test('model timeout outcome is recorded without retrying', async () => {
   await assert.rejects(require('../services/presentation-v2/model').request({ source: {}, settings, manifest: [], limits: config, signal: signal(), reserve: async () => {}, record: async e => events.push(e), env: { PRESENTATION_V2_MODEL: 'qwen', PRESENTATION_V2_BASE_URL: 'https://test.invalid', PRESENTATION_V2_API_KEY: 'secret' }, fetchImpl: async () => { requests++; throw new Error('timeout'); } }), /timeout/);
   assert.equal(requests, 1); assert.ok(events.some(e => e.event === 'failure'));
 });
+test('recovery never repeats a model request whose outcome became unknown after dispatch', async () => {
+  let reserved = 0, requests = 0;
+  const attempt = { attempt_id: 'attempt-1', stage: 'initial', status: 'dispatched' };
+  await assert.rejects(require('../services/presentation-v2/model').request({
+    source: {}, settings, manifest: [], limits: config, signal: signal(),
+    reserve: async () => { reserved++; }, record: async () => {},
+    modelAttempt: { inspect: async () => attempt },
+    env: { PRESENTATION_V2_MODEL: 'qwen', PRESENTATION_V2_BASE_URL: 'https://test.invalid', PRESENTATION_V2_API_KEY: 'secret' },
+    fetchImpl: async () => { requests++; throw new Error('must not dispatch'); },
+  }), error => error.code === 'model_outcome_unknown_after_restart');
+  assert.equal(reserved, 0);
+  assert.equal(requests, 0);
+});
+test('recovery decodes a durably saved model response without reserving or dispatching again', async () => {
+  let reserved = 0, requests = 0; const events = [];
+  const raw = JSON.stringify({ model: 'qwen-recovered', choices: [{ finish_reason: 'stop', message: { content: JSON.stringify(design()) } }] });
+  const result = await require('../services/presentation-v2/model').request({
+    source: {}, settings, manifest: [], limits: config, signal: signal(),
+    reserve: async () => { reserved++; }, record: async event => events.push(event),
+    modelAttempt: { inspect: async () => ({ attempt_id: 'attempt-2', stage: 'initial', status: 'response_received', response: { raw, ok: true, http_status: 200 } }) },
+    env: { PRESENTATION_V2_MODEL: 'qwen', PRESENTATION_V2_BASE_URL: 'https://test.invalid', PRESENTATION_V2_API_KEY: 'secret' },
+    fetchImpl: async () => { requests++; throw new Error('must not dispatch'); },
+  });
+  assert.equal(result.schema_version, 2);
+  assert.equal(reserved, 0);
+  assert.equal(requests, 0);
+  assert.ok(events.some(event => event.event === 'model_response_recovered'));
+});
 test('selected material swatches are available assets but never additional vision inputs', () => {
   const s = structuredClone(source);
   s.spaces[0].products = [{ id: 9, name: '沙发', image_url: 'https://x/cover', selection: { materials: [{ part: '面料', material_id: 4, swatch_url: 'https://x/swatch' }] } }];

@@ -515,6 +515,16 @@ jobs:
             staging_dir="${APP_DIR}.deploy-tmp"
             backup_dir="${APP_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
             activated="false"
+            presentation_guard_pid=""
+            presentation_guard_log='/tmp/yinnkhome-presentation-deploy-lock.log'
+
+            release_presentation_guard() {
+              if [ -n "$presentation_guard_pid" ]; then
+                kill -TERM "$presentation_guard_pid" 2>/dev/null || true
+                wait "$presentation_guard_pid" 2>/dev/null || true
+                presentation_guard_pid=""
+              fi
+            }
 
             rollback() {
               exit_code=$?
@@ -563,6 +573,8 @@ jobs:
                 fi
                 pm2 save || true
               fi
+              set +e
+              release_presentation_guard
               exit "$exit_code"
             }
             trap rollback EXIT
@@ -838,6 +850,32 @@ jobs:
             kill "$smoke_pid" 2>/dev/null || true
             wait "$smoke_pid" 2>/dev/null || true
             echo "Smoke test passed."
+
+            # The presentation worker holds this MySQL named lock for the full
+            # lifetime of a PPT job. Holding the same lock across PM2 cutover
+            # drains any active job and prevents either process from claiming a
+            # new one while the service is being replaced.
+            deployment_phase='presentation_worker_drain'
+            : > "$presentation_guard_log"
+            node scripts/hold-presentation-deploy-lock.js --timeout-seconds=600 > "$presentation_guard_log" 2>&1 &
+            presentation_guard_pid=$!
+            guard_ready='false'
+            for attempt in $(seq 1 605); do
+              if grep -q '^PRESENTATION_DEPLOY_LOCK_ACQUIRED$' "$presentation_guard_log"; then
+                guard_ready='true'
+                break
+              fi
+              if ! kill -0 "$presentation_guard_pid" 2>/dev/null; then
+                break
+              fi
+              sleep 1
+            done
+            if [ "$guard_ready" != 'true' ]; then
+              echo 'Could not drain the presentation worker before deployment.'
+              cat "$presentation_guard_log" || true
+              exit 1
+            fi
+            echo 'Presentation worker drained; holding claim lock through PM2 cutover.'
 
             if [ -d "$APP_DIR" ]; then
               mv "$APP_DIR" "$backup_dir"
