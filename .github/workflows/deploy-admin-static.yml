@@ -31,6 +31,8 @@ jobs:
           test -f server/public/admin/styles.css
           test -f server/public/admin/modules/billing.js
           test ! -f server/public/admin/index.html.tmp
+          grep -Fq "timeoutMs:15 * 60 * 1000" server/public/admin/modules/product-ingestion.js
+          grep -Fq "正在归档并发布" server/public/admin/modules/product-ingestion.js
 
       - name: Wait for backend deploy on same commit
         env:
@@ -167,3 +169,4 @@ jobs:
           curl -fsS https://yinnkhome.com/admin/ -o "$admin_file"
           grep -q '商户管理操作说明' "$admin_file"
           grep -q 'admin.js?v=20260910-product-ingestion-2' "$admin_file"
+          grep -q 'product-ingestion.js?v=20260918-publish-timeout-1' "$admin_file"
