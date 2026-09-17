@@ -77,7 +77,7 @@ jobs:
                test "${mem_available_kb:-0}" -ge 262144
                test "${swap_free_kb:-0}" -ge 524288
                test "${disk_available_kb:-0}" -ge 2097152
-               awk -v load="$load_one" "BEGIN {exit !(load < 4)}"
+               awk -v load_value="$load_one" "BEGIN {exit !(load_value < 4)}"
                ! pgrep -f "/opt/yinnkhome-chromium/.*/[c]hrome|[c]hrome-headless-shell" >/dev/null
                curl --connect-timeout 5 --max-time 15 -fsS http://127.0.0.1:3001/health'; then
               exit 0
