@@ -46,6 +46,11 @@ function validateProductionContract(env = process.env, runtime = {}) {
   }
   if(role===API_ROLE){try { adminAuthentication.assertConfiguration(env); }
   catch (error) { errors.push(error.message); }}
+  if(role===API_ROLE&&String(env.INGESTION_ECS_LIFECYCLE_ENABLED||'false').toLowerCase()==='true'){
+    for(const name of ['INGESTION_WORKER_INSTANCE_ID','INGESTION_WORKER_REGION_ID','INGESTION_ECS_CONTROLLER_RAM_ROLE']){
+      if(!String(env[name]||'').trim())errors.push(`${name} is required when ingestion ECS lifecycle is enabled`);
+    }
+  }
 
   const concurrency = Number.parseInt(env.INGESTION_GLOBAL_CONCURRENCY || '2', 10);
   if (!Number.isSafeInteger(concurrency) || concurrency < 1 || concurrency > 8) {

@@ -26,6 +26,7 @@
   },
   "dependencies": {
     "@alicloud/dysmsapi20170525": "^4.6.0",
+    "@alicloud/ecs20140526": "^7.11.5",
     "@alicloud/openapi-client": "^0.4.15",
     "ajv": "^8.20.0",
     "ali-oss": "^6.23.0",
