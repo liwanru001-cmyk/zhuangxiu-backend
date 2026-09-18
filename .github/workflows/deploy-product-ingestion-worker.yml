@@ -1,11 +1,11 @@
 name: Deploy Product Ingestion Worker
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'server/**'
-      - '.github/workflows/deploy-product-ingestion-worker.yml'
+  # The controller script and schema must already be live before this workflow
+  # can acquire a deployment lease and wake the worker safely.
+  workflow_run:
+    workflows: ['Deploy Backend']
+    types: [completed]
   workflow_dispatch:
 
 concurrency:
@@ -14,13 +14,21 @@ concurrency:
 
 jobs:
   deploy:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     env:
+      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      CONTROLLER_HOST: 115.29.194.46
+      CONTROLLER_APP_DIR: /opt/yinnkhome-backend
       WORKER_HOST: 120.79.135.88
       WORKER_APP_DIR: /opt/yinnkhome-ingestion-worker
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ env.RELEASE_SHA }}
 
       - uses: actions/setup-node@v4
         with:
@@ -47,17 +55,48 @@ jobs:
             package.json package-lock.json node_modules release-manifest.json \
             config controllers middleware migrations routes scripts services utils
 
-      - name: Upload worker release
+      - name: Prepare deployment SSH credentials
+        id: ssh-credentials
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+
+      - name: Acquire deployment lease and wake worker
+        id: wake-worker
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
         run: |
           set -euo pipefail
           ssh_port="${SSH_PORT:-22}"
-          install -m 700 -d ~/.ssh
-          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
-          chmod 600 ~/.ssh/deploy_key
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          controller="${SSH_USER}@${CONTROLLER_HOST}"
+          ssh "${ssh_opts[@]}" "$controller" \
+            "cd '$CONTROLLER_APP_DIR' && node scripts/manage-product-ingestion-worker-deployment.js prepare --release-sha '$RELEASE_SHA' --lease-seconds 3600 --wait-timeout-ms 300000"
+          echo 'lease_acquired=true' >> "$GITHUB_OUTPUT"
+
+          worker="${SSH_USER}@${WORKER_HOST}"
+          worker_ready='false'
+          for attempt in $(seq 1 90); do
+            if ssh "${ssh_opts[@]}" "$worker" 'true'; then
+              worker_ready='true'
+              break
+            fi
+            sleep 5
+          done
+          test "$worker_ready" = 'true'
+
+      - name: Upload worker release
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
           ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
           remote="${SSH_USER}@${WORKER_HOST}"
           staging="${WORKER_APP_DIR}.deploy-tmp"
@@ -69,9 +108,7 @@ jobs:
       - name: Activate worker release
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
-          RELEASE_SHA: ${{ github.sha }}
         run: |
           set -euo pipefail
           ssh_port="${SSH_PORT:-22}"
@@ -149,3 +186,16 @@ jobs:
           test "$heartbeat_ready" = 'true'
           for old in "${WORKER_APP_DIR}.backup."*; do [ -d "$old" ] && [ "$old" != "$backup" ] && rm -rf -- "$old" || true; done
           REMOTE
+
+      - name: Release deployment lease and restart idle countdown
+        if: always() && steps.wake-worker.outputs.lease_acquired == 'true'
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          controller="${SSH_USER}@${CONTROLLER_HOST}"
+          ssh "${ssh_opts[@]}" "$controller" \
+            "cd '$CONTROLLER_APP_DIR' && node scripts/manage-product-ingestion-worker-deployment.js release"
