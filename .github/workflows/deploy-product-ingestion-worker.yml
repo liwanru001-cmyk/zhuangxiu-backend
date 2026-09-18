@@ -10,7 +10,9 @@ on:
 
 concurrency:
   group: production-product-ingestion-worker
-  cancel-in-progress: false
+  # A newer successful backend release supersedes an older worker package.
+  # Any abandoned lease expires automatically even if GitHub force-cancels it.
+  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -72,7 +74,7 @@ jobs:
         run: |
           set -euo pipefail
           ssh_port="${SSH_PORT:-22}"
-          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=5 -o ConnectionAttempts=1 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
           controller="${SSH_USER}@${CONTROLLER_HOST}"
           prepare_output="$(ssh "${ssh_opts[@]}" "$controller" \
             "cd '$CONTROLLER_APP_DIR' && node scripts/manage-product-ingestion-worker-deployment.js prepare --release-sha '$RELEASE_SHA' --lease-seconds 3600 --wait-timeout-ms 300000")"
@@ -85,7 +87,7 @@ jobs:
 
           worker="${SSH_USER}@${worker_host}"
           worker_ready='false'
-          for attempt in $(seq 1 90); do
+          for attempt in $(seq 1 36); do
             if ssh "${ssh_opts[@]}" "$worker" 'true'; then
               worker_ready='true'
               break
