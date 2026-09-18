@@ -266,6 +266,18 @@ test('candidate list supports server pagination and recovery-state filtering',as
   assert.equal(result.items[0].first_configuration_image_url,'https://img.example/configuration.jpg');
 });
 
+test('candidate list can filter publish-ready products before pagination',async()=>{
+  const calls=[];const db={query:async(sql,params=[])=>{calls.push({sql,params});if(sql.startsWith('SELECT COUNT(*) total'))return [[{total:2}]];if(sql.includes('SELECT candidate.id'))return [[]];throw new Error(`Unexpected query: ${sql}`);}};
+  const result=await createControl(db).listCandidates({paged:'1',publish_ready:'1',limit:'20',offset:'0'});
+  assert.equal(result.total,2);
+  assert.match(calls[0].sql,/candidate\.published_product_id IS NULL/);
+  assert.match(calls[0].sql,/candidate\.validation_status='valid'/);
+  assert.match(calls[0].sql,/candidate\.review_status='approved'/);
+  assert.match(calls[0].sql,/source\.status='active'/);
+  assert.match(calls[0].sql,/NOT EXISTS \(SELECT 1 FROM public_product_categories child/);
+  assert.deepEqual(calls[1].params,[20,0]);
+});
+
 test('candidate list exposes inline classification editing and separate product/configuration images',()=>{
   const ui=fs.readFileSync(require.resolve('../public/admin/modules/product-ingestion'),'utf8');
   assert.match(ui,/产品主图/);
@@ -277,6 +289,8 @@ test('candidate list exposes inline classification editing and separate product/
   assert.match(ui,/data-candidate-page-size/);
   assert.match(ui,/data-candidate-page-input/);
   assert.match(ui,/jump-candidate-page/);
+  assert.match(ui,/name="publish_ready"/);
+  assert.match(ui,/符合发布条件/);
 });
 
 test('batch classification correction rebuilds product structure and records an audit entry', async () => {
