@@ -182,6 +182,9 @@ module.exports = function routes(db) {
   router.put('/library/:id/categories', handle(req => taxonomy.setProductCategories(req.params.id, req.body || {}, actor(req))));
   router.post('/library/:id/categories/reset', handle(req => taxonomy.resetProductCategories(req.params.id)));
   router.get('/taxonomy', handle(() => taxonomy.listGovernance()));
+  router.post('/taxonomy/candidates/categories/preview', handle(req => taxonomy.candidateCategoryImpact(req.body || {})));
+  router.put('/taxonomy/candidates/categories', handle(req => taxonomy.applyCandidateCategories(req.body || {}, actor(req))));
+  router.post('/taxonomy/source-categories/:id/preview', handle(req => taxonomy.mappingImpact(req.params.id, req.body || {})));
   router.put('/taxonomy/source-categories/:id', handle(req => taxonomy.saveSourceMapping(req.params.id, req.body || {}, actor(req))));
   return router;
 };

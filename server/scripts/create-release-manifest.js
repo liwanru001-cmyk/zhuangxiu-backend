@@ -75,8 +75,8 @@ if (dependencyGraph.unresolved.length || untrackedRuntimeDependencies.length) {
   }, null, 2));
   process.exit(1);
 }
-if (releaseMigrations.length !== 21) {
-  console.error(`Expected 21 product/material release migrations, found ${releaseMigrations.length}`);
+if (releaseMigrations.length !== 22) {
+  console.error(`Expected 22 product/material release migrations, found ${releaseMigrations.length}`);
   process.exit(1);
 }
 

@@ -81,6 +81,55 @@
 .ingestion-classification p { margin: 5px 0 0; color: #667085; font-size: 12px; }
 .ingestion-category-options { display: flex; flex-wrap: wrap; gap: 8px 14px; }
 .ingestion-category-options label { display: flex; align-items: center; gap: 5px; font-size: 12px; }
+.ingestion-governance-metrics { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 14px; margin-bottom: 16px; }
+.ingestion-governance-metrics article { display: grid; gap: 5px; padding: 18px; border: 1px solid #e4e7ec; border-radius: 12px; background: #fff; }
+.ingestion-governance-metrics span { color: #475467; font-size: 12px; font-weight: 700; }
+.ingestion-governance-metrics strong { color: #101828; font-size: 28px; }
+.ingestion-governance-metrics small { color: #667085; font-size: 11px; }
+.ingestion-governance-nav { display: flex; gap: 10px; margin: 0 0 16px; padding: 6px; border: 1px solid #e4e7ec; border-radius: 12px; background: #f9fafb; }
+.ingestion-governance-nav button { min-width: 210px; display: grid; gap: 3px; padding: 11px 16px; border: 1px solid transparent; border-radius: 9px; background: transparent; color: #475467; text-align: left; }
+.ingestion-governance-nav button:hover { background: #fff; }
+.ingestion-governance-nav button.active { border-color: #b9c6e4; background: #fff; color: #3154c8; box-shadow: 0 2px 8px rgba(16,24,40,.06); }
+.ingestion-governance-nav strong { font-size: 13px; }
+.ingestion-governance-nav span { color: #667085; font-size: 10px; }
+.ingestion-governance-bulk { position: sticky; top: 8px; z-index: 4; box-shadow: 0 8px 20px rgba(16,24,40,.08); }
+.ingestion-governance-bulk select { min-width: 180px; min-height: 38px; padding: 8px 10px; border: 1px solid #b9c6e4; border-radius: 8px; background: #fff; }
+.ingestion-governance-bulk [data-govern-bulk-status], [data-govern-row-status] { color: #475467; font-size: 12px; }
+[data-govern-row] select { min-width: 150px; padding: 7px 9px; border: 1px solid #d0d5dd; border-radius: 7px; background: #fff; }
+.ingestion-governance-product { min-width: 390px; display: grid; grid-template-columns: 124px minmax(220px,1fr); gap: 12px; align-items: start; }
+.ingestion-governance-product > div:last-child { display: grid; gap: 5px; }
+.ingestion-governance-product b { color: #344054; font-size: 13px; }
+.ingestion-governance-product p { max-width: 430px; margin: 0; color: #667085; font-size: 11px; line-height: 1.55; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.ingestion-governance-cover { width: 124px; height: 94px; display: grid; place-items: center; overflow: hidden; border: 1px solid #e4e7ec; border-radius: 10px; background: #f8fafc; color: #98a2b3; font-size: 10px; }
+.ingestion-governance-cover a,.ingestion-governance-cover img { width: 100%; height: 100%; display: block; }
+.ingestion-governance-cover img { object-fit: contain; }
+.ingestion-governance-samples { min-width: 390px; display: grid; grid-template-columns: repeat(4,minmax(78px,1fr)); gap: 8px; margin-top: 10px; }
+.ingestion-governance-samples article { min-width: 0; display: grid; gap: 4px; color: #344054; font-size: 10px; }
+.ingestion-governance-samples article > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ingestion-governance-samples small { color: #667085; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ingestion-governance-sample-image { height: 68px; display: grid; place-items: center; overflow: hidden; border: 1px solid #e4e7ec; border-radius: 8px; background: #f8fafc; color: #98a2b3; }
+.ingestion-governance-sample-image a,.ingestion-governance-sample-image img { width: 100%; height: 100%; display: block; }
+.ingestion-governance-sample-image img { object-fit: contain; }
+.ingestion-governance-mapping-list { display: grid; gap: 14px; }
+.ingestion-governance-mapping-card { display: grid; grid-template-columns: minmax(0,1fr) 330px; gap: 20px; padding: 18px; border: 1px solid #e4e7ec; border-radius: 12px; background: #fff; box-shadow: 0 2px 8px rgba(16,24,40,.035); }
+.ingestion-governance-mapping-main { min-width: 0; }
+.ingestion-governance-mapping-main>header { display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; margin-bottom: 14px; }
+.ingestion-governance-mapping-main h4 { margin: 3px 0 5px; color: #101828; font-size: 16px; }
+.ingestion-governance-mapping-main code { color: #667085; font-size: 10px; }
+.ingestion-governance-mapping-main .ingestion-governance-samples { min-width: 0; max-width: 720px; margin-top: 0; }
+.ingestion-governance-mapping-main .ingestion-governance-sample-image { height: 92px; }
+.ingestion-governance-mapping-facts { display: flex; align-items: center; justify-content: flex-end; flex-wrap: wrap; gap: 8px 12px; color: #667085; font-size: 10px; }
+.ingestion-governance-mapping-facts>span:not(.ingestion-badge) { padding-left: 12px; border-left: 1px solid #e4e7ec; }
+.ingestion-governance-mapping-facts strong { color: #344054; font-size: 12px; }
+.ingestion-governance-mapping-editor { display: grid; align-content: start; gap: 9px; padding: 14px; border: 1px solid #dce3f1; border-radius: 10px; background: #f8faff; }
+.ingestion-governance-mapping-editor label { display: grid; gap: 7px; color: #344054; font-size: 11px; font-weight: 700; }
+.ingestion-governance-mapping-editor select { width: 100%; min-height: 116px; padding: 7px; border: 1px solid #b9c6e4; border-radius: 8px; background: #fff; color: #344054; }
+.ingestion-governance-mapping-editor button { width: max-content; min-width: 160px; white-space: nowrap; }
+.ingestion-governance-mapping-editor [data-mapping-status] { color: #475467; font-size: 10px; line-height: 1.5; }
+.ingestion-taxonomy-tree { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: 10px; }
+.ingestion-taxonomy-tree article { display: grid; gap: 7px; padding: 12px; border: 1px solid #e4e7ec; border-radius: 10px; background: #f9fafb; }
+.ingestion-taxonomy-tree article span { color: #667085; font-size: 11px; line-height: 1.7; }
+[data-mapping-status] { display: block; max-width: 180px; margin-top: 7px; color: #667085; font-size: 10px; line-height: 1.4; }
 .ingestion-field-review { margin: 0 0 20px; padding: 18px; border: 1px solid #dbe3f5; border-radius: 14px; background: #f8faff; }
 .ingestion-field-list { display: grid; gap: 8px; max-height: 720px; overflow: auto; }
 .ingestion-field-row { display: grid; grid-template-columns: minmax(180px,.7fr) minmax(320px,2fr); gap: 14px; padding: 12px; border: 1px solid #e4e7ec; border-radius: 10px; background: #fff; }
@@ -96,7 +145,8 @@
 .ingestion-field-image code { color: #475467; font-size: 9px; overflow-wrap: anywhere; }
 .ingestion-field-empty { color: #98a2b3; font-size: 11px; }
 [data-mapping] { min-width: 190px; width: 100%; }
-@media (max-width: 800px) { .ingestion-classification { grid-template-columns: 1fr; } }
+@media (max-width: 800px) { .ingestion-classification { grid-template-columns: 1fr; } .ingestion-governance-metrics { grid-template-columns: 1fr; } .ingestion-governance-nav { display: grid; } .ingestion-governance-nav button { min-width: 0; } }
+@media (max-width: 1000px) { .ingestion-governance-mapping-card { grid-template-columns: 1fr; } .ingestion-governance-mapping-main>header { flex-direction: column; } .ingestion-governance-mapping-facts { justify-content: flex-start; } }
 .ingestion-empty { padding: 34px 18px; color: #667085; text-align: center; }
 .ingestion-rule-grid { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 14px; }
 .ingestion-rule { padding: 17px; border: 1px solid #e4e7ec; border-radius: 12px; background: #fff; }
