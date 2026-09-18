@@ -32,14 +32,26 @@ function createEcsLifecycleController(db, env = process.env, dependencies = {}) 
     return Number(jobs[0]?.total || 0) + Number(commands[0]?.total || 0);
   }
 
-  async function describe() {
+  async function describeInstance() {
     const response = await ecs().describeInstances(new Ecs.DescribeInstancesRequest({
       regionId,
       instanceIds:JSON.stringify([instanceId]),
     }));
     const instance = response.body?.instances?.instance?.[0];
     if (!instance) throw new Error(`Fixed ingestion ECS not found: ${instanceId}`);
-    return instance.status;
+    return instance;
+  }
+
+  async function describe() {
+    return (await describeInstance()).status;
+  }
+
+  function deploymentAddress(instance) {
+    return String(
+      instance?.eipAddress?.ipAddress ||
+      instance?.publicIpAddress?.ipAddress?.[0] ||
+      ''
+    ).trim() || null;
   }
 
   async function ensureRow() {
@@ -211,13 +223,20 @@ function createEcsLifecycleController(db, env = process.env, dependencies = {}) 
       error.code = 'INGESTION_WORKER_START_TIMEOUT';
       throw error;
     }
+    const runningInstance = await describeInstance();
+    const publicIp = deploymentAddress(runningInstance);
+    if (runningInstance.status !== 'Running' || !publicIp) {
+      const error = new Error('Running ingestion worker ECS has no public deployment address');
+      error.code = 'INGESTION_WORKER_DEPLOYMENT_ADDRESS_UNAVAILABLE';
+      throw error;
+    }
     await db.query(
       `UPDATE product_ingestion_worker_lifecycle
        SET observed_state='Running',desired_state='running',idle_since=NULL,last_error=NULL
        WHERE instance_id=?`,
       [instanceId]
     );
-    return { instance_id:instanceId, region_id:regionId, observed, action, lease_seconds:boundedLease };
+    return { instance_id:instanceId, region_id:regionId, observed, action, public_ip:publicIp, lease_seconds:boundedLease };
   }
 
   async function endMaintenance() {

@@ -34,7 +34,7 @@ async function main() {
   } else {
     result = await controller.status();
   }
-  process.stdout.write(`${JSON.stringify({ ok:true, action, ...result })}\n`);
+  process.stdout.write(`WORKER_DEPLOYMENT_RESULT=${JSON.stringify({ ok:true, action, ...result })}\n`);
 }
 
 if (require.main === module) {

@@ -48,7 +48,7 @@ const env = {
   INGESTION_WORKER_IDLE_STOP_SECONDS:'900',
 };
 
-function ecsClient(statuses) {
+function ecsClient(statuses, publicIp = '203.0.113.10') {
   const queue = Array.isArray(statuses) ? [...statuses] : [statuses];
   let current = queue[0];
   return {
@@ -56,7 +56,7 @@ function ecsClient(statuses) {
     stops:0,
     async describeInstances() {
       current = queue.length ? queue.shift() : current;
-      return { body:{ instances:{ instance:[{ status:current }] } } };
+      return { body:{ instances:{ instance:[{ status:current, publicIpAddress:{ ipAddress:[publicIp] } }] } } };
     },
     async startInstance() { this.starts += 1; },
     async stopInstance() { this.stops += 1; },
@@ -112,6 +112,7 @@ test('beginMaintenance waits for Running and endMaintenance restarts the idle ti
 
   assert.equal(prepared.observed, 'Running');
   assert.equal(prepared.action, 'start');
+  assert.equal(prepared.public_ip, '203.0.113.10');
   assert.equal(client.starts, 1);
   assert.equal(released.idle_timer_restarted, true);
   assert.equal(db.state.maintenance_until, null);
@@ -128,6 +129,17 @@ test('beginMaintenance restarts an instance that was already Stopping', async ()
   assert.equal(prepared.observed, 'Running');
   assert.equal(prepared.action, 'start');
   assert.equal(client.starts, 1);
+});
+
+test('beginMaintenance fails safely when a running worker has no deployment address', async () => {
+  const db = database();
+  const client = ecsClient('Running', '');
+  const controller = createEcsLifecycleController(db, env, { client });
+
+  await assert.rejects(
+    controller.beginMaintenance({ reason:'github-deploy:no-address' }),
+    error => error.code === 'INGESTION_WORKER_DEPLOYMENT_ADDRESS_UNAVAILABLE'
+  );
 });
 
 test('fixed ECS controller stops an empty idle host even after a failed deployment heartbeat', async () => {

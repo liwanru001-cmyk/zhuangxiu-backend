@@ -23,7 +23,6 @@ jobs:
       RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
       CONTROLLER_HOST: 115.29.194.46
       CONTROLLER_APP_DIR: /opt/yinnkhome-backend
-      WORKER_HOST: 120.79.135.88
       WORKER_APP_DIR: /opt/yinnkhome-ingestion-worker
     steps:
       - uses: actions/checkout@v4
@@ -75,11 +74,16 @@ jobs:
           ssh_port="${SSH_PORT:-22}"
           ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
           controller="${SSH_USER}@${CONTROLLER_HOST}"
-          ssh "${ssh_opts[@]}" "$controller" \
-            "cd '$CONTROLLER_APP_DIR' && node scripts/manage-product-ingestion-worker-deployment.js prepare --release-sha '$RELEASE_SHA' --lease-seconds 3600 --wait-timeout-ms 300000"
+          prepare_output="$(ssh "${ssh_opts[@]}" "$controller" \
+            "cd '$CONTROLLER_APP_DIR' && node scripts/manage-product-ingestion-worker-deployment.js prepare --release-sha '$RELEASE_SHA' --lease-seconds 3600 --wait-timeout-ms 300000")"
+          printf '%s\n' "$prepare_output"
+          result_json="$(printf '%s\n' "$prepare_output" | sed -n 's/^WORKER_DEPLOYMENT_RESULT=//p' | tail -1)"
+          test -n "$result_json"
+          worker_host="$(node -e 'const result=JSON.parse(process.argv[1]);if(!result.public_ip)process.exit(1);process.stdout.write(result.public_ip)' "$result_json")"
           echo 'lease_acquired=true' >> "$GITHUB_OUTPUT"
+          echo "worker_host=$worker_host" >> "$GITHUB_OUTPUT"
 
-          worker="${SSH_USER}@${WORKER_HOST}"
+          worker="${SSH_USER}@${worker_host}"
           worker_ready='false'
           for attempt in $(seq 1 90); do
             if ssh "${ssh_opts[@]}" "$worker" 'true'; then
@@ -94,6 +98,7 @@ jobs:
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          WORKER_HOST: ${{ steps.wake-worker.outputs.worker_host }}
         run: |
           set -euo pipefail
           ssh_port="${SSH_PORT:-22}"
@@ -109,6 +114,7 @@ jobs:
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_PORT: ${{ secrets.SSH_PORT }}
+          WORKER_HOST: ${{ steps.wake-worker.outputs.worker_host }}
         run: |
           set -euo pipefail
           ssh_port="${SSH_PORT:-22}"
