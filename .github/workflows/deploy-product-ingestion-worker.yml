@@ -108,6 +108,8 @@ jobs:
           test "${INGESTION_CHROME_PATH:-}" = '/usr/local/bin/ingestion-chromium'
           test -x "$INGESTION_CHROME_PATH"
           test "${ALIBABA_CLOUD_ECS_INSTANCE_ID:-}" = 'i-wz9iovg5qn2n2hc6yvvu'
+          test "${OSS_RAM_ROLE_NAME:-}" = 'YinnkhomeIngestionWorkerRole'
+          ! grep -Eq '^OSS_ACCESS_KEY_(ID|SECRET)=' "$staging/.env"
           cd "$staging"
           timeout 120s npm run check:production-contract -- --connectivity
           schema_ready='false'
