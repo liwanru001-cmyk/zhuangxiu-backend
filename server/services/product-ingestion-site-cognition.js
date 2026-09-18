@@ -323,13 +323,14 @@ function createSiteCognitionControl(db, dependencies = {}) {
 
   async function acquireOfficialEvidence(workflow,scope,actor){
     let result;
-    try{result=await boundedOfficialEvidence(scope,{fetchHtml:pageFetcher});}
+    try{await assertAiBudget(workflow,10000,'限定官网证据发现');result=await boundedOfficialEvidence(scope,{fetchHtml:pageFetcher});}
     catch(error){
+      await saveAiAudit(workflow,error.details||null,'invalid',error.details?.validation_errors||[error.message],'bounded_official_page_discovery').catch(()=>{});
       const outcome=classifyIngestionOutcome(error,{stage:'bounded_official_evidence'});
       if(outcome.category==='AI_BUDGET_EXHAUSTED')return moveToHandoff(workflow,'EXECUTION_FAILED_FINAL',{reason:error.message,outcome},actor);
       return stopAccess(workflow,{...outcome,category:'NO_LEGAL_ACQUISITION_CHANNEL',terminal:true,next_action:'STOP_NO_LEGAL_CHANNEL'},'限定官网取证没有找到可供受控执行器稳定读取的官方产品页',actor);
     }
-    if(result.discovered)await saveAiAudit(workflow,result.discovered,'valid',[],'bounded_official_page_discovery');
+    await saveAiAudit(workflow,result.discovered||{model:'program',prompt_version:'no-ai-call',usage:{},calls:[]},'valid',[],'bounded_official_page_discovery');
     if(result.status==='js_required')return move(workflow,'JS_REQUIRED','JS_RENDER_REQUIRED',{bounded_official_evidence:{official_urls:result.official_urls,failures:result.failures,request_hash:result.discovered?.request_hash||null},access_upgrade:result.outcome},actor);
     if(result.status!=='ready')return stopAccess(workflow,result.outcome,'已找到官方页面线索，但受控执行器无法合法、稳定读取，已停止采集',actor);
     await saveEvidence(workflow,result.site_map);
@@ -431,6 +432,14 @@ function createSiteCognitionControl(db, dependencies = {}) {
 
   async function saveAiAudit(workflow, generated, status='valid', errors=[], purpose='site_rule_generation') {
     const calls=generated?.calls || [],usage=generated?.usage || {};
+    const [reservedRows]=await db.query("SELECT id FROM product_ingestion_site_cognition_ai_calls WHERE workflow_id=? AND status='reserved' ORDER BY id DESC LIMIT 1",[workflow.id]);
+    if(reservedRows[0]&&generated?.preserve_reservation===true)return Number(reservedRows[0].id);
+    if(reservedRows[0]){
+      await db.query(`UPDATE product_ingestion_site_cognition_ai_calls SET purpose=?,model=?,prompt_version=?,evidence_revision=?,request_hash=?,input_manifest=?,raw_output=?,parsed_output=?,validation_errors=?,input_tokens=?,output_tokens=?,total_tokens=?,elapsed_ms=?,status=? WHERE id=? AND status='reserved'`,[
+        purpose,generated?.model || 'unknown',generated?.prompt_version || (purpose==='site_cognition_hypothesis'?COGNITION_PROMPT_VERSION:PROMPT_VERSION),workflow.evidence_revision,generated?.request_hash || digest(errors),json(generated?.input_manifest || {}),json(calls),json(generated?.config || generated?.output || null),json(errors),Number(usage.input_tokens || 0),Number(usage.output_tokens || 0),Number(usage.total_tokens || 0),calls.reduce((sum,item)=>sum+Number(item.elapsed_ms || 0),0),status,reservedRows[0].id,
+      ]);
+      return Number(reservedRows[0].id);
+    }
     const [result]=await db.query(`INSERT INTO product_ingestion_site_cognition_ai_calls (workflow_id,purpose,model,prompt_version,evidence_revision,request_hash,input_manifest,raw_output,parsed_output,validation_errors,input_tokens,output_tokens,total_tokens,elapsed_ms,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,[
       workflow.id,purpose,generated?.model || 'unknown',generated?.prompt_version || (purpose==='site_cognition_hypothesis'?COGNITION_PROMPT_VERSION:PROMPT_VERSION),workflow.evidence_revision,generated?.request_hash || digest(errors),json(generated?.input_manifest || {}),json(calls),json(generated?.config || generated?.output || null),json(errors),Number(usage.input_tokens || 0),Number(usage.output_tokens || 0),Number(usage.total_tokens || 0),calls.reduce((sum,item)=>sum+Number(item.elapsed_ms || 0),0),status,
     ]);
@@ -476,9 +485,13 @@ function createSiteCognitionControl(db, dependencies = {}) {
   }
 
   async function assertAiBudget(workflow,reserve,purpose){
+    const [uncertain]=await db.query("SELECT id,purpose,created_at FROM product_ingestion_site_cognition_ai_calls WHERE workflow_id=? AND status='reserved' ORDER BY id DESC LIMIT 1",[workflow.id]);
+    if(uncertain[0]){const error=new Error(`上一次 AI 请求在 Worker 中断时结果未知（请求 #${uncertain[0].id}），已阻止自动重复消费`);error.code='SITE_COGNITION_AI_REQUEST_UNCERTAIN';error.status=409;error.details={request_id:Number(uncertain[0].id),purpose:uncertain[0].purpose,created_at:uncertain[0].created_at,preserve_reservation:true};throw error;}
     const [[row]]=await db.query('SELECT COALESCE(SUM(total_tokens),0) used_tokens FROM product_ingestion_site_cognition_ai_calls WHERE workflow_id=?',[workflow.id]);
     const total=Number(row?.used_tokens||0),used=attemptBudgetUsed(total,workflow.attempt_counters),limit=aiBudgetLimit(workflow.attempt_counters),nextLimit=nextAiBudgetLimit(workflow.attempt_counters);
     if(used+Number(reserve||0)>limit){const error=new Error(`AI 分析已使用 ${used} token，继续${purpose}可能超过 ${limit} 上限，等待人工确认是否提高额度`);error.code='SITE_COGNITION_AI_BUDGET_EXHAUSTED';error.status=409;error.details={used_tokens:used,total_used_tokens:total,reserved_tokens:Number(reserve||0),limit,next_limit:nextLimit,max_limit:MAX_AI_TOKEN_BUDGET,purpose,approval_available:Boolean(nextLimit)};throw error;}
+    const [stored]=await db.query(`INSERT INTO product_ingestion_site_cognition_ai_calls (workflow_id,purpose,model,prompt_version,evidence_revision,request_hash,input_manifest,raw_output,parsed_output,validation_errors,input_tokens,output_tokens,total_tokens,elapsed_ms,status) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, 'reserved')`,[workflow.id,String(purpose).slice(0,48),'pending',PROMPT_VERSION,workflow.evidence_revision,digest(`${workflow.id}:${workflow.evidence_revision}:${purpose}:${Date.now()}`),json({reserved_tokens:Number(reserve||0),reserved_at:new Date().toISOString()}),null,null,null,0,0,0,0]);
+    return Number(stored.insertId);
   }
 
   async function extractionCheckpoint(workflow){

@@ -12,33 +12,23 @@ const { createSiteCognitionControl } = require('../services/product-ingestion-si
 const { createOfficialBrandMaterials } = require('../services/official-brand-materials');
 const { createMaterialOnboarding } = require('../services/product-ingestion-material-onboarding');
 const { PRODUCT_SCHEMA_VERSION,FIELD_STATUSES,ASSET_ROLES,CORRECTION_ACTIONS,FIELD_REGISTRY,PRODUCT_DOCUMENT_V2_SCHEMA } = require('../services/product-schema-v2');
-const {fetchHtml}=require('../services/product-ingestion-fetch');
-const {createHybridFetcher}=require('../services/product-ingestion-rendered-fetch');
-const {isSmokeMode}=require('../services/startup-mode');
 const {createGlobalSlotManager}=require('../services/product-ingestion-global-slots');
+const {createWorkerDispatcher}=require('../services/product-ingestion-worker-dispatch');
 
 module.exports = function routes(db) {
-  const hybridFetch=createHybridFetcher({fetchHtml});
+  const executionDisabled=async()=>{const problem=new Error('抓取执行已迁移到独立 Worker');problem.code='INGESTION_EXECUTION_NOT_AVAILABLE_IN_API';problem.status=503;throw problem;};
+  const noSchedule=()=>undefined;
   const globalSlots=createGlobalSlotManager(db);
-  const router = express.Router(), control = createControl(db), library = createPublicProductLibrary(db), taxonomy = createPublicProductTaxonomy(db), fieldReview=createFieldReview(db), siteRules=createSiteRuleControl(db,{fetchHtml:hybridFetch}), officialMaterials=createOfficialBrandMaterials(db), materialOnboarding=createMaterialOnboarding(db,{fetchHtml:hybridFetch,officialMaterials});
+  const router = express.Router(), control = createControl(db), library = createPublicProductLibrary(db), taxonomy = createPublicProductTaxonomy(db), fieldReview=createFieldReview(db), siteRules=createSiteRuleControl(db,{fetchHtml:executionDisabled}), officialMaterials=createOfficialBrandMaterials(db), materialOnboarding=createMaterialOnboarding(db,{fetchHtml:executionDisabled,officialMaterials}), dispatcher=createWorkerDispatcher(db);
   let runner;
-  const cognition=createSiteCognitionControl(db,{siteRules,fetchHtml,renderedFetchHtml:hybridFetch,globalSlots,onFullCrawlReady:(jobId,options={})=>setImmediate(()=>options.resume_mode==='extraction'?runner.start(jobId):runner.startDiscovery(jobId))});
+  const cognition=createSiteCognitionControl(db,{siteRules,fetchHtml:executionDisabled,renderedFetchHtml:executionDisabled,globalSlots,schedule:noSchedule,scheduleAt:noSchedule,onFullCrawlReady:noSchedule});
   runner=createRunner(db,{
-    fetchHtml:hybridFetch,
+    fetchHtml:executionDisabled,
     globalSlots,
-    startSiteCognition:jobId=>cognition.startForJob(jobId,'system:auto'),
-    onFullCrawlStarted:jobId=>cognition.markFullCrawlStarted(jobId),
-    onFullCrawlFinished:(jobId,outcome,details)=>cognition.markFullCrawlFinished(jobId,outcome,details),
+    schedule:noSchedule,
+    scheduleAt:noSchedule,
   });
-  const recovery=createRecoveryControl(db,{resumeRecoveredDiscovery:(jobId,urls,attemptId)=>runner.resumeRecoveredDiscovery(jobId,urls,attemptId)});
-  if(!isSmokeMode()){
-    cognition.recoverInterrupted()
-      .then(()=>runner.recoverInterruptedJobs())
-      .then(result=>{if(result.recovered)console.warn(`Resumed ${result.recovered} interrupted product ingestion job(s): ${result.resumed_discovery} discovery, ${result.resumed_extraction} extraction`);})
-      .catch(error=>console.error('Product ingestion recovery failed:',error.code||error.name));
-    recovery.recoverInterruptedAttempts().then(result=>{if(result.recovered)console.warn(`Recovered ${result.recovered} interrupted AI recovery attempt(s)`);}).catch(error=>console.error('AI recovery startup repair failed:',error.code||error.name));
-    siteRules.recoverInterruptedRuns().then(result=>{if(result.recovered)console.warn(`Recovered ${result.recovered} interrupted site-rule sandbox run(s)`);}).catch(error=>{if(error.code!=='ER_NO_SUCH_TABLE')console.error('Site-rule sandbox startup repair failed:',error.code||error.name);});
-  }
+  const recovery=createRecoveryControl(db,{fetchHtml:executionDisabled});
   const actor = req => String(req.admin?.adminUsername || req.admin?.role || 'admin').slice(0, 80);
   const handle = fn => async (req, res) => {
     res.set('Cache-Control', 'no-store');
@@ -52,6 +42,7 @@ module.exports = function routes(db) {
     }
   };
   router.get('/summary', handle(() => control.summary()));
+  router.get('/worker-status',handle(()=>dispatcher.status()));
   router.get('/product-schema-v2',handle(()=>({schema_version:PRODUCT_SCHEMA_VERSION,field_statuses:FIELD_STATUSES,asset_roles:ASSET_ROLES,correction_actions:CORRECTION_ACTIONS,field_registry:FIELD_REGISTRY,json_schema:PRODUCT_DOCUMENT_V2_SCHEMA})));
   router.get('/sources', handle(() => control.listSources()));
   router.post('/official-materials/rules/validate',handle(req=>officialMaterials.validateRule(req.body?.rule||req.body||{})));
@@ -59,8 +50,8 @@ module.exports = function routes(db) {
   router.post('/official-materials/catalogs',handle(req=>officialMaterials.saveCatalog(req.body||{},actor(req))));
   router.get('/official-materials/catalogs/:id',handle(req=>officialMaterials.getCatalog(req.params.id)));
   router.post('/official-materials/catalogs/:id/freeze',handle(req=>officialMaterials.freezeCatalog(req.params.id,req.body||{},actor(req))));
-  router.post('/official-materials/catalogs/:id/scan',handle(req=>{if(req.body?.confirmed!==true){const problem=new Error('请确认开始受控扫描品牌材料总库');problem.status=400;throw problem;}return officialMaterials.scanCatalog(req.params.id,req.body||{},actor(req));}));
-  router.post('/official-materials/catalogs/:id/product-subset-scan',handle(req=>{if(req.body?.confirmed!==true){const problem=new Error('请确认受控读取产品关联材料页面');problem.status=400;throw problem;}return officialMaterials.scanProductSubset(req.params.id,req.body||{},actor(req));}));
+  router.post('/official-materials/catalogs/:id/scan',handle(req=>{if(req.body?.confirmed!==true){const problem=new Error('请确认开始受控扫描品牌材料总库');problem.status=400;throw problem;}return dispatcher.enqueue('official_material_catalog_scan',{catalog_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req));}));
+  router.post('/official-materials/catalogs/:id/product-subset-scan',handle(req=>{if(req.body?.confirmed!==true){const problem=new Error('请确认受控读取产品关联材料页面');problem.status=400;throw problem;}return dispatcher.enqueue('official_material_product_subset_scan',{catalog_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req));}));
   router.get('/official-materials/scans',handle(req=>officialMaterials.listScans(req.query||{})));
   router.get('/official-materials/scans/:id',handle(req=>officialMaterials.getScan(req.params.id)));
   router.get('/official-materials/materials',handle(req=>officialMaterials.listMaterials(req.query||{})));
@@ -71,10 +62,10 @@ module.exports = function routes(db) {
   router.get('/official-materials/materials/:id',handle(req=>officialMaterials.getMaterial(req.params.id)));
   router.get('/official-materials/product-materials',handle(req=>officialMaterials.productMaterials(req.query||{})));
   router.get('/official-materials/onboarding/eligible-sources',handle(()=>materialOnboarding.eligibleSources()));
-  router.post('/official-materials/onboarding/prepare',handle(req=>materialOnboarding.prepare(req.body||{},actor(req))));
+  router.post('/official-materials/onboarding/prepare',handle(req=>dispatcher.enqueue('material_onboarding_prepare',{body:req.body||{},actor:actor(req)},actor(req))));
   router.post('/official-materials/onboarding/catalogs/:id/reject-sample',handle(req=>materialOnboarding.rejectSample(req.params.id,req.body||{},actor(req))));
-  router.post('/official-materials/onboarding/catalogs/:id/text-only-revision',handle(req=>materialOnboarding.createTextOnlyRevision(req.params.id,req.body||{},actor(req))));
-  router.post('/official-materials/onboarding/catalogs/:id/approve-and-scan',handle(req=>materialOnboarding.approveAndScan(req.params.id,req.body||{},actor(req))));
+  router.post('/official-materials/onboarding/catalogs/:id/text-only-revision',handle(req=>dispatcher.enqueue('material_onboarding_text_revision',{catalog_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req))));
+  router.post('/official-materials/onboarding/catalogs/:id/approve-and-scan',handle(req=>dispatcher.enqueue('material_onboarding_approve_scan',{catalog_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req))));
   router.post('/sources', handle(req => control.createSource(req.body || {}, actor(req))));
   router.put('/sources/:id', handle(req => control.updateSource(req.params.id, req.body || {})));
   router.post('/sources/:id/status', handle(req => control.changeSourceStatus(req.params.id, req.body || {}, actor(req))));
@@ -89,33 +80,33 @@ module.exports = function routes(db) {
   router.get('/site-rules/:id/sandbox-runs', handle(req => siteRules.listRuns(req.params.id)));
   router.post('/site-rules/:id/sandbox-runs', handle(req => {
     if(req.body?.confirmed!==true){const problem=new Error('请确认开始受控沙箱抽样');problem.status=400;throw problem;}
-    return siteRules.startSandbox(req.params.id,actor(req));
+    return dispatcher.enqueue('site_rule_sandbox',{rule_id:Number(req.params.id),actor:actor(req)},actor(req));
   }));
   router.post('/site-rules/:id/freeze', handle(req => siteRules.freeze(req.params.id,req.body || {},actor(req))));
   router.get('/site-cognition/workflows',handle(req=>cognition.list(req.query||{})));
   router.get('/site-cognition/workflows/:id',handle(req=>cognition.get(req.params.id)));
   router.post('/site-cognition/jobs/:id/start',handle(req=>{
     if(req.body?.confirmed!==true){const problem=new Error('请确认开始 AI 网站分析');problem.status=400;throw problem;}
-    return cognition.startForJob(req.params.id,actor(req));
+    return dispatcher.enqueue('site_cognition_start',{job_id:Number(req.params.id),actor:actor(req)},actor(req));
   }));
-  router.post('/site-cognition/workflows/:id/feedback',handle(req=>cognition.feedback(req.params.id,req.body||{},actor(req))));
+  router.post('/site-cognition/workflows/:id/feedback',handle(req=>dispatcher.enqueue('site_cognition_feedback',{workflow_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req))));
   router.post('/site-cognition/workflows/:id/retry',handle(req=>{
     if(req.body?.confirmed!==true){const problem=new Error('请确认重新尝试生成网站规则');problem.status=400;throw problem;}
-    return cognition.retryHandoff(req.params.id,actor(req));
+    return dispatcher.enqueue('site_cognition_retry',{workflow_id:Number(req.params.id),actor:actor(req)},actor(req));
   }));
   router.post('/site-cognition/workflows/:id/ai-budget',handle(req=>{
     if(req.body?.confirmed!==true){const problem=new Error('请确认提高本次 AI 分析额度');problem.status=400;throw problem;}
-    return cognition.approveAiBudget(req.params.id,req.body||{},actor(req));
+    return dispatcher.enqueue('site_cognition_ai_budget',{workflow_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req));
   }));
   router.get('/recovery/summary', handle(() => recovery.summary()));
   router.get('/recovery/attempts', handle(req => recovery.list(req.query)));
   router.get('/recovery/attempts/:id', handle(req => recovery.get(req.params.id)));
   router.post('/recovery/attempts/:id/feedback', handle(req => recovery.feedback(req.params.id, req.body || {}, actor(req))));
-  router.post('/recovery/attempts/:id/try-existing-data', handle(req => recovery.executeLocal(req.params.id, req.body || {}, actor(req))));
+  router.post('/recovery/attempts/:id/try-existing-data', handle(req => dispatcher.enqueue('recovery_try_existing_data',{attempt_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req))));
   router.post('/recovery/attempts/:id/system-review', handle(req => recovery.resolveSystemReview(req.params.id, req.body || {}, actor(req))));
   router.post('/recovery/attempts/:id/prepare-evidence', handle(req => recovery.prepareEvidence(req.params.id, req.body || {})));
-  router.post('/recovery/attempts/:id/acquire-evidence', handle(req => recovery.acquireEvidence(req.params.id, req.body || {}, actor(req))));
-  router.post('/recovery/attempts/:id/retry-plan', handle(req => recovery.retryPlan(req.params.id, req.body || {})));
+  router.post('/recovery/attempts/:id/acquire-evidence', handle(req => dispatcher.enqueue('recovery_acquire_evidence',{attempt_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req))));
+  router.post('/recovery/attempts/:id/retry-plan', handle(req => dispatcher.enqueue('recovery_retry_plan',{attempt_id:Number(req.params.id),body:req.body||{},actor:actor(req)},actor(req))));
   router.post('/recovery/attempts/:id/manual-takeover', handle(req => recovery.manualTakeover(req.params.id, req.body || {}, actor(req))));
   router.get('/jobs', handle(req => control.listJobs(req.query)));
   router.get('/jobs/:id/workbench',handle(async req=>{
@@ -156,7 +147,7 @@ module.exports = function routes(db) {
   router.post('/jobs/:id/cancel', handle(async req => {const stopped=await control.cancelJob(req.params.id);await cognition.stopForJob(req.params.id,actor(req));return stopped;}));
   router.post('/jobs/:id/recovery/shadow', handle(req => {
     if(req.body?.confirmed!==true){const problem=new Error('请确认生成历史失败任务的影子恢复建议');problem.status=400;throw problem;}
-    return runner.planHistoricalFailure(req.params.id,{enableShadow:req.body?.enable_shadow===true});
+    return dispatcher.enqueue('historical_failure_shadow',{job_id:Number(req.params.id),options:{enableShadow:req.body?.enable_shadow===true},actor:actor(req)},actor(req));
   }));
   router.get('/candidates', handle(req => control.listCandidates(req.query)));
   router.put('/candidates/classification', handle(req => control.reclassifyCandidates(req.body || {}, actor(req))));

@@ -41,8 +41,8 @@ test('deployment smoke command and every startup side-effect gate use smoke mode
   assert.match(workflow, /SwapFree:/);
   assert.match(workflow, /ionice -c2 -n7 nice -n 10 tar/);
   assert.match(appSource, /if \(isSmokeMode\(\)\).*background schedulers and workers are disabled/s);
-  assert.match(dbSource, /if \(!isSmokeMode\(\)\).*ensureAppTables/s);
-  assert.match(routeSource, /if\(!isSmokeMode\(\)\).*recoverInterrupted/s);
+  assert.match(dbSource, /if \(!isSmokeMode\(\) && isApiRole\(\)\).*ensureAppTables/s);
+  assert.doesNotMatch(routeSource, /recoverInterrupted\(/);
 });
 
 test('deployment stores database backups outside the application and strips legacy public copies', () => {

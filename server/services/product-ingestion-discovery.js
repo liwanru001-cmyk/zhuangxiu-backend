@@ -33,17 +33,20 @@ function adapterFor(key){const adapter=adapters[key];if(!adapter){const error=ne
 
 async function discoverProducts(scope,fetcher=fetchHtml,onProgress=async()=>{},options={}){
   const adapter=adapterFor(scope.adapter_key);
-  const queue=scope.seed_urls.map(url=>({url:canonical(url),priority:1000,origin:'seed'}));
-  const queued=new Set(queue.map(item=>item.url)),visited=[],products=new Set(),failures=[],pageProfiles=[];
-  const excluded={out_of_scope:0,unrelated:0};
-  const categoryEvidence=new Map(),productEvidence=new Map();
-  const evidenceSnapshots=[];
-  let pageLimitReached=false,attempted=0,possibleDynamicShells=0,sitemapSummary=null;
+  const checkpoint=options.checkpoint&&options.checkpoint.version===1?options.checkpoint:null;
+  const queue=checkpoint?.queue||scope.seed_urls.map(url=>({url:canonical(url),priority:1000,origin:'seed'}));
+  const queued=new Set(checkpoint?.queued||queue.map(item=>item.url)),visited=checkpoint?.visited||[],products=new Set(checkpoint?.products||[]),failures=checkpoint?.failures||[],pageProfiles=checkpoint?.page_profiles||[];
+  const excluded=checkpoint?.excluded||{out_of_scope:0,unrelated:0};
+  const categoryEvidence=new Map((checkpoint?.category_evidence||[]).map(([url,values])=>[url,new Map(values)])),productEvidence=new Map(checkpoint?.product_evidence||[]);
+  const evidenceSnapshots=checkpoint?.evidence_snapshots||[];
+  let pageLimitReached=Boolean(checkpoint?.page_limit_reached),attempted=Number(checkpoint?.attempted||0),possibleDynamicShells=Number(checkpoint?.possible_dynamic_shells||0),sitemapSummary=checkpoint?.sitemap_summary||null,sitemapInitialized=Boolean(checkpoint?.sitemap_initialized);
   const enqueue=(raw,priority,origin)=>{const normalized=canonical(raw);if(queued.has(normalized))return false;queued.add(normalized);queue.push({url:normalized,priority,origin});return true;};
   const next=()=>{queue.sort((a,b)=>b.priority-a.priority);return queue.shift();};
   const addProduct=(raw,assessment,origin)=>{const normalized=canonical(raw);products.add(normalized);productEvidence.set(normalized,{score:assessment?.score||0,evidence:assessment?.evidence||[],origin});};
+  const durableCheckpoint=()=>({version:1,mode:'generic',queue,queued:[...queued],visited,products:[...products],failures,page_profiles:pageProfiles,excluded,category_evidence:[...categoryEvidence].map(([url,values])=>[url,[...values]]),product_evidence:[...productEvidence],evidence_snapshots:evidenceSnapshots,page_limit_reached:pageLimitReached,attempted,possible_dynamic_shells:possibleDynamicShells,sitemap_summary:sitemapSummary,sitemap_initialized:sitemapInitialized});
+  const progress=()=>onProgress({pages_scanned:visited.length,pages_attempted:attempted,products_found:products.size,failures:failures.length,checkpoint:durableCheckpoint()});
 
-  if(typeof options.sitemapDiscoverer==='function'){
+  if(!sitemapInitialized&&typeof options.sitemapDiscoverer==='function'){
     try{
       const sitemap=await options.sitemapDiscoverer(scope);sitemapSummary=sitemap.summary;
       for(const raw of sitemap.urls||[]){
@@ -53,21 +56,22 @@ async function discoverProducts(scope,fetcher=fetchHtml,onProgress=async()=>{},o
         else if(adapter.isDirectory(url)&&attempted+queue.length<scope.max_pages)enqueue(normalized,directory.score,'sitemap');
       }
     }catch(error){sitemapSummary={files_scanned:0,urls_found:0,failures:[{code:error.code||'SITEMAP_DISCOVERY_FAILED',message:String(error.message||'Sitemap \u53d1\u73b0\u5931\u8d25').slice(0,300)}]};}
+    sitemapInitialized=true;await progress();
   }
 
   while(queue.length&&attempted<scope.max_pages&&products.size<scope.max_products){
     const queuedPage=next(),pageUrl=queuedPage.url;attempted+=1;let page;
     try{page=await fetcher(adapter.contentUrl(pageUrl),scope);}
-    catch(error){if(['JOB_NOT_EXECUTABLE','JOB_INTERRUPTED'].includes(error?.code))throw error;failures.push({stage:'fetch',code:error?.code||'PAGE_FETCH_FAILED',url:pageUrl,status:error?.response?.status||null,message:fetchFailure(error),outcome:classifyIngestionOutcome(error,{stage:'url_discovery'})});await onProgress({pages_scanned:visited.length,pages_attempted:attempted,products_found:products.size,failures:failures.length});continue;}
+    catch(error){if(['JOB_NOT_EXECUTABLE','JOB_INTERRUPTED'].includes(error?.code))throw error;failures.push({stage:'fetch',code:error?.code||'PAGE_FETCH_FAILED',url:pageUrl,status:error?.response?.status||null,message:fetchFailure(error),outcome:classifyIngestionOutcome(error,{stage:'url_discovery'})});await progress();continue;}
     visited.push(canonical(pageUrl));
     if(evidenceSnapshots.length<5){
       const html=String(page.html||'');
       evidenceSnapshots.push({url:page.url,status:Number(page.status||200),content_type:page.contentType||'text/html',content:html.slice(0,131072),truncated:html.length>131072});
     }
     const profile=analyzePage(page.html,page.url,page.status||200);pageProfiles.push(profile);
-    if(profile.obstacle.blocked){failures.push({stage:'access',code:profile.obstacle.code,url:page.url,status:page.status||null,message:profile.obstacle.message,evidence:profile.obstacle.evidence,outcome:classifyIngestionOutcome({...profile.obstacle,http_status:page.status},{stage:'url_discovery'})});await onProgress({pages_scanned:visited.length,pages_attempted:attempted,products_found:products.size,failures:failures.length});continue;}
+    if(profile.obstacle.blocked){failures.push({stage:'access',code:profile.obstacle.code,url:page.url,status:page.status||null,message:profile.obstacle.message,evidence:profile.obstacle.evidence,outcome:classifyIngestionOutcome({...profile.obstacle,http_status:page.status},{stage:'url_discovery'})});await progress();continue;}
     const pageAssessment=assessProductPage(page.html,page.url);
-    if(pageAssessment.is_product){addProduct(page.url,pageAssessment,'page_content');await onProgress({pages_scanned:visited.length,pages_attempted:attempted,products_found:products.size,failures:failures.length});continue;}
+    if(pageAssessment.is_product){addProduct(page.url,pageAssessment,'page_content');await progress();continue;}
     const links=pageLinks(page.html,page.url);
     if(!links.length&&/<script\b/i.test(String(page.html||'')))possibleDynamicShells+=1;
     const sourceCategory=adapter.category(pageUrl,page.html);
@@ -78,7 +82,7 @@ async function discoverProducts(scope,fetcher=fetchHtml,onProgress=async()=>{},o
       else if(adapter.isDirectory(allowed)&&!queued.has(normalized)){if(attempted+queue.length<scope.max_pages)enqueue(normalized,directory.score,'html_link');else pageLimitReached=true;}
       else excluded.unrelated+=1;
     }
-    await onProgress({pages_scanned:visited.length,pages_attempted:attempted,products_found:products.size,failures:failures.length});
+    await progress();
   }
   if(!visited.length&&failures.length){const error=new Error(`\u5b98\u7f51\u5165\u53e3\u65e0\u6cd5\u5206\u6790\uff1a${failures[0].message}`);error.code=failures[0].code;throw error;}
   const noProductMessage=possibleDynamicShells?`\u5df2\u5206\u6790 ${visited.length} \u4e2a\u9875\u9762\uff0c\u672a\u53d1\u73b0\u53ef\u786e\u8ba4\u7684\u4ea7\u54c1\u8be6\u60c5\u9875\uff1b${possibleDynamicShells} \u4e2a\u9875\u9762\u53ef\u80fd\u9700\u8981\u52a8\u6001\u6e32\u67d3`:`\u5df2\u5206\u6790 ${visited.length} \u4e2a\u9875\u9762\uff0c\u4f46\u672a\u53d1\u73b0\u8fbe\u5230\u8bc1\u636e\u9608\u503c\u7684\u4ea7\u54c1\u8be6\u60c5\u9875`;

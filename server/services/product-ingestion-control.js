@@ -436,7 +436,7 @@ function createControl(db) {
           const previous=parseJsonValue(candidate.classification_override)||parseJsonValue(candidate.classification_suggestion)||{};
           const override={product_group:productGroup,product_type:productType,method:'manual',updated_by:String(actor).slice(0,80),updated_at:new Date().toISOString()};
           result.generatedFields.push({path:'classification',rule:'manual_override',value:`${productGroup}/${productType}`});
-          await conn.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,classification_override=?,validation_status='valid',validation_issues='[]',review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[JSON.stringify(result.payload),JSON.stringify(result.generatedFields),JSON.stringify(override),candidateId]);
+          await conn.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,classification_override=?,validation_status='valid',validation_issues='[]',review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,manual_revision=manual_revision+1 WHERE id=?`,[JSON.stringify(result.payload),JSON.stringify(result.generatedFields),JSON.stringify(override),candidateId]);
           await conn.query('DELETE FROM product_ingestion_candidate_categories WHERE candidate_id=?',[candidateId]);
           await conn.query(`INSERT INTO product_ingestion_candidate_categories (candidate_id,category_id,assigned_by,assigned_at,assignment_type) SELECT ?,id,?,NOW(),'manual' FROM public_product_categories WHERE category_code=? AND status='active' LIMIT 1`,[candidateId,String(actor).slice(0,80),productType]);
           await conn.query(`INSERT INTO product_ingestion_candidate_classification_changes (candidate_id,previous_product_group,previous_product_type,new_product_group,new_product_type,changed_by,changed_at) VALUES (?,?,?,?,?,?,NOW())`,[candidateId,previous.product_group||null,previous.product_type||null,productGroup,productType,String(actor).slice(0,80)]);
@@ -460,11 +460,12 @@ function createControl(db) {
           if(!candidate.raw_html)fail('候选缺少原始页面，无法重建产品结构',409);
           const result=extractProduct(Buffer.from(candidate.raw_html).toString('utf8'),productType,candidate.source_url),override={product_group:productGroup,product_type:productType,method:'manual',updated_by:String(actor).slice(0,80),updated_at:new Date().toISOString()};
           result.generatedFields.push({path:'classification',rule:'manual_override',value:`${productGroup}/${productType}`});
-          await conn.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,classification_override=?,validation_status='valid',validation_issues='[]',review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[JSON.stringify(result.payload),JSON.stringify(result.generatedFields),JSON.stringify(override),candidateId]);
+          await conn.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,classification_override=?,validation_status='valid',validation_issues='[]',review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,manual_revision=manual_revision+1 WHERE id=?`,[JSON.stringify(result.payload),JSON.stringify(result.generatedFields),JSON.stringify(override),candidateId]);
           await conn.query(`INSERT INTO product_ingestion_candidate_classification_changes (candidate_id,previous_product_group,previous_product_type,new_product_group,new_product_type,changed_by,changed_at) VALUES (?,?,?,?,?,?,NOW())`,[candidateId,previous.product_group||null,previous.product_type||null,productGroup,productType,String(actor).slice(0,80)]);classificationUpdated=true;
         }
         await conn.query('DELETE FROM product_ingestion_candidate_categories WHERE candidate_id=?',[candidateId]);
         for(const categoryId of categoryIds)await conn.query(`INSERT INTO product_ingestion_candidate_categories (candidate_id,category_id,assigned_by,assigned_at,assignment_type) VALUES (?,?,?,NOW(),'manual')`,[candidateId,categoryId,String(actor).slice(0,80)]);
+        if(!classificationUpdated)await conn.query('UPDATE product_ingestion_candidates SET manual_revision=manual_revision+1 WHERE id=?',[candidateId]);
         await conn.commit();transaction=false;return {id:candidateId,product_group:productGroup,product_type:productType,category_ids:categoryIds,classification_updated:classificationUpdated,saved:true};
       }catch(error){if(transaction)await conn.rollback();throw error;}finally{if(conn!==db&&typeof conn.release==='function')conn.release();}
     },
@@ -482,7 +483,7 @@ function createControl(db) {
       payload.product_details=normalizeDetails(payload.product_details,payload.product_type);
       const generated=parseJsonList(candidate.generated_fields).filter(item=>!(item?.rule==='manual_configuration_images'&&item?.configuration_id===configurationId));
       generated.push({path:`product_details.configurations.${configurationId}.image_urls`,rule:'manual_configuration_images',configuration_id:configurationId,count:imageUrls.length,updated_by:String(actor).slice(0,80)});
-      await db.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL WHERE id=?`,[JSON.stringify(payload),JSON.stringify(generated),candidateId]);
+      await db.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,manual_revision=manual_revision+1 WHERE id=?`,[JSON.stringify(payload),JSON.stringify(generated),candidateId]);
       return {id:candidateId,configuration_id:configurationId,image_urls:imageUrls,image_url:imageUrls[0]||''};
     },
     async reviewCandidate(id, body, actor) {
@@ -495,7 +496,7 @@ function createControl(db) {
       if (rows[0].published_product_id) fail('已发布候选的审核结论不可修改', 409);
       if (action === 'approve' && rows[0].validation_status !== 'valid') fail('结构校验未通过的候选不能审核通过', 409);
       const reviewStatus = action === 'approve' ? 'approved' : 'rejected';
-      await db.query('UPDATE product_ingestion_candidates SET review_status=?,review_note=?,reviewed_by=?,reviewed_at=NOW() WHERE id=?', [reviewStatus,note || null,actor,candidateId]);
+      await db.query('UPDATE product_ingestion_candidates SET review_status=?,review_note=?,reviewed_by=?,reviewed_at=NOW(),manual_revision=manual_revision+1 WHERE id=?', [reviewStatus,note || null,actor,candidateId]);
       return { id:candidateId,review_status:reviewStatus,review_note:note };
     },
   };

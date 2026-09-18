@@ -222,6 +222,7 @@ test('candidate classification and standard categories save in one transaction',
     if(sql.startsWith('SELECT id FROM public_product_categories'))return [[{id:7},{id:8}]];
     if(sql.startsWith('DELETE FROM product_ingestion_candidate_categories'))return [{affectedRows:1}];
     if(sql.startsWith('INSERT INTO product_ingestion_candidate_categories'))return [{affectedRows:1}];
+    if(sql.startsWith('UPDATE product_ingestion_candidates SET manual_revision='))return [{affectedRows:1}];
     throw new Error(`Unexpected query: ${sql}`);
   }};
   const result=await createControl({getConnection:async()=>conn}).saveCandidateClassification(9,{product_group:'soft_furnishings',product_type:'furniture',category_ids:[7,8]},'admin');

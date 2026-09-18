@@ -1,0 +1,18 @@
+[Unit]
+Description=Yinnkhome ingestion worker database SSH tunnel
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/ssh -NT -i /root/.ssh/ingestion-db-tunnel -o IdentitiesOnly=yes -o BatchMode=yes -o ExitOnForwardFailure=yes -o StrictHostKeyChecking=yes -o UpdateHostKeys=no -o ServerAliveInterval=15 -o ServerAliveCountMax=3 -L 127.0.0.1:13306:127.0.0.1:3306 ingestion-tunnel@115.29.194.46
+Restart=always
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=read-only
+
+[Install]
+WantedBy=multi-user.target

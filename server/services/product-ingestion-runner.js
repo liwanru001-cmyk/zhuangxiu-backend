@@ -129,6 +129,7 @@ function createRunner(db, dependencies = {}) {
       FROM product_ingestion_jobs job JOIN product_ingestion_sources source ON source.id=job.source_id WHERE job.id=?`, [id]);
     const row = rows[0]; if (!row) throw new Error('抓取任务不存在');
     row.scope_snapshot = typeof row.scope_snapshot === 'string' ? JSON.parse(row.scope_snapshot) : row.scope_snapshot;
+    row.discovery_checkpoint = parsed(row.discovery_checkpoint,null);
     return row;
   }
   async function saveCandidate(job, sourceUrl, page, result, error, classification = null) {
@@ -144,17 +145,28 @@ function createRunner(db, dependencies = {}) {
     await db.query(`INSERT INTO product_ingestion_candidates
       (job_id,source_id,source_url,source_url_hash,source_external_id,content_fingerprint,raw_http_status,raw_content_type,raw_html,extracted_payload,normalized_payload,product_schema_version,generated_fields,classification_suggestion,classification_override,validation_status,validation_issues,review_status)
       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,NULL,?,?, 'pending')
-      ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),content_fingerprint=VALUES(content_fingerprint),raw_http_status=VALUES(raw_http_status),raw_content_type=VALUES(raw_content_type),raw_html=VALUES(raw_html),extracted_payload=VALUES(extracted_payload),normalized_payload=VALUES(normalized_payload),product_schema_version=VALUES(product_schema_version),generated_fields=VALUES(generated_fields),classification_suggestion=VALUES(classification_suggestion),classification_override=NULL,validation_status=VALUES(validation_status),validation_issues=VALUES(validation_issues),review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL`,
+      ON DUPLICATE KEY UPDATE id=LAST_INSERT_ID(id),
+        content_fingerprint=IF(manual_revision=0 AND published_product_id IS NULL,VALUES(content_fingerprint),content_fingerprint),
+        raw_http_status=VALUES(raw_http_status),raw_content_type=VALUES(raw_content_type),raw_html=VALUES(raw_html),extracted_payload=VALUES(extracted_payload),
+        normalized_payload=IF(manual_revision=0 AND published_product_id IS NULL,VALUES(normalized_payload),normalized_payload),
+        product_schema_version=IF(manual_revision=0 AND published_product_id IS NULL,VALUES(product_schema_version),product_schema_version),
+        generated_fields=IF(manual_revision=0 AND published_product_id IS NULL,VALUES(generated_fields),generated_fields),
+        classification_suggestion=VALUES(classification_suggestion),
+        validation_status=IF(manual_revision=0 AND published_product_id IS NULL,VALUES(validation_status),validation_status),
+        validation_issues=IF(manual_revision=0 AND published_product_id IS NULL,VALUES(validation_issues),validation_issues)`,
       [job.id, job.source_id, sourceUrl, digest(sourceUrl), externalId == null ? null : String(externalId).slice(0,160),
         fingerprint, page?.status || error?.response?.status || null, page?.contentType || error?.response?.headers?.['content-type'] || null,
         raw, json(extracted), json(normalized), Number(normalized?.product_schema_version||1), json(generated), json(classification), error ? 'invalid' : 'valid', json(issues)]);
     const [rows]=await db.query('SELECT id FROM product_ingestion_candidates WHERE job_id=? AND source_url_hash=?',[job.id,digest(sourceUrl)]);
     const storedId=Number(rows[0]?.id || 0);
     if(storedId){
-      await db.query('DELETE FROM product_ingestion_candidate_categories WHERE candidate_id=?',[storedId]);
+      await db.query("DELETE FROM product_ingestion_candidate_categories WHERE candidate_id=? AND assignment_type='system'",[storedId]);
       if(classification?.product_type){
         await db.query(`INSERT INTO product_ingestion_candidate_categories (candidate_id,category_id,assigned_by,assigned_at,assignment_type)
-          SELECT ?,id,'system:auto',NOW(),'system' FROM public_product_categories WHERE category_code=? AND status='active' LIMIT 1`,[storedId,classification.product_type]);
+          SELECT ?,category.id,'system:auto',NOW(),'system' FROM public_product_categories category
+          WHERE category.category_code=? AND category.status='active'
+            AND NOT EXISTS (SELECT 1 FROM product_ingestion_candidate_categories existing WHERE existing.candidate_id=? AND existing.assignment_type='manual')
+          LIMIT 1`,[storedId,classification.product_type,storedId]);
       }
     }
     return storedId;
@@ -331,7 +343,7 @@ function createRunner(db, dependencies = {}) {
       if (!job.scope_snapshot || job.status !== 'discovery_approved' || job.scope_snapshot.job_mode !== 'brand_scan') throw new Error('任务没有可执行的官网分析授权快照');
       const scope = {...job.scope_snapshot,job_id:Number(id),job_status:'discovering',source_status:job.source_status,policy_db:db};
       scope.policy_authorizer=policyAuthorizer(db,job.source_id,Number(id));
-      scope.page_quota={used:0,limit:scope.max_pages};
+      scope.page_quota={used:Number(job.discovery_checkpoint?.attempted||job.discovery_checkpoint?.visited?.length||0),limit:scope.max_pages};
       if (job.source_status !== 'active') throw new Error('抓取来源已暂停，不能分析官网');
       const frozenRules=job.frozen_site_rule_id?await frozenRuleSetLoader(db,job.source_id):[];
       const frozenRule=frozenRules[0]||null;
@@ -339,14 +351,14 @@ function createRunner(db, dependencies = {}) {
         await dependencies.startSiteCognition(Number(id));
         return;
       }
-      const [claimed] = await db.query(`UPDATE product_ingestion_jobs SET status='discovering',started_at=NOW(),finished_at=NULL,last_error=NULL,failure_code=NULL,current_stage='url_discovery',current_url=NULL,heartbeat_at=NOW(),checkpoint_index=0 WHERE id=? AND status='discovery_approved'`, [id]);
+      const [claimed] = await db.query(`UPDATE product_ingestion_jobs SET status='discovering',started_at=COALESCE(started_at,NOW()),finished_at=NULL,last_error=NULL,failure_code=NULL,current_stage='url_discovery',current_url=NULL,heartbeat_at=NOW() WHERE id=? AND status='discovery_approved'`, [id]);
       if (!claimed.affectedRows) return;
       if(frozenRule)await fullCrawlStarted(Number(id));
       const activeDiscoverer=frozenRule?ruleDiscoverer:productDiscoverer;
       const result = await activeDiscoverer(scope, ...(frozenRule?[frozenRule,pageFetcher]:[pageFetcher]), async progress => {
-        const [updated]=await db.query(`UPDATE product_ingestion_jobs SET pages_fetched=?,checkpoint_index=?,heartbeat_at=NOW() WHERE id=? AND status='discovering'`, [progress.pages_scanned,progress.pages_scanned,id]);
+        const [updated]=await db.query(`UPDATE product_ingestion_jobs SET pages_fetched=?,checkpoint_index=?,discovery_checkpoint=?,heartbeat_at=NOW() WHERE id=? AND status='discovering'`, [progress.pages_scanned,progress.pages_scanned,json(progress.checkpoint),id]);
         if(!updated.affectedRows){const problem=new Error('任务已被中止，停止继续发现页面');problem.code='JOB_INTERRUPTED';throw problem;}
-      }, {sitemapDiscoverer});
+      }, {sitemapDiscoverer,checkpoint:job.discovery_checkpoint});
       await db.query('DELETE FROM product_ingestion_discovered_product_categories WHERE job_id=?', [id]);
       for (const record of result.records || []) {
         for (const category of record.source_categories || []) {
@@ -380,7 +392,7 @@ function createRunner(db, dependencies = {}) {
           discovery_entry_urls:job.scope_snapshot.seed_urls,discovery_summary:result.summary,
           product_detection:detection,max_pages:executionPages,network_request_limit:Math.min(Number(job.scope_snapshot.max_pages||executionPages),Math.max(executionPages,result.urls.length*2)),
           ...(frozenRule?{site_rule_id:Number(frozenRule.id),site_rule_ids:frozenRules.map(rule=>Number(rule.id)),site_rule_version:Number(frozenRule.version_number),site_rule_hash:frozenRule.config_hash}: {})};
-        await db.query(`UPDATE product_ingestion_jobs SET status='queued',scope_snapshot=?,discovered_urls=?,discovery_summary=?,pages_fetched=0,candidates_found=0,accepted_count=0,rejected_count=0,checkpoint_index=0,current_stage='extraction',current_url=NULL,heartbeat_at=NOW(),finished_at=NULL,last_error=NULL,failure_code=NULL WHERE id=? AND status='discovering'`,
+        await db.query(`UPDATE product_ingestion_jobs SET status='queued',scope_snapshot=?,discovered_urls=?,discovery_summary=?,discovery_checkpoint=NULL,pages_fetched=0,candidates_found=0,accepted_count=0,rejected_count=0,checkpoint_index=0,current_stage='extraction',current_url=NULL,heartbeat_at=NOW(),finished_at=NULL,last_error=NULL,failure_code=NULL WHERE id=? AND status='discovering'`,
           [JSON.stringify(executionScope),JSON.stringify(result.urls),JSON.stringify(result.summary),id]);
         continueToExtraction=true;
       }

@@ -4,6 +4,7 @@ const path = require('path');
 require('dotenv').config();
 const { workItemTemplates } = require('./workItemTemplates');
 const { isSmokeMode } = require('../services/startup-mode');
+const { isApiRole } = require('../services/runtime-role');
 
 const progressStageNames = {
   1: '设计准备',
@@ -67,7 +68,7 @@ pool.schemaReady = pool.getConnection()
     try { await require('../services/independent-project-schema').assertSchema(conn); }
     finally { conn.release(); }
     console.log('✅ MySQL connected:', process.env.DB_NAME);
-    if (!isSmokeMode()) {
+    if (!isSmokeMode() && isApiRole()) {
       ensureAppTables().catch(err => {
         console.error('❌ App table init failed:', err.message);
       });

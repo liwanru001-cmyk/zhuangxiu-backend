@@ -3,6 +3,8 @@ const cors = require('cors');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
+const { assertRuntimeRole, API_ROLE } = require('./services/runtime-role');
+assertRuntimeRole(API_ROLE);
 
 const adminAuthentication = require('./services/admin-auth');
 const { isSmokeMode } = require('./services/startup-mode');

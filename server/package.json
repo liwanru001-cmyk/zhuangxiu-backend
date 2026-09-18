@@ -5,6 +5,7 @@
   "main": "app.js",
   "scripts": {
     "start": "node app.js",
+    "start:ingestion-worker": "node product-ingestion-worker.js",
     "dev": "nodemon app.js",
     "preview:product-ingestion": "node scripts/product-ingestion-preview-server.js",
     "replay:ingestion-recovery": "node scripts/replay-ingestion-recovery-challenges.js",

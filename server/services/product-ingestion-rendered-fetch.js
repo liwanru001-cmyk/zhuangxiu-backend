@@ -20,6 +20,10 @@ function compactJson(value,depth=0){if(depth>5)return '[truncated]';if(value==nu
 function jsonArrayCandidates(value,path='',depth=0,result=[]){if(depth>6||value==null)return result;if(Array.isArray(value)){if(value.length&&value.every(item=>item&&typeof item==='object'&&!Array.isArray(item)))result.push({path,count:value.length,sample_records:value.slice(0,5).map(item=>compactJson(item))});return result;}if(typeof value==='object')for(const [key,child] of Object.entries(value))jsonArrayCandidates(child,path?`${path}.${key}`:key,depth+1,result);return result;}
 
 async function renderHtml(raw,scope,options={}){
+  const {isIngestionWorkerRole}=require('./runtime-role');
+  if(process.env.NODE_ENV==='production'&&!isIngestionWorkerRole(options.env||process.env)){
+    const error=new Error('生产环境只允许独立抓取 Worker 启动 Chromium');error.code='INGESTION_CHROMIUM_ROLE_FORBIDDEN';throw error;
+  }
   const path=options.executablePath||executablePath(options.env);if(!path){const error=new Error('当前服务器没有配置受控 Chromium 渲染器');error.code='JS_RENDERER_UNAVAILABLE';throw error;}
   let chromium=options.chromium;if(!chromium){try{chromium=require('playwright-core').chromium;}catch{const error=new Error('当前服务器没有可用的 Chromium 渲染运行时');error.code='JS_RENDERER_UNAVAILABLE';throw error;}}
   const browser=await chromium.launch({headless:true,executablePath:path,args:['--disable-background-networking','--disable-component-update','--disable-sync','--no-first-run']});

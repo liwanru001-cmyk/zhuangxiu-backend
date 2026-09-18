@@ -1,0 +1,143 @@
+name: Deploy Product Ingestion Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server/**'
+      - '.github/workflows/deploy-product-ingestion-worker.yml'
+  workflow_dispatch:
+
+concurrency:
+  group: production-product-ingestion-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      WORKER_HOST: 120.79.135.88
+      WORKER_APP_DIR: /opt/yinnkhome-ingestion-worker
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: server/package-lock.json
+
+      - name: Test and package worker
+        run: |
+          set -euo pipefail
+          npm ci --no-audit --no-fund --prefix server
+          npm test --prefix server
+          node server/scripts/create-release-manifest.js --output server/release-manifest.json
+          npm prune --omit=dev --no-audit --no-fund --prefix server
+          server/node_modules/.bin/playwright-core install --only-shell chromium
+          browser_root="${PLAYWRIGHT_BROWSERS_PATH:-$HOME/.cache/ms-playwright}"
+          browser_executable="$(find "$browser_root" -type f -name chrome-headless-shell -perm -111 | sort | tail -1)"
+          test -x "$browser_executable"
+          tar -C "$(dirname "$browser_executable")" -czf /tmp/yinnkhome-worker-chromium.tar.gz .
+          tar -C server -czf /tmp/yinnkhome-ingestion-worker.tar.gz \
+            --exclude='./.env' --exclude='./public' --exclude='./uploads' \
+            --exclude='./logs' --exclude='./storage' \
+            product-ingestion-worker.js ecosystem.worker.config.cjs \
+            package.json package-lock.json node_modules release-manifest.json \
+            config controllers middleware migrations routes scripts services utils
+
+      - name: Upload worker release
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          install -m 700 -d ~/.ssh
+          printf '%s\n' "$SSH_PRIVATE_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          remote="${SSH_USER}@${WORKER_HOST}"
+          staging="${WORKER_APP_DIR}.deploy-tmp"
+          ssh "${ssh_opts[@]}" "$remote" "rm -rf '$staging' && install -d -m 0755 '$staging'"
+          ssh "${ssh_opts[@]}" "$remote" "tar -xzf - -C '$staging'" < /tmp/yinnkhome-ingestion-worker.tar.gz
+          scp -i ~/.ssh/deploy_key -P "$ssh_port" -o StrictHostKeyChecking=accept-new \
+            /tmp/yinnkhome-worker-chromium.tar.gz "$remote:/tmp/yinnkhome-worker-chromium.tar.gz"
+
+      - name: Activate worker release
+        env:
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SSH_PORT: ${{ secrets.SSH_PORT }}
+          RELEASE_SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          ssh_port="${SSH_PORT:-22}"
+          ssh_opts=(-i ~/.ssh/deploy_key -p "$ssh_port" -o BatchMode=yes -o ConnectTimeout=10 -o StrictHostKeyChecking=accept-new -o ServerAliveInterval=15)
+          remote="${SSH_USER}@${WORKER_HOST}"
+          ssh "${ssh_opts[@]}" "$remote" \
+            "WORKER_APP_DIR='$WORKER_APP_DIR' RELEASE_SHA='$RELEASE_SHA' bash -s" <<'REMOTE'
+          set -euo pipefail
+          staging="${WORKER_APP_DIR}.deploy-tmp"
+          backup="${WORKER_APP_DIR}.backup.$(date +%Y%m%d_%H%M%S)"
+          test -d "$staging/node_modules"
+          test "$(node -p "require('$staging/release-manifest.json').release_sha")" = "$RELEASE_SHA"
+          nice -n 10 npm ls --omit=dev --depth=0 --prefix "$staging"
+          browser_archive='/tmp/yinnkhome-worker-chromium.tar.gz'
+          test -s "$browser_archive"
+          browser_sha="$(sha256sum "$browser_archive" | awk '{print $1}')"
+          browser_release="/opt/yinnkhome-worker-chromium/$browser_sha"
+          install -d -m 0755 "$browser_release"
+          browser_executable="$(find "$browser_release" -type f -name chrome-headless-shell -perm -111 | head -1)"
+          if [ -z "$browser_executable" ]; then
+            tar -xzf "$browser_archive" -C "$browser_release"
+            browser_executable="$(find "$browser_release" -type f -name chrome-headless-shell -perm -111 | head -1)"
+          fi
+          test -x "$browser_executable"
+          ln -sfn "$browser_executable" /usr/local/bin/ingestion-chromium
+          if [ -f "$WORKER_APP_DIR/.env" ]; then cp -p "$WORKER_APP_DIR/.env" "$staging/.env"; fi
+          if [ -d "$WORKER_APP_DIR/logs" ]; then cp -a "$WORKER_APP_DIR/logs" "$staging/logs"; fi
+          test -f "$staging/.env"
+          grep -q "^APP_RUNTIME_ROLE=['\"]\{0,1\}ingestion-worker" "$staging/.env"
+          grep -q "^INGESTION_GLOBAL_CONCURRENCY=['\"]\{0,1\}1" "$staging/.env"
+          set -a; . "$staging/.env"; set +a
+          test "${DB_HOST:-}" = '127.0.0.1'
+          test "${DB_PORT:-}" = '13306'
+          test "${INGESTION_CHROME_PATH:-}" = '/usr/local/bin/ingestion-chromium'
+          test -x "$INGESTION_CHROME_PATH"
+          test "${ALIBABA_CLOUD_ECS_INSTANCE_ID:-}" = 'i-wz9iovg5qn2n2hc6yvvu'
+          cd "$staging"
+          timeout 120s npm run check:production-contract -- --connectivity
+          schema_ready='false'
+          for attempt in $(seq 1 120); do
+            if node -e "require('./config/db').query('SELECT 1 FROM product_ingestion_workers LIMIT 1').then(()=>require('./config/db').end()).then(()=>process.exit(0)).catch(()=>process.exit(1))"; then
+              schema_ready='true'; break
+            fi
+            sleep 5
+          done
+          test "$schema_ready" = 'true'
+          if [ -d "$WORKER_APP_DIR" ]; then mv "$WORKER_APP_DIR" "$backup"; fi
+          mv "$staging" "$WORKER_APP_DIR"
+          cd "$WORKER_APP_DIR"
+          mkdir -p logs
+          export RELEASE_SHA
+          pm2 delete yinnkhome-ingestion-worker >/dev/null 2>&1 || true
+          pm2 startOrReload ecosystem.worker.config.cjs --env production --update-env
+          pm2 save
+          for attempt in $(seq 1 30); do
+            status="$(pm2 jlist | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{const p=JSON.parse(s).find(x=>x.name==='yinnkhome-ingestion-worker');process.stdout.write(p?.pm2_env?.status||'')})")"
+            [ "$status" = 'online' ] && break
+            sleep 2
+          done
+          test "$status" = 'online'
+          set -a; . ./.env; set +a
+          node - <<'NODE'
+          const db=require('./config/db');
+          db.query("SELECT status,TIMESTAMPDIFF(SECOND,heartbeat_at,NOW()) age FROM product_ingestion_workers WHERE instance_id=? ORDER BY heartbeat_at DESC LIMIT 1",[process.env.ALIBABA_CLOUD_ECS_INSTANCE_ID])
+            .then(([rows])=>{if(!rows[0]||rows[0].status!=='online'||Number(rows[0].age)>60)throw new Error('worker heartbeat unavailable');})
+            .finally(()=>db.end()).then(()=>process.exit(0)).catch(error=>{console.error(error.message);process.exit(1);});
+          NODE
+          for old in "${WORKER_APP_DIR}.backup."*; do [ -d "$old" ] && [ "$old" != "$backup" ] && rm -rf -- "$old" || true; done
+          REMOTE

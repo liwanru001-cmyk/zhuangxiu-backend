@@ -88,14 +88,15 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
     const urls=found.records.map(item=>item.url),coverageStatus=found.enumeration_complete?'complete':urls.length?'partial':'sample_only';
     return {urls,records:found.records.map(item=>({url:item.url,source_categories:[],detection:{origin:'public_json_api',score:100,evidence:['frozen_site_rule',`rule:${rule.id}`,'public_json_api']}})),evidence_snapshots:[],summary:{pages_scanned:found.pages_scanned,pages_attempted:found.pages_scanned,directory_urls:[config.public_json_api.endpoint_url],products_found:urls.length,result:!urls.length?'no_products_found':found.failures.length?'partial':'success',message:!urls.length?'公开 JSON 商品接口没有返回产品记录':found.enumeration_complete?`公开 JSON 商品接口完成发现，识别到 ${urls.length} 个产品`:`公开 JSON 商品接口已识别 ${urls.length} 个产品，但范围尚未完整`,failures:found.failures,sitemap:null,rule_execution:{mode:'frozen_site_rule_public_json_api',rule_id:rule.id,rule_version:Number(rule.version_number),config_hash:rule.config_hash||configHash(config),generic_score_bypassed:true},pipeline:{source_analysis:{status:'completed',method:'public_json_api'},url_discovery:{status:'completed',urls_found:urls.length},product_detection:{status:urls.length?'completed':'needs_attention',products_found:urls.length},extraction:{status:urls.length?'pending':'not_started'},field_mapping:{status:urls.length?'pending':'not_started'},candidate_ingestion:{status:urls.length?'pending':'not_started'}},discovery_coverage:{status:coverageStatus,enumeration_complete:found.enumeration_complete,sample_seed_urls:0,sitemap_product_urls:0,listing_pages_scanned:found.pages_scanned,listing_product_urls:urls.length,entry_product_urls:0,non_sample_product_urls:urls.length},capped_pages:!found.enumeration_complete&&found.pages_scanned>=Number(scope.max_pages||0),capped_products:urls.length>=Number(scope.max_products||500),excluded:{out_of_scope:0,unrelated:0}}};
   }
-  const queue = [];
-  const queued = new Set();
-  const visited = new Set();
-  const products = new Set();
-  const productCandidates = new Set();
-  const failures = [];
-  const detections = new Map();
-  const origins = new Map();
+  const checkpoint=options.checkpoint&&options.checkpoint.version===1&&options.checkpoint.mode==='frozen'?options.checkpoint:null;
+  const queue = checkpoint?.queue||[];
+  const queued = new Set(checkpoint?.queued||[]);
+  const visited = new Set(checkpoint?.visited||[]);
+  const products = new Set(checkpoint?.products||[]);
+  const productCandidates = new Set(checkpoint?.product_candidates||[]);
+  const failures = checkpoint?.failures||[];
+  const detections = new Map(checkpoint?.detections||[]);
+  const origins = new Map((checkpoint?.origins||[]).map(([name,values])=>[name,new Set(values)]));
   const enqueue = raw => {
     const url = allowedUrl(raw, scope);
     if (!url || queued.has(url)) return;
@@ -116,11 +117,13 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
   // Sample product URLs prove extraction, not inventory completeness. Production
   // discovery starts from the task's authorized entry points and the rule base URL.
   const discoveryEntries=unique([...(scope.discovery_entry_urls||[]),...(scope.seed_urls||[]),config.scope.base_url]);
-  for (const entry of discoveryEntries) enqueue(entry);
-  for (const seed of config.discovery.seed_urls) accept(seed,'frozen_rule_sample_seed');
-  let sitemapSummary = null;
+  if(!checkpoint){for (const entry of discoveryEntries) enqueue(entry);for (const seed of config.discovery.seed_urls) accept(seed,'frozen_rule_sample_seed');}
+  let sitemapSummary = checkpoint?.sitemap_summary||null;
+  let sitemapInitialized=Boolean(checkpoint?.sitemap_initialized);
+  const durableCheckpoint=()=>({version:1,mode:'frozen',queue,queued:[...queued],visited:[...visited],products:[...products],product_candidates:[...productCandidates],failures,detections:[...detections],origins:[...origins].map(([name,values])=>[name,[...values]]),sitemap_summary:sitemapSummary,sitemap_initialized:sitemapInitialized});
+  const progress=()=>onProgress({pages_scanned:visited.size,pages_attempted:visited.size,products_found:products.size,failures:failures.length,rule_id:rule.id,checkpoint:durableCheckpoint()});
   const sitemapDiscoverer = options.sitemapDiscoverer || discoverSitemapUrls;
-  if (typeof sitemapDiscoverer === 'function') {
+  if (!sitemapInitialized && typeof sitemapDiscoverer === 'function') {
     try {
       const sitemap = await sitemapDiscoverer(scope);
       sitemapSummary = sitemap.summary || null;
@@ -132,6 +135,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
     } catch (problem) {
       failures.push({ stage:'sitemap', code:problem.code || 'SITEMAP_DISCOVERY_FAILED', message:String(problem.message || problem).slice(0, 300) });
     }
+    sitemapInitialized=true;await progress();
   }
 
   while (queue.length && visited.size < scope.max_pages && products.size < scope.max_products) {
@@ -153,7 +157,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
       if (['JOB_NOT_EXECUTABLE','JOB_INTERRUPTED'].includes(problem?.code)) throw problem;
       failures.push({ stage:'fetch', url, code:problem.code || 'PAGE_FETCH_FAILED', message:String(problem.message || problem).slice(0, 300) });
     }
-    await onProgress({ pages_scanned:visited.size, pages_attempted:visited.size, products_found:products.size, failures:failures.length, rule_id:rule.id });
+    await progress();
   }
 
   const urls = [...products];

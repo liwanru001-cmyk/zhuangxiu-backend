@@ -87,6 +87,7 @@ function createPublicProductTaxonomy(db) {
       const [candidateRows]=await conn.query('SELECT id,published_product_id FROM product_ingestion_candidates WHERE id=? FOR UPDATE',[candidateId]);if(!candidateRows[0])fail('候选不存在',404);if(candidateRows[0].published_product_id)fail('候选已经发布，请在正式产品中调整分类',409);
       await validateCategoryIds(conn,categoryIds);await conn.query('DELETE FROM product_ingestion_candidate_categories WHERE candidate_id=?',[candidateId]);
       for(const categoryId of categoryIds)await conn.query(`INSERT INTO product_ingestion_candidate_categories (candidate_id,category_id,assigned_by,assigned_at,assignment_type) VALUES (?,?,?,NOW(),'manual')`,[candidateId,categoryId,String(actor).slice(0,80)]);
+      await conn.query('UPDATE product_ingestion_candidates SET manual_revision=manual_revision+1 WHERE id=?',[candidateId]);
       if(transaction){await conn.commit();transaction=false;}
     }catch(error){if(transaction)await conn.rollback();throw error;}finally{if(conn!==db&&typeof conn.release==='function')conn.release();}
     return effectiveCandidateCategories(candidateId);

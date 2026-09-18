@@ -11,6 +11,7 @@ function environment(overrides = {}) {
   return {
     NODE_ENV: 'production',
     APP_RUNTIME_MODE: 'normal',
+    APP_RUNTIME_ROLE: 'api',
     PRODUCTION_NODE_MAJOR: '22',
     DB_HOST: 'db.internal',
     DB_USER: 'app',
@@ -34,7 +35,7 @@ function environment(overrides = {}) {
   };
 }
 
-const runtime = { nodeVersion: '22.18.0', checkFont: false, executable: value => value, chromiumExecutablePath: () => '/usr/bin/chromium' };
+const runtime = { nodeVersion: '22.18.0', checkFont: false, executable: value => value, chromiumExecutablePath: () => null };
 
 test('production contract accepts an explicit bounded runtime configuration', () => {
   const result = validateProductionContract(environment(), runtime);
@@ -46,13 +47,29 @@ test('production contract accepts an explicit bounded runtime configuration', ()
 test('production contract rejects missing services, version drift and unsafe fallback', () => {
   assert.throws(
     () => validateProductionContract(environment({
-      INGESTION_AI_API_KEY: '', PRESENTATION_V2_API_KEY: '', DASHSCOPE_API_KEY: '', PRESENTATION_AI_API_KEY: '',
       REDIS_URL: '', SMS_RATE_LIMIT_ALLOW_MEMORY_FALLBACK: 'true', INGESTION_GLOBAL_CONCURRENCY: '20',
-    }), { ...runtime, nodeVersion: '24.0.0', chromiumExecutablePath: () => null }),
+    }), { ...runtime, nodeVersion: '24.0.0' }),
     error => error.code === 'PRODUCTION_CONTRACT_INVALID'
       && error.message.includes('Node.js major must be 22')
-      && error.message.includes('Ingestion AI API key')
+      && error.message.includes('REDIS_URL')
       && error.message.includes('INGESTION_GLOBAL_CONCURRENCY')
+      && error.message.includes('memory fallback')
+  );
+});
+
+test('worker contract requires ingestion AI and Chromium but not API-only services', () => {
+  const worker = environment({
+    APP_RUNTIME_ROLE: 'ingestion-worker',
+    ADMIN_USERNAME: '', ADMIN_PASSWORD_HASH: '', REDIS_URL: '',
+    PRESENTATION_FC_MATCH: '', PRESENTATION_V2_FALLBACK_FONT: '',
+  });
+  const accepted = validateProductionContract(worker, { ...runtime, chromiumExecutablePath: () => '/usr/bin/chromium' });
+  assert.equal(accepted.runtime_role, 'ingestion-worker');
+  assert.equal(accepted.redis_protocol, null);
+  assert.throws(
+    () => validateProductionContract({ ...worker, INGESTION_AI_API_KEY: '' }, runtime),
+    error => error.code === 'PRODUCTION_CONTRACT_INVALID'
+      && error.message.includes('Ingestion AI API key')
       && error.message.includes('Chromium')
   );
 });
