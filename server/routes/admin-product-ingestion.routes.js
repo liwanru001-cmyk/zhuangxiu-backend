@@ -14,12 +14,13 @@ const { createMaterialOnboarding } = require('../services/product-ingestion-mate
 const { PRODUCT_SCHEMA_VERSION,FIELD_STATUSES,ASSET_ROLES,CORRECTION_ACTIONS,FIELD_REGISTRY,PRODUCT_DOCUMENT_V2_SCHEMA } = require('../services/product-schema-v2');
 const {createGlobalSlotManager}=require('../services/product-ingestion-global-slots');
 const {createWorkerDispatcher}=require('../services/product-ingestion-worker-dispatch');
+const {createWorkerMonitor}=require('../services/product-ingestion-worker-monitor');
 
 module.exports = function routes(db) {
   const executionDisabled=async()=>{const problem=new Error('抓取执行已迁移到独立 Worker');problem.code='INGESTION_EXECUTION_NOT_AVAILABLE_IN_API';problem.status=503;throw problem;};
   const noSchedule=()=>undefined;
   const globalSlots=createGlobalSlotManager(db);
-  const router = express.Router(), control = createControl(db), library = createPublicProductLibrary(db), taxonomy = createPublicProductTaxonomy(db), fieldReview=createFieldReview(db), siteRules=createSiteRuleControl(db,{fetchHtml:executionDisabled}), officialMaterials=createOfficialBrandMaterials(db), materialOnboarding=createMaterialOnboarding(db,{fetchHtml:executionDisabled,officialMaterials}), dispatcher=createWorkerDispatcher(db);
+  const router = express.Router(), control = createControl(db), library = createPublicProductLibrary(db), taxonomy = createPublicProductTaxonomy(db), fieldReview=createFieldReview(db), siteRules=createSiteRuleControl(db,{fetchHtml:executionDisabled}), officialMaterials=createOfficialBrandMaterials(db), materialOnboarding=createMaterialOnboarding(db,{fetchHtml:executionDisabled,officialMaterials}), dispatcher=createWorkerDispatcher(db), workerMonitor=createWorkerMonitor(db);
   let runner;
   const cognition=createSiteCognitionControl(db,{siteRules,fetchHtml:executionDisabled,renderedFetchHtml:executionDisabled,globalSlots,schedule:noSchedule,scheduleAt:noSchedule,onFullCrawlReady:noSchedule});
   runner=createRunner(db,{
@@ -42,7 +43,7 @@ module.exports = function routes(db) {
     }
   };
   router.get('/summary', handle(() => control.summary()));
-  router.get('/worker-status',handle(()=>dispatcher.status()));
+  router.get('/worker-status',handle(()=>workerMonitor.status()));
   router.get('/product-schema-v2',handle(()=>({schema_version:PRODUCT_SCHEMA_VERSION,field_statuses:FIELD_STATUSES,asset_roles:ASSET_ROLES,correction_actions:CORRECTION_ACTIONS,field_registry:FIELD_REGISTRY,json_schema:PRODUCT_DOCUMENT_V2_SCHEMA})));
   router.get('/sources', handle(() => control.listSources()));
   router.post('/official-materials/rules/validate',handle(req=>officialMaterials.validateRule(req.body?.rule||req.body||{})));

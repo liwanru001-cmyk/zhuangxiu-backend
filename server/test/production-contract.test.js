@@ -81,6 +81,17 @@ test('production contract requires complete OSS configuration only when enabled'
   );
 });
 
+test('worker OSS contract accepts an ECS RAM role without long-lived keys', () => {
+  const worker = environment({
+    APP_RUNTIME_ROLE: 'ingestion-worker', STORAGE_DRIVER: 'oss', OSS_REGION: 'oss-cn-shenzhen',
+    OSS_BUCKET: 'test-bucket', OSS_ACCESS_KEY_ID: '', OSS_ACCESS_KEY_SECRET: '',
+    OSS_RAM_ROLE_NAME: 'TestIngestionWorkerRole', ADMIN_USERNAME: '', ADMIN_PASSWORD_HASH: '', REDIS_URL: '',
+    PRESENTATION_FC_MATCH: '', PRESENTATION_V2_FALLBACK_FONT: '',
+  });
+  const accepted = validateProductionContract(worker, { ...runtime, chromiumExecutablePath: () => '/usr/bin/chromium' });
+  assert.equal(accepted.storage_driver, 'oss');
+});
+
 test('deployment enforces the production contract before migrations', () => {
   const workflow = fs.readFileSync(path.resolve(__dirname, '../../.github/workflows/deploy-backend.yml'), 'utf8');
   const contract = workflow.indexOf('npm run check:production-contract -- --connectivity');

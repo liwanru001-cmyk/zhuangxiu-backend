@@ -16,6 +16,7 @@ const { createSiteCognitionControl } = require('./services/product-ingestion-sit
 const { createOfficialBrandMaterials } = require('./services/official-brand-materials');
 const { createMaterialOnboarding } = require('./services/product-ingestion-material-onboarding');
 const { createWorkerDispatcher } = require('./services/product-ingestion-worker-dispatch');
+const { initializeEcsRamRoleCredentials } = require('./services/ecs-ram-role-credentials');
 
 assertRuntimeRole(INGESTION_WORKER_ROLE);
 
@@ -52,7 +53,9 @@ async function workerHeartbeat(status = 'online', lastError = null) {
        process_id=VALUES(process_id),version_sha=VALUES(version_sha),capabilities=VALUES(capabilities),
        heartbeat_at=NOW(),stopped_at=IF(VALUES(status)='stopped',NOW(),NULL),last_error=VALUES(last_error)`,
     [workerId, instanceId, os.hostname(), status, process.pid, releaseSha,
-      JSON.stringify({ chromium:true, site_cognition:true, discovery:true, extraction:true, ai_rules:true, max_workers:1 }),
+      JSON.stringify({ chromium:true, site_cognition:true, discovery:true, extraction:true, ai_rules:true, max_workers:1,
+        load_1m:Number(os.loadavg()[0].toFixed(2)),memory_available_mb:Math.round(os.freemem()/1024/1024),
+        process_uptime_seconds:Math.round(process.uptime()),db_tunnel:'connected' }),
       lastError ? String(lastError).slice(0, 1000) : null]
   );
 }
@@ -149,6 +152,7 @@ async function shutdown(reason = 'signal') {
 }
 
 async function main() {
+  await initializeEcsRamRoleCredentials();
   await db.schemaReady;
   await acquireSingleton();
   await workerHeartbeat();

@@ -4744,6 +4744,7 @@ require('./config/db').schemaReady.then(() => app.listen(PORT, () => {
   } else {
     startCompanyEvaluationScheduler();
     require('./services/presentation-jobs').start();
+    require('./services/product-ingestion-worker-monitor').startWorkerMonitor(db);
   }
 })).catch(err => {
   console.error('Backend startup refused: database migration is not ready.', err.message);

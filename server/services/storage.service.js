@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const sharp = require('sharp');
 const OSS = require('ali-oss');
+const { roleName, fetchRamRoleCredentials } = require('./ecs-ram-role-credentials');
 
 const storageRoot = path.join(__dirname, '..', 'storage');
 const publicPrefix = '/api/storage';
@@ -18,8 +19,7 @@ function hasOssConfig() {
   return Boolean(
     process.env.OSS_REGION &&
     process.env.OSS_BUCKET &&
-    process.env.OSS_ACCESS_KEY_ID &&
-    process.env.OSS_ACCESS_KEY_SECRET
+    ((process.env.OSS_ACCESS_KEY_ID && process.env.OSS_ACCESS_KEY_SECRET) || roleName())
   );
 }
 
@@ -29,6 +29,7 @@ function requiredOssConfig() {
     bucket: process.env.OSS_BUCKET,
     accessKeyId: process.env.OSS_ACCESS_KEY_ID,
     accessKeySecret: process.env.OSS_ACCESS_KEY_SECRET,
+    stsToken: process.env.OSS_STS_TOKEN || undefined,
     endpoint: process.env.OSS_ENDPOINT || undefined,
     secure: true,
     timeout: Number(process.env.OSS_REQUEST_TIMEOUT_MS || 300000),
@@ -38,6 +39,10 @@ function requiredOssConfig() {
   );
   if (missing.length) {
     throw new Error(`OSS storage is enabled but missing configuration: ${missing.join(', ')}`);
+  }
+  if (roleName()) {
+    config.refreshSTSToken = () => fetchRamRoleCredentials();
+    config.refreshSTSTokenInterval = Number(process.env.OSS_STS_REFRESH_INTERVAL_MS || 300000);
   }
   return config;
 }

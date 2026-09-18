@@ -11,6 +11,7 @@ const { configuration: ingestionAiConfiguration } = require('../services/product
 const { executablePath: chromiumExecutablePath } = require('../services/product-ingestion-rendered-fetch');
 const storage = require('../services/storage.service');
 const { runtimeRole, API_ROLE, INGESTION_WORKER_ROLE } = require('../services/runtime-role');
+const { initializeEcsRamRoleCredentials } = require('../services/ecs-ram-role-credentials');
 
 function executable(value, env = process.env) {
   const candidate = String(value || '').trim();
@@ -93,7 +94,9 @@ function validateProductionContract(env = process.env, runtime = {}) {
   const driver = String(env.STORAGE_DRIVER || 'local').trim().toLowerCase();
   if (!['local', 'oss'].includes(driver)) errors.push('STORAGE_DRIVER must be local or oss');
   if (driver === 'oss') {
-    for (const name of ['OSS_REGION', 'OSS_BUCKET', 'OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET']) {
+    const names = ['OSS_REGION', 'OSS_BUCKET'];
+    if (!String(env.OSS_RAM_ROLE_NAME || '').trim()) names.push('OSS_ACCESS_KEY_ID', 'OSS_ACCESS_KEY_SECRET');
+    for (const name of names) {
       if (!String(env[name] || '').trim()) errors.push(`${name} is required when STORAGE_DRIVER=oss`);
     }
   } else {
@@ -154,6 +157,7 @@ async function checkConnectivity(contract, env = process.env) {
 }
 
 async function main() {
+  await initializeEcsRamRoleCredentials();
   const contract = validateProductionContract();
   const connectivity = process.argv.includes('--connectivity')
     ? await checkConnectivity(contract)
