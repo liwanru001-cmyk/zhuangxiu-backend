@@ -558,18 +558,28 @@ jobs:
             smoke_port=3099
             echo "Running backend smoke test on port $smoke_port before activation."
             deployment_phase='side_effect_free_smoke'
-            APP_RUNTIME_MODE=smoke PORT="$smoke_port" nice -n 10 node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
-            smoke_pid=$!
             smoke_ready="false"
-            for attempt in $(seq 1 15); do
-              if ! kill -0 "$smoke_pid" 2>/dev/null; then
+            smoke_pid=""
+            for launch_attempt in $(seq 1 3); do
+              APP_RUNTIME_MODE=smoke PORT="$smoke_port" nice -n 10 node app.js > /tmp/yinnkhome-smoke-out.log 2> /tmp/yinnkhome-smoke-err.log &
+              smoke_pid=$!
+              for health_attempt in $(seq 1 15); do
+                if ! kill -0 "$smoke_pid" 2>/dev/null; then
+                  break
+                fi
+                if curl -fsS "http://127.0.0.1:${smoke_port}/health"; then
+                  smoke_ready="true"
+                  break
+                fi
+                sleep 1
+              done
+              if [ "$smoke_ready" = "true" ]; then
                 break
               fi
-              if curl -fsS "http://127.0.0.1:${smoke_port}/health"; then
-                smoke_ready="true"
-                break
-              fi
-              sleep 1
+              kill "$smoke_pid" 2>/dev/null || true
+              wait "$smoke_pid" 2>/dev/null || true
+              echo "Smoke launch $launch_attempt failed; retrying transient startup once the database is reachable."
+              sleep 3
             done
             if [ "$smoke_ready" != "true" ]; then
               echo "Smoke health check failed."
