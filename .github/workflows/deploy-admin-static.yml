@@ -169,4 +169,4 @@ jobs:
           curl -fsS https://yinnkhome.com/admin/ -o "$admin_file"
           grep -q '商户管理操作说明' "$admin_file"
           grep -q 'admin.js?v=20260910-product-ingestion-2' "$admin_file"
-          grep -q 'product-ingestion.js?v=20260918-publish-ready-filter-1' "$admin_file"
+          grep -q 'product-ingestion.js?v=20260918-review-filter-1' "$admin_file"

@@ -385,7 +385,7 @@ function createControl(db) {
       return {id:jobId,status,resume_mode:extraction?'extraction':'discovery',checkpoint_index:Number(job.checkpoint_index||0)};
     },
     async listCandidates(query = {}) {
-      const status = String(query.status || ''), recoveryStatus=String(query.recovery_status||''), publishReady=String(query.publish_ready||''), paged=String(query.paged||'')==='1';
+      const status = String(query.status || ''), reviewStatus=String(query.review_status||''), recoveryStatus=String(query.recovery_status||''), publishReady=String(query.publish_ready||''), paged=String(query.paged||'')==='1';
       const jobId=Number(query.job_id||0),limit=paged?integer(Number(query.limit||50),1,100,'每页数量'):500,offset=paged?integer(Number(query.offset||0),0,100000,'分页位置'):0;
       const recoveryStatuses=['any','none','planning','shadow_ready','plan_rejected','awaiting_approval','executing','validated','validation_failed','failed'];
       const selectableCategoryCountSql=`CASE
@@ -395,6 +395,7 @@ function createControl(db) {
       END`;
       const params = []; let where = 'WHERE job.deleted_at IS NULL';
       if (status) { if (!['pending', 'valid', 'invalid'].includes(status)) fail('候选校验状态不正确'); where += ' AND candidate.validation_status=?'; params.push(status); }
+      if(reviewStatus){if(!['pending','approved','rejected'].includes(reviewStatus))fail('候选审核状态不正确');where+=' AND candidate.review_status=?';params.push(reviewStatus);}
       if(jobId){if(!Number.isSafeInteger(jobId)||jobId<1)fail('任务 ID 不正确');where+=' AND candidate.job_id=?';params.push(jobId);}
       if(recoveryStatus){if(!recoveryStatuses.includes(recoveryStatus))fail('恢复状态不正确');if(recoveryStatus==='none')where+=' AND NOT EXISTS (SELECT 1 FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id)';else if(recoveryStatus==='any')where+=' AND EXISTS (SELECT 1 FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id)';else{where+=' AND EXISTS (SELECT 1 FROM product_ingestion_recovery_attempts recovery WHERE recovery.candidate_id=candidate.id AND recovery.status=?)';params.push(recoveryStatus);}}
       if(publishReady){if(publishReady!=='1')fail('发布条件筛选不正确');where+=` AND candidate.published_product_id IS NULL AND candidate.validation_status='valid' AND candidate.review_status='approved' AND source.status='active' AND (${selectableCategoryCountSql})>0`;}
