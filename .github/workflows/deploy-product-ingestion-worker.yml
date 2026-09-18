@@ -1,11 +1,8 @@
 name: Deploy Product Ingestion Worker
 
 on:
-  # The controller script and schema must already be live before this workflow
-  # can acquire a deployment lease and wake the worker safely.
-  workflow_run:
-    workflows: ['Deploy Backend']
-    types: [completed]
+  # Worker releases are intentionally manual. Ordinary backend/admin deploys
+  # must not wake the isolated crawler instance.
   workflow_dispatch:
 
 concurrency:
@@ -16,13 +13,10 @@ concurrency:
 
 jobs:
   deploy:
-    if: >-
-      github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
     timeout-minutes: 45
     env:
-      RELEASE_SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+      RELEASE_SHA: ${{ github.sha }}
       CONTROLLER_HOST: 115.29.194.46
       CONTROLLER_APP_DIR: /opt/yinnkhome-backend
       WORKER_APP_DIR: /opt/yinnkhome-ingestion-worker
