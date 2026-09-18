@@ -133,11 +133,17 @@ jobs:
           done
           test "$status" = 'online'
           set -a; . ./.env; set +a
-          node - <<'NODE'
+          heartbeat_ready='false'
+          for attempt in $(seq 1 30); do
+            if node - <<'NODE'
           const db=require('./config/db');
           db.query("SELECT status,TIMESTAMPDIFF(SECOND,heartbeat_at,NOW()) age FROM product_ingestion_workers WHERE instance_id=? ORDER BY heartbeat_at DESC LIMIT 1",[process.env.ALIBABA_CLOUD_ECS_INSTANCE_ID])
             .then(([rows])=>{if(!rows[0]||rows[0].status!=='online'||Number(rows[0].age)>60)throw new Error('worker heartbeat unavailable');})
-            .finally(()=>db.end()).then(()=>process.exit(0)).catch(error=>{console.error(error.message);process.exit(1);});
+            .finally(()=>db.end()).then(()=>process.exit(0)).catch(()=>process.exit(1));
           NODE
+            then heartbeat_ready='true'; break; fi
+            sleep 2
+          done
+          test "$heartbeat_ready" = 'true'
           for old in "${WORKER_APP_DIR}.backup."*; do [ -d "$old" ] && [ "$old" != "$backup" ] && rm -rf -- "$old" || true; done
           REMOTE
