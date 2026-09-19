@@ -279,6 +279,19 @@ test('optional Product v2 fields drop unevidenced constant values',()=>{
   assert.equal(value.option_groups[0].fields.name.sources.length,1);
 });
 
+test('required Product v2 constants become optional instead of breaking rule assembly',()=>{
+  const value=normalizeSliceOutput('option_groups',{option_groups:[{mode:'repeated',item_selector:'.group',max_items:5,fields:{name:{required:true,sources:[{type:'css_text',selector:'h3'}]},type:{required:true,sources:[{type:'constant',value:'option_group'}]}},options:{mode:'repeated',item_selector:'.option',max_items:10,fields:{name:{required:true,sources:[{type:'css_text',selector:'.name'}]}},swatch:null,applies_to_configuration_code:{required:false,sources:[]}}}]});
+  assert.deepEqual(value.option_groups[0].fields.type,{required:false,sources:[]});
+});
+
+test('single option structures discard repeated-item selectors deterministically',()=>{
+  const value=normalizeSliceOutput('option_groups',{option_groups:[{mode:'single',item_selector:'.group',max_items:8,fields:{name:{required:true,sources:[{type:'css_text',selector:'h3'}]}},options:{mode:'single',item_selector:'.option',max_items:50,fields:{name:{required:true,sources:[{type:'css_text'}]}},swatch:null,applies_to_configuration_code:{required:false,sources:[]}}}]});
+  assert.equal(value.option_groups[0].item_selector,null);
+  assert.equal(value.option_groups[0].max_items,1);
+  assert.equal(value.option_groups[0].options.item_selector,null);
+  assert.equal(value.option_groups[0].options.max_items,1);
+});
+
 test('AI Context Builder maps configuration images to a valid Top5 display role',()=>{
   const value={images:{top5_roles:['product_gallery','configuration_image','scene']}};
   assert.deepEqual(normalizeSliceOutput('assets',value).images.top5_roles,['product_gallery','scene']);

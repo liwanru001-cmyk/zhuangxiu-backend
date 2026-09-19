@@ -258,11 +258,17 @@ function normalizeSliceOutput(task,value){
     if(!node||typeof node!=='object')return;
     if(!Array.isArray(node)&&Object.prototype.hasOwnProperty.call(node,'required')&&Array.isArray(node.sources)){
       node.sources=node.sources.map(normalizeFieldSource);
+      // Product Schema v2 never permits constants as evidence for official
+      // business fields. Removing an unsupported constant is lossless; when it
+      // was the only proposed source the field must become optional instead of
+      // repeatedly failing whole-rule assembly.
+      node.sources=node.sources.filter(source=>source.type!=='constant');
+      if(!node.sources.length)node.required=false;
       // Optional sources that the frozen executor contract cannot represent are
       // unusable by definition. Dropping them is structural normalization, not
       // a guess at their meaning. Required fields remain untouched and fail the
       // normal schema gate if their only proposed source is invalid.
-      if(node.required===false)node.sources=node.sources.filter(source=>validateFieldSource(source)&&source.type!=='constant');
+      if(node.required===false)node.sources=node.sources.filter(source=>validateFieldSource(source));
     }
     for(const child of Array.isArray(node)?node:Object.values(node))walk(child);
   }
@@ -272,6 +278,12 @@ function normalizeSliceOutput(task,value){
     // attribute proposals may be removed here so the program-owned assembly
     // can ground the same keywords in the already evidenced product-name rule.
     result.furniture_type_rule.source.sources=result.furniture_type_rule.source.sources.filter(source=>validateFieldSource(source));
+  }
+  if(task==='option_groups'){
+    for(const group of result.option_groups||[]){
+      if(group.mode==='single'){group.item_selector=null;group.max_items=1;}
+      if(group.options?.mode==='single'){group.options.item_selector=null;group.options.max_items=1;}
+    }
   }
   return result;
 }
