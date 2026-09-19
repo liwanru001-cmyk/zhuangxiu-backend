@@ -148,11 +148,11 @@ function extractPage(page,config,options={}){
       if(value.status==='ambiguous')result.validation_errors.push(`PRODUCT_V2_AMBIGUOUS:${path}`);
       if(value.status==='defaulted')result.validation_errors.push(`PRODUCT_V2_UNSUPPORTED_DEFAULT:${path}`);
     }
-    if(configurationRuleActivated(config.extraction.structured.configurations)){
+    if(configurationRuleActivated(config.extraction.structured.configurations)&&businessPresence(bodyText,'configurations')){
       if(!document.data.configurations.length)result.validation_errors.push('PRODUCT_V2_CONFIGURATIONS_MISSING');
       for(const item of document.data.configurations)if(!item.name&&!item.code)result.validation_errors.push(`PRODUCT_V2_CONFIGURATION_IDENTITY_MISSING:${item.id}`);
     }
-    if((config.extraction.structured.option_groups||[]).some(group=>group.mode!=='none')&&!document.data.option_groups.some(group=>group.options.length))result.validation_errors.push('PRODUCT_V2_OPTION_GROUPS_MISSING');
+    if((config.extraction.structured.option_groups||[]).some(group=>group.mode!=='none')&&businessPresence(bodyText,'option_groups')&&!document.data.option_groups.some(group=>group.options.length))result.validation_errors.push('PRODUCT_V2_OPTION_GROUPS_MISSING');
     if(!result.images.length)result.validation_errors.push('PRODUCT_V2_DISPLAY_IMAGES_MISSING');
     for(const asset of document.data.assets){
       if(asset.role==='dimension_diagram'&&!asset.bindings.some(item=>['configuration','product'].includes(item.target_type)))result.validation_errors.push(`PRODUCT_V2_DIMENSION_ASSET_UNBOUND:${asset.id}`);
