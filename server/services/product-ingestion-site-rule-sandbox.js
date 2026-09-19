@@ -5,7 +5,7 @@ const cheerio=require('cheerio');
 const {fetchHtml}=require('./product-ingestion-fetch');
 const {recognizeProductImages}=require('./product-ingestion-image-recognizer');
 const {validateSiteRule,configHash,semanticPath,decodePath}=require('./product-ingestion-site-rule-schema');
-const {resolveFieldRule}=require('./product-ingestion-field-source-contract');
+const {resolveFieldRule,embeddedJsonValues}=require('./product-ingestion-field-source-contract');
 const {urlRole}=require('./product-ingestion-url-role-contract');
 
 function fail(message,status=400,code='SITE_RULE_INVALID'){const error=new Error(message);error.status=status;error.code=code;throw error;}
@@ -23,7 +23,7 @@ function findJsonLdProducts($){
 }
 function bestSrcset(value){return String(value||'').split(',').map(part=>{const [url,size='']=part.trim().split(/\s+/,2);return {url,size:Number.parseFloat(size)||0};}).filter(item=>item.url).sort((a,b)=>b.size-a.size)[0]?.url||'';}
 function selectedValues($,source,baseUrl){
-  try{return $(source.selector).map((_,node)=>canonicalUrl($(node).attr(source.attribute),baseUrl)).get().filter(Boolean);}catch{return [];}
+  try{const values=source.type==='embedded_json'?embeddedJsonValues(source,{$}):$(source.selector).map((_,node)=>$(node).attr(source.attribute)).get();return values.map(value=>canonicalUrl(value,baseUrl)).filter(Boolean);}catch{return [];}
 }
 function configuredImages($,product,baseUrl,config,fallback){
   const values=[];
@@ -34,7 +34,7 @@ function configuredImages($,product,baseUrl,config,fallback){
       try{$(source.selector).each((_,node)=>{const raw=$(node).attr(source.attribute);values.push(/srcset$/i.test(source.attribute)?bestSrcset(raw):raw);});}catch{}
     }else if(source.type==='css_background'){
       try{$(source.selector).each((_,node)=>{const style=$(node).attr('style')||'';for(const match of style.matchAll(/background(?:-image)?\s*:[^;]*url\((['"]?)(.*?)\1\)/gi))values.push(match[2]);});}catch{}
-    }
+    }else if(source.type==='embedded_json')values.push(...embeddedJsonValues(source,{$}));
   }
   // A validated site rule is authoritative. Generic image recognition is used
   // only as an emergency source when every configured source is empty; mixing it

@@ -3,7 +3,7 @@
 const crypto=require('crypto');
 const cheerio=require('cheerio');
 const {emptyDocument,addField,fieldPath,stableId:documentStableId,assertProductDocumentV2}=require('./product-schema-v2');
-const {executeFieldSource,resolveFieldRule}=require('./product-ingestion-field-source-contract');
+const {executeFieldSource,resolveFieldRule,embeddedJsonValues}=require('./product-ingestion-field-source-contract');
 
 function clean(value,max=2000){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max);}
 function unique(values){return [...new Set(values.filter(Boolean))];}
@@ -20,6 +20,7 @@ function imageValues(source,context){
   else if(source.type==='meta')values.push($(`meta[property="${source.property}"],meta[name="${source.property}"]`).first().attr('content'));
   else if(source.type==='dom_attribute')safeFind(root,source.selector).each((_,node)=>{const raw=$(node).attr(source.attribute);values.push(/srcset$/i.test(source.attribute)?bestSrcset(raw):raw);});
   else if(source.type==='css_background')safeFind(root,source.selector).each((_,node)=>{const style=$(node).attr('style')||'';for(const match of style.matchAll(/background(?:-image)?\s*:[^;]*url\((['"]?)(.*?)\1\)/gi))values.push(match[2]);});
+  else if(source.type==='embedded_json')values.push(...embeddedJsonValues(source,context));
   return unique(values.map(value=>canonicalUrl(value,baseUrl)));
 }
 function assetsFromSources(sources,context,allowedHosts,excluded=[]){
@@ -118,7 +119,7 @@ function extractStructuredPage(page,config,baseRow={},options={}){
   });
   const itemRoots=configurationRule.mode==='none'?[]:configurationRule.mode==='repeated'?[...safeFind(root,configurationRule.item_selector).toArray()].map(node=>$(node)):[root];
   let configurations=itemRoots.slice(0,configurationRule.max_items).map((itemRoot,index)=>{
-    const context={...baseContext,root:itemRoot,bodyText:clean(itemRoot.text(),20000)};
+    const context={...baseContext,root:itemRoot,index,bodyText:clean(itemRoot.text(),20000)};
     const group=field(configurationRule.fields.group,context),name=field(configurationRule.fields.name,context),code=field(configurationRule.fields.code,context),includes=field(configurationRule.fields.includes,context),price=field(configurationRule.fields.price,context),dimensionField=field(configurationRule.dimensions.source,context);
     const parsed=parseDimensions(dimensionField.value,configurationRule.dimensions.format,configurationRule.dimensions.default_unit);
     const localAssets=assetsFromSources(configurationRule.images,context,allowedHosts,excluded).map(item=>({...item,role:productAssetRole(item.role)}));
@@ -140,7 +141,7 @@ function extractStructuredPage(page,config,baseRow={},options={}){
       const groupContext={...baseContext,root:groupRoot,bodyText:clean(groupRoot.text(),30000)},name=field(groupRule.fields.name,groupContext),type=field(groupRule.fields.type,groupContext),optionRule=groupRule.options;
       const optionRoots=optionRule.mode==='repeated'?[...safeFind(groupRoot,optionRule.item_selector).toArray()].map(node=>$(node)):[groupRoot],items=[];
       for(const [optionIndex,optionRoot] of optionRoots.slice(0,optionRule.max_items).entries()){
-        const optionContext={...groupContext,root:optionRoot,bodyText:clean(optionRoot.text(),5000)},values={};for(const fieldName of ['name','code','material','color','supplier','origin'])values[fieldName]=field(optionRule.fields[fieldName],optionContext);
+        const optionContext={...groupContext,root:optionRoot,index:optionIndex,bodyText:clean(optionRoot.text(),5000)},values={};for(const fieldName of ['name','code','material','color','supplier','origin'])values[fieldName]=field(optionRule.fields[fieldName],optionContext);
         const swatch=optionRule.swatch?assetsFromSources([optionRule.swatch],optionContext,allowedHosts,excluded)[0]:null,applies=field(optionRule.applies_to_configuration_code,optionContext),identity=values.code.value||values.name.value||`${ruleIndex}-${groupIndex}-${optionIndex}`,id=stableId(identity,values.name.value,optionIndex);
         items.push({id,name:values.name.value||null,code:values.code.value||null,material:values.material.value||null,color:values.color.value||null,supplier:values.supplier.value||null,origin:values.origin.value||null,swatch:swatch?{...swatch,role:'material_swatch'}:null,applies_to_configuration_code:applies.value||null,evidence:{...values,applies_to_configuration_code:applies}});
       }
@@ -155,7 +156,7 @@ function extractStructuredPage(page,config,baseRow={},options={}){
     }
   }
   const links=[];
-  for(const source of config.extraction.attachments.link_sources||[])safeFind(root,source.selector).each((_,node)=>{const url=canonicalUrl($(node).attr(source.attribute),page.url);if(!url)return;const extension=new URL(url).pathname.split('.').pop().toLowerCase();if(config.extraction.attachments.allowed_extensions.includes(extension))links.push({url,kind:source.kind||'other'});});
+  for(const source of config.extraction.attachments.link_sources||[]){const values=source.type==='embedded_json'?embeddedJsonValues(source,baseContext):safeFind(root,source.selector).map((_,node)=>$(node).attr(source.attribute)).get();for(const value of values){const url=canonicalUrl(value,page.url);if(!url)continue;const extension=new URL(url).pathname.split('.').pop().toLowerCase();if(config.extraction.attachments.allowed_extensions.includes(extension))links.push({url,kind:source.kind||'other'});}}
   const drawings=unique(links.filter(item=>item.kind==='drawing'||(item.kind==='technical'&&!/\.(?:pdf|zip)(?:$|[?#])/i.test(item.url))).map(item=>item.url));
   if(drawings[0]&&configurations[0]){configurations[0].drawing_url=drawings[0];configurations[0].drawing_name=new URL(drawings[0]).pathname.split('/').pop();}
   const top5Roles=new Set((config.extraction.images.top5_roles||[]).map(productAssetRole));
@@ -175,10 +176,10 @@ function extractStructuredPage(page,config,baseRow={},options={}){
 function buildProductDocumentV2(page,config,baseRow,structured){
   const document=emptyDocument(page.url),product=document.data.product,fields={...(baseRow.fields||{})},evidence={...(baseRow.field_evidence||{})},bodyText=clean(cheerio.load(page.html||'')('body').text(),200000);
   for(const name of ['designer','release_date','design_year','model'])if(!fields[name]){const fallback=explicitSemanticValue(bodyText,name);if(fallback){fields[name]=fallback.value;evidence[name]=fallback.evidence;}}
-  product.names.primary=fields.name||null;product.names.zh=/[\u3400-\u9fff]/u.test(fields.name||'')?fields.name:null;product.names.en=fields.english_name||(!product.names.zh?fields.name:null);product.description=fields.description||null;product.model=fields.model||null;product.category=fields.category||null;product.designer.name=fields.designer||null;product.designer.name_zh=/[\u3400-\u9fff]/u.test(fields.designer||'')?fields.designer:null;product.designer.name_en=fields.designer&&!product.designer.name_zh?fields.designer:null;product.design_year=fields.design_year||null;
+  product.names.primary=fields.name||null;product.names.zh=/[\u3400-\u9fff]/u.test(fields.name||'')?fields.name:null;product.names.en=fields.english_name||(!product.names.zh?fields.name:null);product.description=fields.description||null;product.technical_specifications=fields.technical_specifications||null;product.model=fields.model||null;product.category=fields.category||null;product.designer.name=fields.designer||null;product.designer.name_zh=/[\u3400-\u9fff]/u.test(fields.designer||'')?fields.designer:null;product.designer.name_en=fields.designer&&!product.designer.name_zh?fields.designer:null;product.design_year=fields.design_year||null;
   const release=fields.release_date||null;product.release_date.value=release;product.release_date.precision=release?/\d{4}[-./年]\d{1,2}[-./月]\d{1,2}/.test(release)?'day':/\d{4}[-./年]\d{1,2}/.test(release)?'month':/\d{4}/.test(release)?'year':'unknown':null;
   const typeEvidence=structured.furniture_type_evidence||{};product.product_type=typeEvidence.status==='provided'?structured.furniture_type:null;
-  const productFields={name:['/product/names/primary',product.names.primary],english_name:['/product/names/en',product.names.en],description:['/product/description',product.description],model:['/product/model',product.model],category:['/product/category',product.category],designer:['/product/designer/name',product.designer.name],design_year:['/product/design_year',product.design_year],release_date:['/product/release_date/value',product.release_date.value]};
+  const productFields={name:['/product/names/primary',product.names.primary],english_name:['/product/names/en',product.names.en],description:['/product/description',product.description],technical_specifications:['/product/technical_specifications',product.technical_specifications],model:['/product/model',product.model],category:['/product/category',product.category],designer:['/product/designer/name',product.designer.name],design_year:['/product/design_year',product.design_year],release_date:['/product/release_date/value',product.release_date.value]};
   for(const [name,[path,value]] of Object.entries(productFields))addField(document,path,value,documentStatus({value},businessPresence(bodyText,name)),evidence[name]?{...evidence[name],raw_value:value}:null);
   addField(document,'/product/product_type',product.product_type,product.product_type?'provided':businessPresence(bodyText,'configurations')?'extraction_failed':'source_absent',typeEvidence);
   const assetsByUrl=new Map();
@@ -193,7 +194,7 @@ function buildProductDocumentV2(page,config,baseRow,structured){
     addField(document,fieldPath('configurations',id,'dimensions'),configuration.dimensions,hasDimensions?'provided':dimensionConfigured&&item.dimension_presence?'extraction_failed':'source_absent',item.evidence?.dimensions);
     addField(document,fieldPath('configurations',id,'unit'),configuration.unit,configuration.unit?'provided':'source_absent',null);
   }
-  for(const group of structured.option_groups||[]){const groupId=group.id,applies=new Set();for(const option of group.items||[])if(option.applies_to_configuration_code)for(const configuration of document.data.configurations)if(configuration.code===option.applies_to_configuration_code)applies.add(configuration.id);const options=[];for(const item of group.items||[]){const assetIds=[];if(item.swatch){const asset=addAsset(item.swatch,'material_swatch',{target_type:'option',target_id:item.id});if(asset)assetIds.push(asset.id);}const option={id:item.id,name:item.name,code:item.code,material:item.material,color:item.color,supplier:item.supplier,origin:item.origin,asset_ids:assetIds};options.push(option);for(const [name,value] of Object.entries(option).filter(([name])=>!['id','asset_ids'].includes(name)))addField(document,fieldPath('option_groups',groupId,'options',item.id,name),value,documentStatus({value},businessPresence(bodyText,'option_groups')),item.evidence?.[name]);}
+  for(const group of structured.option_groups||[]){const groupId=group.id,applies=new Set();for(const option of group.items||[])if(option.applies_to_configuration_code)for(const configuration of document.data.configurations)if(configuration.code===option.applies_to_configuration_code)applies.add(configuration.id);const options=[];for(const item of group.items||[]){const assetIds=[];if(item.swatch){const asset=addAsset(item.swatch,'material_swatch',{target_type:'option',target_id:item.id});if(asset)assetIds.push(asset.id);}const option={id:item.id,name:item.name,code:item.code,material:item.material,color:item.color,supplier:item.supplier,origin:item.origin,asset_ids:assetIds};options.push(option);for(const [name,value] of Object.entries(option).filter(([name])=>!['id','asset_ids'].includes(name))){const configured=item.evidence?.[name]?.status!=='rule_not_configured';addField(document,fieldPath('option_groups',groupId,'options',item.id,name),value,documentStatus({value},configured&&businessPresence(bodyText,'option_groups')),item.evidence?.[name]);}}
     const value={id:groupId,type:group.type,name:group.name,applies_to_configuration_ids:[...applies],options};document.data.option_groups.push(value);for(const configuration of document.data.configurations)if(!applies.size||applies.has(configuration.id))configuration.option_group_ids.push(groupId);addField(document,fieldPath('option_groups',groupId,'name'),group.name,documentStatus({value:group.name},businessPresence(bodyText,'option_groups')),group.evidence?.name);
   }
   for(const attachment of structured.attachments||[]){

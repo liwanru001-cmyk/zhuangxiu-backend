@@ -15,7 +15,7 @@ const {field:structuredField}=require('../services/product-ingestion-site-rule-s
 const {normalizeV2ProposalShape}=require('../services/product-ingestion-site-rule-ai');
 const {schemaFor}=require('../services/product-ingestion-ai-context-builder');
 
-const html='<!doctype html><html><head><meta property="og:title" content="META VALUE"><script type="application/ld+json">{"@type":"Product","name":"JSON VALUE"}</script></head><body><main><h1 data-model="ATTR VALUE">CSS VALUE</h1><p>Code: REGEX-VALUE</p></main></body></html>';
+const html='<!doctype html><html><head><meta property="og:title" content="META VALUE"><script type="application/ld+json">{"@type":"Product","name":"JSON VALUE"}</script><script id="__NEXT_DATA__" type="application/json">{"product":{"specs":["<p>TECH ONE</p>","TECH TWO"]}}</script></head><body><main><h1 data-model="ATTR VALUE">CSS VALUE</h1><p>Code: REGEX-VALUE.</p><ol><li data-code="A">FIRST</li><li data-code="B">SECOND</li></ol></main></body></html>';
 const url='https://example.com/%E4%BA%A7%E5%93%81/source-contract/';
 const cases=[
   [{type:'json_ld_product',path:'name'},'JSON VALUE'],
@@ -25,6 +25,9 @@ const cases=[
   [{type:'body_regex',pattern:'Code: ([A-Z-]+)',group:1},'REGEX-VALUE'],
   [{type:'url_path'},'/产品/source-contract/'],
   [{type:'constant',value:'CONSTANT VALUE'},'CONSTANT VALUE'],
+  [{type:'embedded_json_text',selector:'#__NEXT_DATA__',json_path:'product.specs[*]',strip_html:true,join_with:' '},'TECH ONE TECH TWO'],
+  [{type:'indexed_css_text',selector:'ol li'},'FIRST'],
+  [{type:'indexed_css_attr',selector:'ol li',attribute:'data-code'},'A'],
 ];
 
 function context({scoped=false}={}){

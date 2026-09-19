@@ -159,11 +159,25 @@
 .ingestion-product-preview { display: grid; grid-template-columns: minmax(260px,38%) 1fr; gap: 28px; margin: 4px 0 18px; padding: 22px; border-radius: 16px; background: #f7f8fb; }
 .ingestion-preview-cover { min-height: 280px; overflow: hidden; border-radius: 13px; background: #fff; }
 .ingestion-preview-cover img,.ingestion-config-gallery img { width: 100%; height: 100%; display: block; object-fit: contain; }
+.ingestion-preview-gallery { display: grid; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 8px; align-content: start; }
+.ingestion-preview-gallery figure { min-width: 0; margin: 0; overflow: hidden; border: 1px solid #e4e7ec; border-radius: 13px; background: #fff; }
+.ingestion-preview-gallery figure.primary { grid-column: 1/-1; }
+.ingestion-preview-gallery img { width: 100%; height: 150px; display: block; object-fit: contain; }
+.ingestion-preview-gallery figure.primary img { height: 320px; }
+.ingestion-preview-gallery figcaption { padding: 6px 9px; color: #667085; font-size: 10px; }
 .ingestion-image-empty { height: 100%; min-height: 170px; display: grid; place-items: center; color: #98a2b3; background: #f2f4f7; font-size: 12px; }
 .ingestion-preview-summary { align-self: center; min-width: 0; }
 .ingestion-preview-summary h2 { margin: 7px 0 12px; font-size: 32px; letter-spacing: -.4px; }
 .ingestion-preview-summary p { margin: 18px 0; max-width: 760px; font-size: 13px; line-height: 1.8; }
 .ingestion-preview-summary a { color: #3154c8; font-size: 12px; font-weight: 700; text-decoration: none; }
+.ingestion-preview-summary h4 { margin: 18px 0 0; font-size: 12px; }
+.ingestion-technical-copy { max-height: 300px; overflow: auto; white-space: pre-line; }
+.ingestion-preview-facts { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 8px; margin: 16px 0 0; }
+.ingestion-preview-facts div { padding: 8px; border-radius: 8px; background: #fff; }
+.ingestion-preview-facts dt { color: #667085; font-size: 10px; }
+.ingestion-preview-facts dd { margin: 3px 0 0; color: #344054; font-size: 11px; font-weight: 700; }
+.ingestion-preview-files { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 14px 0; }
+.ingestion-preview-files a { padding: 6px 9px; border: 1px solid #dfe3eb; border-radius: 8px; background: #fff; }
 .ingestion-preview-meta { display: flex; flex-wrap: wrap; gap: 8px; }
 .ingestion-preview-meta span { padding: 6px 9px; border: 1px solid #dfe3eb; border-radius: 20px; background: #fff; color: #475467; font-size: 11px; }
 .ingestion-missing { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 18px; padding: 12px 14px; border: 1px solid #fedf89; border-radius: 10px; background: #fffaeb; color: #93370d; font-size: 12px; line-height: 1.6; }

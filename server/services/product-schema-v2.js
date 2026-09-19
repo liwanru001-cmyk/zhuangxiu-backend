@@ -16,6 +16,7 @@ const FIELD_REGISTRY = Object.freeze({
   '/product/names/zh':{label:'产品中文名',type:'string',entity:'product'},
   '/product/names/en':{label:'产品英文名',type:'string',entity:'product'},
   '/product/description':{label:'产品说明',type:'string',entity:'product'},
+  '/product/technical_specifications':{label:'技术规格',type:'string',entity:'product'},
   '/product/model':{label:'产品公共型号',type:'string',entity:'product'},
   '/product/category':{label:'官网分类',type:'string',entity:'product'},
   '/product/product_type':{label:'标准产品类型',type:'string',entity:'product'},
@@ -54,7 +55,7 @@ const PRODUCT_DOCUMENT_V2_SCHEMA={
     data:{type:'object',additionalProperties:false,required:['product','configurations','option_groups','assets'],properties:{
       product:{type:'object',additionalProperties:false,required:['names','description','model','category','product_type','designer','release_date','design_year','source_url'],properties:{
         names:{type:'object',additionalProperties:false,required:['primary','zh','en'],properties:{primary:nullableString,zh:nullableString,en:nullableString}},
-        description:nullableString,model:nullableString,category:nullableString,product_type:nullableString,
+        description:nullableString,technical_specifications:nullableString,model:nullableString,category:nullableString,product_type:nullableString,
         designer:{type:'object',additionalProperties:false,required:['name','name_zh','name_en'],properties:{name:nullableString,name_zh:nullableString,name_en:nullableString}},
         release_date:{type:'object',additionalProperties:false,required:['value','precision'],properties:{value:nullableString,precision:{enum:['day','month','year','unknown',null]}}},
         design_year:nullableString,source_url:sourceUrl,
@@ -90,11 +91,11 @@ function fieldPath(...parts){return `/${parts.map(pointerToken).join('/')}`;}
 function statusEntry(status){return {status:FIELD_STATUSES.includes(status)?status:'extraction_failed'};}
 function normalizeEvidence(raw,sourceUrlValue=null){
   const source=raw?.source||raw||{},type=String(source.type||raw?.source_type||'unknown');
-  const types={json_ld_product:'json_ld',css_text:'dom_text',css_attr:'dom_attribute',dom_attribute:'dom_attribute',css_background:'dom_attribute',body_regex:'regex',meta:'meta',url_path:'url_path',constant:'system'};
+  const types={json_ld_product:'json_ld',css_text:'dom_text',css_attr:'dom_attribute',dom_attribute:'dom_attribute',css_background:'dom_attribute',body_regex:'regex',meta:'meta',url_path:'url_path',constant:'system',embedded_json_text:'dom_text',embedded_json:'dom_attribute',indexed_css_text:'dom_text',indexed_css_attr:'dom_attribute'};
   return {source_url:sourceUrlValue&&isProductUrl(sourceUrlValue)?sourceUrlValue:null,source_type:types[type]||(['image','ocr','legacy','system'].includes(type)?type:'unknown'),selector:nullText(source.selector),source_path:nullText(source.path),property:nullText(source.property||source.attribute),raw_value:raw?.raw_value??raw?.value??null,asset_id:null,section:nullText(raw?.section),confidence:Number.isFinite(Number(raw?.confidence))?Math.max(0,Math.min(1,Number(raw.confidence))):null};
 }
 function addField(document,path,value,status,evidence=null){document.field_status[path]=statusEntry(status);if(evidence)document.evidence[path]=[normalizeEvidence(evidence,document.data.product.source_url)];return value;}
-function emptyDocument(sourceUrlValue=null){return {schema_version:2,data:{product:{names:{primary:null,zh:null,en:null},description:null,model:null,category:null,product_type:null,designer:{name:null,name_zh:null,name_en:null},release_date:{value:null,precision:null},design_year:null,source_url:sourceUrlValue&&isProductUrl(sourceUrlValue)?sourceUrlValue:null},configurations:[],option_groups:[],assets:[]},field_status:{},evidence:{},issues:[]};}
+function emptyDocument(sourceUrlValue=null){return {schema_version:2,data:{product:{names:{primary:null,zh:null,en:null},description:null,technical_specifications:null,model:null,category:null,product_type:null,designer:{name:null,name_zh:null,name_en:null},release_date:{value:null,precision:null},design_year:null,source_url:sourceUrlValue&&isProductUrl(sourceUrlValue)?sourceUrlValue:null},configurations:[],option_groups:[],assets:[]},field_status:{},evidence:{},issues:[]};}
 function assertProductDocumentV2(value){const valid=validateDocument(value);if(valid)return value;const error=new Error(`Product Schema v2 校验失败：${(validateDocument.errors||[]).map(item=>`${item.instancePath||'/'} ${item.message}`).join('；')}`);error.code='PRODUCT_SCHEMA_V2_INVALID';error.validation_errors=clone(validateDocument.errors||[]);throw error;}
 
 function fromLegacyPayload(payload){

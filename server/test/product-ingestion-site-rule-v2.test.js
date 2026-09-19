@@ -131,6 +131,35 @@ test('empty structured image values never resolve to the current product page UR
   assert.deepEqual(assets,[]);
 });
 
+test('embedded JSON enriches product copy, images and official attachments',()=>{
+  const config=rule();
+  config.extraction.fields.technical_specifications={required:false,sources:[{type:'embedded_json_text',selector:'#__NEXT_DATA__',json_path:'product.technical[*]',strip_html:true,join_with:'\n'}]};
+  config.extraction.images.sources=[{type:'embedded_json',role:'hero',selector:'#__NEXT_DATA__',json_path:'product.images[*].url'}];
+  config.extraction.attachments.link_sources=[{type:'embedded_json',selector:'#__NEXT_DATA__',attribute:'text',json_path:'product.documents[*].url',kind:'technical'}];
+  config.extraction.attachments.allowed_extensions=['pdf'];
+  const data={product:{technical:['<p>Structure: metal</p>','Removable fabric cover'],images:[{url:'https://assets.example/one.jpg'},{url:'https://assets.example/two.jpg'}],documents:[{url:'https://assets.example/spec.pdf'}]}};
+  const html=fixture().replace('</head>','').replace('<html><body>',`<html><head><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></head><body>`);
+  const result=extractPage({url:config.discovery.seed_urls[0],html,status:200,contentType:'text/html'},config),document=result.structured.product_document;
+  assert.equal(validateSiteRule(config).valid,true);
+  assert.equal(document.data.product.technical_specifications,'Structure: metal Removable fabric cover');
+  assert.ok(document.data.assets.some(item=>item.url==='https://assets.example/one.jpg'));
+  assert.ok(document.data.assets.some(item=>item.url==='https://assets.example/two.jpg'));
+  assert.ok(document.data.assets.some(item=>item.media_type==='pdf'&&item.role==='technical_document'));
+});
+
+test('indexed field sources pair parallel labels with configuration and option images',()=>{
+  const config=rule(),configuration=config.extraction.structured.configurations;
+  configuration.item_selector='.variant-image';configuration.fields.name={required:true,sources:[{type:'indexed_css_text',selector:'.variant-label'}]};configuration.fields.code=emptyRule();configuration.dimensions.source=emptyRule();configuration.images=[{type:'dom_attribute',role:'configuration_image',selector:'img',attribute:'src'}];
+  config.extraction.structured.option_groups=[{mode:'single',item_selector:null,max_items:1,fields:{name:{required:true,sources:[{type:'css_text',selector:'.color-title'}]},type:{required:false,sources:[{type:'css_text',selector:'.color-title'}]}},options:{mode:'repeated',item_selector:'.color-image',max_items:10,fields:{name:{required:true,sources:[{type:'indexed_css_text',selector:'.color-label'}]},code:emptyRule(),material:emptyRule(),color:{required:false,sources:[{type:'indexed_css_text',selector:'.color-label'}]},supplier:emptyRule(),origin:emptyRule()},swatch:{type:'dom_attribute',role:'material_swatch',selector:'img',attribute:'src'},applies_to_configuration_code:emptyRule()}}];
+  const extra='<div class="variant-label">Two seat</div><div class="variant-label">Three seat</div><div class="variant-image"><img src="https://assets.example/two-seat.jpg"></div><div class="variant-image"><img src="https://assets.example/three-seat.jpg"></div><h3 class="color-title">Color options</h3><span class="color-label">Warm grey</span><span class="color-label">Blue</span><div class="color-image"><img src="https://assets.example/grey.jpg"></div><div class="color-image"><img src="https://assets.example/blue.jpg"></div>';
+  const result=extractPage({url:config.discovery.seed_urls[0],html:fixture().replace('</main>',`${extra}</main>`),status:200,contentType:'text/html'},config),document=result.structured.product_document;
+  assert.equal(result.accepted,true,JSON.stringify(result.validation_errors));
+  assert.deepEqual(document.data.configurations.map(item=>item.name),['Two seat','Three seat']);
+  assert.deepEqual(document.data.option_groups[0].options.map(item=>item.name),['Warm grey','Blue']);
+  assert.ok(document.data.configurations.every(item=>item.asset_ids.length===1));
+  assert.ok(document.data.option_groups[0].options.every(item=>item.asset_ids.length===1));
+});
+
 test('v2 site rules may classify evidence-backed accessory categories as other',()=>{
   const config=rule();
   config.extraction.structured.furniture_type_rule.source={required:true,sources:[{type:'css_text',selector:'.product-category'}]};

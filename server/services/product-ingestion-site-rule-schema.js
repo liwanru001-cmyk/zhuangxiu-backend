@@ -163,6 +163,8 @@ const RICH_FIELD_SOURCE_SCHEMA = {
     property:{type:'string',enum:['og:title','og:description','product:sku']},
     pattern:{type:'string',minLength:1,maxLength:200},group:{type:'integer',minimum:1,maximum:8},
     value:{type:'string',maxLength:500},
+    json_path:{type:'string',minLength:1,maxLength:500,pattern:'^[A-Za-z0-9_.*\\[\\]-]+$'},
+    strip_html:{type:'boolean'},join_with:{type:'string',maxLength:20},
   },
 };
 const RICH_FIELD_RULE_SCHEMA={
@@ -172,15 +174,16 @@ const RICH_FIELD_RULE_SCHEMA={
 const RICH_IMAGE_SOURCE_SCHEMA={
   type:'object',additionalProperties:false,required:['type','role'],
   properties:{
-    type:{enum:['json_ld_product','meta','dom_attribute','css_background']},
+    type:{enum:['json_ld_product','meta','dom_attribute','css_background','embedded_json']},
     role:{enum:['main','angle','scene','detail','dimension_diagram','swatch','drawing','unknown']},
     path:{type:'string',enum:['image']},property:{type:'string',enum:['og:image','twitter:image']},
     selector:{type:'string',minLength:1,maxLength:200},attribute:{enum:['src','data-src','data-original','data-lazy-src','srcset','data-srcset']},
+    json_path:{type:'string',minLength:1,maxLength:500,pattern:'^[A-Za-z0-9_.*\\[\\]-]+$'},
   },
 };
 const RICH_LINK_SOURCE_SCHEMA={
   type:'object',additionalProperties:false,required:['selector','attribute'],
-  properties:{selector:{type:'string',minLength:1,maxLength:200},attribute:{enum:['href','data-href','data-url','data-file-url']},kind:{enum:['drawing','technical','catalog','material','configurator','component','other']}},
+  properties:{type:{enum:['dom_attribute','embedded_json']},selector:{type:'string',minLength:1,maxLength:200},attribute:{enum:['href','data-href','data-url','data-file-url','text']},json_path:{type:'string',minLength:1,maxLength:500,pattern:'^[A-Za-z0-9_.*\\[\\]-]+$'},kind:{enum:['drawing','technical','catalog','material','configurator','component','other']}},
 };
 const SITE_RULE_SCHEMA_V1_1=JSON.parse(JSON.stringify(SITE_RULE_SCHEMA));
 SITE_RULE_SCHEMA_V1_1.$id=RICH_SCHEMA_VERSION;
@@ -228,7 +231,7 @@ SITE_RULE_SCHEMA_V2.$id=PRODUCT_V2_SCHEMA_VERSION;
 SITE_RULE_SCHEMA_V2.properties.schema_version={const:PRODUCT_V2_SCHEMA_VERSION};
 SITE_RULE_SCHEMA_V2.properties.public_json_api={anyOf:[API_RULE_SCHEMA,{type:'null'}]};
 const v2Extraction=SITE_RULE_SCHEMA_V2.properties.extraction;
-for(const name of ['english_name','release_date'])v2Extraction.properties.fields.properties[name]=RICH_FIELD_RULE_SCHEMA;
+for(const name of ['english_name','release_date','technical_specifications'])v2Extraction.properties.fields.properties[name]=RICH_FIELD_RULE_SCHEMA;
 v2Extraction.properties.images.properties.sources.items.properties.role.enum=PRODUCT_ASSET_ROLES;
 v2Extraction.properties.images.properties.top5_roles.items.enum=['hero','product_gallery','scene','detail'];
 const v2Configurations=v2Extraction.properties.structured.properties.configurations;
