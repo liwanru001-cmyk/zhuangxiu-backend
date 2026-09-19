@@ -58,6 +58,15 @@ test('v2 structured rules stay optional when a product page has no configuration
   assert.deepEqual(result.structured.product_document.data.option_groups,[]);
 });
 
+test('v2 omits configured option groups when a page has no option evidence',()=>{
+  const config=rule(),configuration=config.extraction.structured.configurations;
+  configuration.mode='none';configuration.item_selector=null;configuration.max_items=0;
+  const html='<main><h1 class="product-title">Independent chair</h1><div class="product-content">A compact lounge chair with a soft silhouette.</div><div class="carousel-images"><img src="https://assets.example/chair.jpg"></div></main>';
+  const result=extractPage({url:config.discovery.seed_urls[0],html,status:200,contentType:'text/html'},config);
+  assert.equal(result.accepted,true,JSON.stringify(result.validation_errors));
+  assert.deepEqual(result.structured.product_document.data.option_groups,[]);
+});
+
 test('product-level size options do not fabricate missing per-configuration dimensions',()=>{
   const config=rule();config.extraction.structured.configurations.dimensions.source={required:false,sources:[]};
   const html=fixture().replace('</main>','<section><h3>尺寸选择</h3><div>1.5m*2.0m</div></section></main>');
