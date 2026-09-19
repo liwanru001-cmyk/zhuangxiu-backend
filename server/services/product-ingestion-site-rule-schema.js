@@ -199,7 +199,7 @@ SITE_RULE_SCHEMA_V1_1.properties.extraction.properties.structured={
   type:'object',additionalProperties:false,required:['furniture_type','configurations','ocr','customization'],
   properties:{
     furniture_type:{enum:['sofa','chair','table','bed','cabinet','other']},
-    furniture_type_rule:{type:'object',additionalProperties:false,required:['source','keywords'],properties:{source:RICH_FIELD_RULE_SCHEMA,keywords:{type:'object',additionalProperties:false,required:['sofa','chair','table','bed','cabinet'],properties:{sofa:{...STRING_LIST,maxItems:20},chair:{...STRING_LIST,maxItems:20},table:{...STRING_LIST,maxItems:20},bed:{...STRING_LIST,maxItems:20},cabinet:{...STRING_LIST,maxItems:20}}}}},
+    furniture_type_rule:{type:'object',additionalProperties:false,required:['source','keywords'],properties:{source:RICH_FIELD_RULE_SCHEMA,keywords:{type:'object',additionalProperties:false,required:['sofa','chair','table','bed','cabinet'],properties:{sofa:{...STRING_LIST,maxItems:20},chair:{...STRING_LIST,maxItems:20},table:{...STRING_LIST,maxItems:20},bed:{...STRING_LIST,maxItems:20},cabinet:{...STRING_LIST,maxItems:20},other:{...STRING_LIST,maxItems:20}}}}},
     configurations:{
       type:'object',additionalProperties:false,required:['mode','item_selector','max_items','fields','dimensions','images','parts'],
       properties:{

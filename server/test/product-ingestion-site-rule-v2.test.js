@@ -131,6 +131,17 @@ test('empty structured image values never resolve to the current product page UR
   assert.deepEqual(assets,[]);
 });
 
+test('v2 site rules may classify evidence-backed accessory categories as other',()=>{
+  const config=rule();
+  config.extraction.structured.furniture_type_rule.source={required:true,sources:[{type:'css_text',selector:'.product-category'}]};
+  config.extraction.structured.furniture_type_rule.keywords.other=['配件'];
+  const html=fixture().replace('<div class="product-info">','<div class="product-category">配件</div><div class="product-info">');
+  const result=extractPage({url:config.discovery.seed_urls[0],html,status:200,contentType:'text/html'},config);
+  assert.equal(validateSiteRule(config).valid,true);
+  assert.equal(result.accepted,true,JSON.stringify(result.validation_errors));
+  assert.equal(result.structured.product_document.data.product.product_type,'other');
+});
+
 function scopedRule(host,pathName='/products/item'){
   const value=rule(),url=`https://${host}${pathName}`;value.site_id=`golden-${host.replace(/[^a-z0-9]+/g,'-')}`.slice(0,70);value.brand='Golden fixture';value.scope={base_url:`https://${host}/`,allowed_page_hosts:[host],allowed_asset_hosts:[host],allowed_path_prefixes:['/']};value.discovery.seed_urls=[url];value.discovery.product_detail_path_prefixes=['/'];return value;
 }
