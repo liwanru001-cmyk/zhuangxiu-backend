@@ -8,7 +8,7 @@ const {validateSiteRule}=require('../services/product-ingestion-site-rule-schema
 const {configHash}=require('../services/product-ingestion-site-rule-schema');
 const {extractPage,executeSiteRuleSandbox}=require('../services/product-ingestion-site-rule-sandbox');
 const {extractProductWithSiteRule}=require('../services/product-ingestion-site-rule-runtime');
-const {explicitSemanticValue}=require('../services/product-ingestion-site-rule-structured');
+const {explicitSemanticValue,assetsFromSources}=require('../services/product-ingestion-site-rule-structured');
 
 function emptyRule(){return {required:false,sources:[]};}
 function rule(){
@@ -119,6 +119,16 @@ test('frozen v2 runtime persists Product Schema v2 as the canonical payload',()=
 test('generic semantic fallback reads explicit designer evidence but ignores prose using the word design',()=>{
   assert.equal(explicitSemanticValue('1991 年 由 Poliform 研发部门设计','designer').value,'Poliform 研发部门');
   assert.equal(explicitSemanticValue('产品由研发部门不断调整细节，以适应最新设计需求','designer'),null);
+});
+
+test('empty structured image values never resolve to the current product page URL',()=>{
+  const cheerio=require('cheerio'),$=cheerio.load('<main><h1>Quincy</h1></main>');
+  const assets=assetsFromSources(
+    [{type:'json_ld_product',path:'image',role:'hero'},{type:'meta',property:'og:image',role:'hero'}],
+    {$,root:$.root(),product:{},baseUrl:'https://www.flexform.it/zh-hans/chanpin/quincy'},
+    new Set(['www.flexform.it']),
+  );
+  assert.deepEqual(assets,[]);
 });
 
 function scopedRule(host,pathName='/products/item'){

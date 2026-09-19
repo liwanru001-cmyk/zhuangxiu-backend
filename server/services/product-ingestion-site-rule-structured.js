@@ -7,7 +7,7 @@ const {executeFieldSource,resolveFieldRule}=require('./product-ingestion-field-s
 
 function clean(value,max=2000){return String(value??'').replace(/\s+/g,' ').trim().slice(0,max);}
 function unique(values){return [...new Set(values.filter(Boolean))];}
-function canonicalUrl(raw,base){try{const value=new URL(String(raw||'').trim(),base);if(!['http:','https:'].includes(value.protocol))return '';value.hash='';return value.toString();}catch{return '';}}
+function canonicalUrl(raw,base){const text=String(raw??'').trim();if(!text)return '';try{const value=new URL(text,base);if(!['http:','https:'].includes(value.protocol))return '';value.hash='';return value.toString();}catch{return '';}}
 function bestSrcset(value){return String(value||'').split(',').map(item=>{const [url,size='']=item.trim().split(/\s+/,2);return {url,size:Number.parseFloat(size)||0};}).filter(item=>item.url).sort((a,b)=>b.size-a.size)[0]?.url||'';}
 function safeFind(root,selector){try{return root.find(selector);}catch{return root.find('__invalid_selector__');}}
 function jsonLdProduct($){let result={};$('script[type="application/ld+json"]').each((_,node)=>{if(Object.keys(result).length)return;try{const walk=value=>{if(!value||typeof value!=='object'||Object.keys(result).length)return;const types=Array.isArray(value['@type'])?value['@type']:[value['@type']];if(types.some(type=>String(type).toLowerCase()==='product')){result=value;return;}for(const child of Array.isArray(value)?value:Object.values(value))walk(child);};walk(JSON.parse($(node).html()||'null'));}catch{}});return result;}
