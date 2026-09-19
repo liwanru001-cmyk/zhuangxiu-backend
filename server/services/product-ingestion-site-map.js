@@ -192,7 +192,14 @@ async function buildSiteMap(scope, dependencies = {}) {
 async function augmentProductEvidence(siteMap,scope,discovery,dependencies={}){
   const fetcher=dependencies.fetchHtml;if(typeof fetcher!=='function')throw new Error('产品结构取证缺少受控页面读取器');
   const rules={matching_priority:['exclude','product_detail','listing'],...discovery},existing=new Set((siteMap.pages||[]).map(x=>x.url));
-  const candidates=(siteMap.clusters||[]).flatMap(x=>x.url_examples||[]).filter(url=>urlRole(url,rules)==='product_detail'&&!existing.has(url));
+  // Take one product from each URL family before filling the remaining sample.
+  // A flat slice lets the first large category monopolize all four evidence
+  // slots, which can freeze a category-specific rule as if it covered the site.
+  const families=(siteMap.clusters||[]).map(cluster=>(cluster.url_examples||[]).filter(url=>urlRole(url,rules)==='product_detail'&&!existing.has(url))).filter(items=>items.length);
+  const candidates=[];
+  for(let index=0;candidates.length<20&&families.some(items=>index<items.length);index+=1){
+    for(const items of families){const url=items[index];if(url&&!candidates.includes(url))candidates.push(url);}
+  }
   const added=[],failures=[];for(const url of candidates){if(added.length>=4)break;try{const page=await fetcher(url,scope);added.push(pageCard(page,`P-${String((siteMap.pages||[]).length+added.length+1).padStart(3,'0')}`));}catch(error){failures.push({url,code:error.code||'PRODUCT_EVIDENCE_FETCH_FAILED',message:String(error.message||error).slice(0,500),outcome:classifyIngestionOutcome(error,{stage:'product_evidence'})});}}
   const knownProduct=(siteMap.pages||[]).filter(page=>urlRole(page.url,rules)==='product_detail');
   return {...siteMap,pages:[...added,...knownProduct,...(siteMap.pages||[]).filter(page=>!knownProduct.includes(page))],failures:[...(siteMap.failures||[]),...failures],coverage:{...siteMap.coverage,product_evidence_pages:added.length}};

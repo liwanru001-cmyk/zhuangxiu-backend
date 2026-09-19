@@ -13,9 +13,9 @@ test('network guard blocks local, private, link-local and reserved addresses', (
   for (const address of ['8.8.8.8','1.1.1.1','2606:4700:4700::1111']) assert.equal(isBlockedAddress(address), false, address);
 });
 
-test('frozen discovery blocks sample replay but permits useful partial coverage',()=>{
+test('frozen discovery blocks every result without complete inventory coverage',()=>{
   assert.equal(frozenDiscoveryMustStop({discovery_coverage:{status:'sample_only'}}),true);
-  assert.equal(frozenDiscoveryMustStop({discovery_coverage:{status:'partial'}}),false);
+  assert.equal(frozenDiscoveryMustStop({discovery_coverage:{status:'partial'}}),true);
   assert.equal(frozenDiscoveryMustStop({discovery_coverage:{status:'complete'}}),false);
 });
 

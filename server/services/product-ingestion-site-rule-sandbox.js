@@ -113,6 +113,8 @@ function extractPage(page,config,options={}){
   const errors=[];
   if(roleFor(page.url,config)!=='product_detail')errors.push('PAGE_ROLE_MISMATCH');
   for(const name of config.validation.required_fields)if(!fields[name])errors.push(`REQUIRED_FIELD_MISSING:${name}`);
+  const comparable=value=>String(value||'').replace(/\s+/g,'').toLocaleLowerCase();
+  if(fields.description&&fields.category&&comparable(fields.description)===comparable(fields.category))errors.push('DESCRIPTION_EQUALS_CATEGORY');
   if(config.schema_version!=='site-rule-config-v2'&&images.length<config.validation.minimum_images)errors.push('MINIMUM_IMAGES_NOT_MET');
   if(config.validation.require_template_match&&missingSignals.length)errors.push(`TEMPLATE_SIGNALS_MISSING:${missingSignals.join(',')}`);
   const result={

@@ -7,6 +7,7 @@ const { normalizeDetails } = require('./product-details');
 const { extractPage, extractDiscoveryLinks, roleFor, canonicalUrl } = require('./product-ingestion-site-rule-sandbox');
 const { validateSiteRule, configHash } = require('./product-ingestion-site-rule-schema');
 const { addField, assertProductDocumentV2 } = require('./product-schema-v2');
+const cheerio = require('cheerio');
 
 function parsed(value, fallback = null) {
   if (value == null) return fallback;
@@ -15,6 +16,15 @@ function parsed(value, fallback = null) {
 }
 
 function unique(values) { return [...new Set(values.filter(Boolean))]; }
+
+function strongProductPageEvidence(html){
+  try{
+    const $=cheerio.load(html||''),hasH1=Boolean($('h1').first().text().trim()),imageCount=$('main img,article img,[class*="product"] img').length;
+    let hasProductJsonLd=false;
+    $('script[type="application/ld+json"]').each((_,node)=>{if(/"@type"\s*:\s*(?:"Product"|\[[^\]]*"Product")/i.test($(node).html()||''))hasProductJsonLd=true;});
+    return hasH1&&imageCount>0&&hasProductJsonLd;
+  }catch{return false;}
+}
 
 function error(message, code, status = 409) {
   const problem = new Error(message);
@@ -95,6 +105,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
   const products = new Set(checkpoint?.products||[]);
   const productCandidates = new Set(checkpoint?.product_candidates||[]);
   const failures = checkpoint?.failures||[];
+  const roleConflicts = checkpoint?.role_conflicts||[];
   const detections = new Map(checkpoint?.detections||[]);
   const origins = new Map((checkpoint?.origins||[]).map(([name,values])=>[name,new Set(values)]));
   const enqueue = raw => {
@@ -120,7 +131,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
   if(!checkpoint){for (const entry of discoveryEntries) enqueue(entry);for (const seed of config.discovery.seed_urls) accept(seed,'frozen_rule_sample_seed');}
   let sitemapSummary = checkpoint?.sitemap_summary||null;
   let sitemapInitialized=Boolean(checkpoint?.sitemap_initialized);
-  const durableCheckpoint=()=>({version:1,mode:'frozen',queue,queued:[...queued],visited:[...visited],products:[...products],product_candidates:[...productCandidates],failures,detections:[...detections],origins:[...origins].map(([name,values])=>[name,[...values]]),sitemap_summary:sitemapSummary,sitemap_initialized:sitemapInitialized});
+  const durableCheckpoint=()=>({version:1,mode:'frozen',queue,queued:[...queued],visited:[...visited],products:[...products],product_candidates:[...productCandidates],failures,role_conflicts:roleConflicts,detections:[...detections],origins:[...origins].map(([name,values])=>[name,[...values]]),sitemap_summary:sitemapSummary,sitemap_initialized:sitemapInitialized});
   const progress=()=>onProgress({pages_scanned:visited.size,pages_attempted:visited.size,products_found:products.size,failures:failures.length,rule_id:rule.id,checkpoint:durableCheckpoint()});
   const sitemapDiscoverer = options.sitemapDiscoverer || discoverSitemapUrls;
   if (!sitemapInitialized && typeof sitemapDiscoverer === 'function') {
@@ -146,6 +157,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
       const page = await fetcher(url, scope);
       const pageRole = roleFor(page.url || url, config);
       if (pageRole === 'product_detail') accept(page.url || url, 'frozen_rule_page');
+      else if(pageRole==='listing'&&strongProductPageEvidence(page.html)&&!roleConflicts.some(item=>item.url===(page.url||url)))roleConflicts.push({url:page.url||url,configured_role:'listing',observed_role:'product_detail',reason:'JSON_LD_PRODUCT_WITH_H1_AND_IMAGES'});
       const links=extractDiscoveryLinks(page,config);
       const linkOrigin=pageRole==='listing'?'frozen_rule_listing_link':'frozen_rule_entry_link';
       for (const candidate of links.product_detail) accept(candidate,linkOrigin);
@@ -168,7 +180,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
   const listingPages=[...visited].filter(url=>roleFor(url,config)==='listing').length;
   const cappedPages=Boolean(queue.length && visited.size >= scope.max_pages);
   const cappedProducts=productCandidates.size>products.size||Boolean(products.size>=scope.max_products&&queue.length);
-  const enumerationComplete=!cappedProducts&&((sitemapProducts>0&&!sitemapSummary?.capped_urls&&!sitemapSummary?.capped_files) ||
+  const enumerationComplete=!cappedProducts&&!roleConflicts.length&&((sitemapProducts>0&&!sitemapSummary?.capped_urls&&!sitemapSummary?.capped_files) ||
     (listingPages>0&&!cappedPages&&!failures.some(item=>item.stage==='fetch')));
   const nonSampleProducts=unique([...origins.entries()].filter(([name])=>name!=='frozen_rule_sample_seed').flatMap(([,values])=>[...values])).length;
   const coverageStatus=enumerationComplete?'complete':nonSampleProducts?'partial':'sample_only';
@@ -185,6 +197,7 @@ async function discoverProductsWithSiteRule(scope, rule, fetcher, onProgress = a
       result,
       message:!urls.length?'冻结站点规则未识别到产品详情页，需要重新认识网站':coverageStatus==='sample_only'?`只复核了 ${urls.length} 个规则样本，尚未完成全站产品发现`:coverageStatus==='partial'?`已识别 ${urls.length} 个产品详情页，但全站发现证据尚不完整`:`冻结站点规则完成全站发现，识别到 ${urls.length} 个产品详情页`,
       failures,
+      role_conflicts:roleConflicts.slice(0,100),
       sitemap:sitemapSummary,
       rule_execution:{ mode:'frozen_site_rule', rule_id:rule.id, rule_version:Number(rule.version_number), config_hash:rule.config_hash || configHash(config), generic_score_bypassed:true },
       pipeline:{

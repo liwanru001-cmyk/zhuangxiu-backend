@@ -10,6 +10,7 @@ const {generateSiteRule,siteId,compactEvidence,normalizeV2ProposalShape,executab
 const {validateDecision,decisionTool,parseFunctionArguments}=require('../services/product-ingestion-site-cognition-ai');
 const {validateDiscoveryRule,generateDiscoveryRule,normalizeDiscoveryRule}=require('../services/product-ingestion-site-discovery-ai');
 const {discoverProductsWithSiteRule,extractProductWithSiteRule}=require('../services/product-ingestion-site-rule-runtime');
+const {extractPage}=require('../services/product-ingestion-site-rule-sandbox');
 const {refineFromValidation,validateDiscoveryAgainstMap,createSiteCognitionControl,augmentEvidenceForRule,attemptBudgetUsed,aiBudgetLimit,nextAiBudgetLimit,withBlindTestSeeds,evidenceUrls,MAX_EVIDENCE_PROBE_ROUNDS,evidenceProbeFingerprint,canAutoFreezeRule,renderedEvidenceUsable}=require('../services/product-ingestion-site-cognition');
 const {fetchPageWithRetry,createRunner,fullCrawlRateLimitWait,MAX_FULL_CRAWL_RATE_LIMIT_WAITS}=require('../services/product-ingestion-runner');
 const {buildExtractionContexts,mergeExtractionSlices,normalizeSliceOutput,sliceTasksForFeedback}=require('../services/product-ingestion-ai-context-builder');
@@ -338,6 +339,18 @@ test('product evidence augmentation receives scope, discovery rule and fetcher i
   assert.equal(result.pages[0].url,'https://example.com/products/a');
 });
 
+test('product evidence augmentation samples across URL families before taking siblings',async()=>{
+  const families=['sofas','chairs','tables','beds'].map((family,index)=>({
+    cluster_id:`UC-00${index+1}`,
+    url_examples:[`https://example.com/products/${family}/one`,`https://example.com/products/${family}/two`],
+  }));
+  const siteMap={site:{},pages:[],clusters:families},scope={allowed_hosts:['example.com']},rule={product_detail_path_prefixes:['/products/'],exclude_path_prefixes:[]};
+  const fetched=[];
+  const result=await augmentEvidenceForRule(siteMap,scope,rule,async url=>{fetched.push(url);return {url,status:200,contentType:'text/html',html:fixture(new URL(url).pathname)};});
+  assert.equal(result.coverage.product_evidence_pages,4);
+  assert.deepEqual(fetched,families.map(cluster=>cluster.url_examples[0]));
+});
+
 test('AI cognition decision must cite real pages and a supported product hypothesis',()=>{
   const siteMap={pages:[{page_id:'P-001'}],clusters:[{cluster_id:'UC-001'}]};
   const decision={schema_version:'site-cognition-ai-output-v1.0',business_summary:'发现了一组具体产品页面。',hypotheses:[{hypothesis_id:'H-001',subject_id:'UC-001',proposed_role:'product_detail',claim:'同一模板对应不同产品。',supporting_evidence_refs:['P-001:h1'],counter_evidence_refs:[],alternative_roles:['collection_detail'],confidence:0.9,status:'supported',discriminators:['单一产品主体']}],next_decision:{action:'GENERATE_DISCOVERY_RULE',reason:'已有产品页与对照证据。',hypothesis_ids:['H-001'],readiness:{discovery_rule:true,extraction_rule:false}},probe_requests:[],unresolved_questions:[],warnings:[]};
@@ -412,6 +425,21 @@ test('discovery gate requires positive, negative and unseen product candidates',
   assert.equal(validateDiscoveryAgainstMap(siteMap,broad).passed,false);
 });
 
+test('discovery gate rejects an uncovered sibling product family beneath a listing root',()=>{
+  const root='/zh-hans/chanpin/huneixilie/suoyouchanpin/';
+  const straight=`${root}shafa/zhipaishafa/`,sectional=`${root}shafa/zuheshafa/`;
+  const urls=prefix=>['alpha','beta','gamma'].map(name=>`https://example.com${prefix}${name}/`);
+  const siteMap={site:{entry_url:'https://example.com/'},pages:[],clusters:[
+    {cluster_id:'UC-001',decoded_path_pattern:`${straight}{leaf}/`,estimated_count:8,url_examples:urls(straight)},
+    {cluster_id:'UC-002',decoded_path_pattern:`${sectional}{leaf}/`,estimated_count:8,url_examples:urls(sectional)},
+  ]};
+  const rule={seed_urls:[urls(straight)[0]],product_detail_path_prefixes:[straight],listing_path_prefixes:[root],exclude_path_prefixes:[]};
+  const result=validateDiscoveryAgainstMap(siteMap,rule);
+  assert.equal(result.passed,false);
+  assert.equal(result.uncovered_product_family_clusters[0].cluster_id,'UC-002');
+  assert.ok(result.errors.some(value=>value.startsWith('PRODUCT_FAMILY_CLUSTER_UNCOVERED:UC-002')));
+});
+
 test('precise URL role contract separates a locale homepage from sibling product files',()=>{
   const siteMap={site:{entry_url:'https://example.com/en-us/'},pages:[],clusters:[{url_examples:['https://example.com/en-us/','https://example.com/en-us/alpha-sofas.html','https://example.com/en-us/beta-chairs.html','https://example.com/en-us/gamma-tables.html']}]};
   const rule={seed_urls:['https://example.com/en-us/alpha-sofas.html'],product_detail_path_prefixes:['/en-us/'],product_detail_path_patterns:['^/en-us/[^/]+\\.html$'],listing_path_prefixes:[],exclude_path_prefixes:[],exclude_paths:['/en-us/']};
@@ -473,6 +501,7 @@ test('production discovery trusts a frozen rule instead of the old URL score',as
 test('production discovery separates sandbox samples from full-site listing traversal',async()=>{
   const value=config();
   value.scope.base_url='https://www.poliform.cn/';
+  value.scope.allowed_path_prefixes=['/'];
   value.discovery.seed_urls=['https://www.poliform.cn/%E4%BA%A7%E5%93%81/sample/'];
   value.discovery.product_detail_path_prefixes=['/产品/'];
   value.discovery.listing_path_prefixes=['/catalog/'];
@@ -488,6 +517,23 @@ test('production discovery separates sandbox samples from full-site listing trav
   assert.equal(result.summary.discovery_coverage.status,'complete');
   assert.equal(result.summary.discovery_coverage.listing_pages_scanned,1);
   assert.equal(result.summary.pages_scanned,2);
+});
+
+test('production discovery refuses completeness when a configured listing is actually a product page',async()=>{
+  const value=config();
+  value.scope.base_url='https://www.poliform.cn/';
+  value.scope.allowed_path_prefixes=['/'];
+  value.discovery.seed_urls=['https://www.poliform.cn/products/known/sample/'];
+  value.discovery.product_detail_path_prefixes=['/products/known/'];
+  value.discovery.listing_path_prefixes=['/catalog/'];
+  const rule={id:15,source_id:1,status:'frozen',version_number:1,config:value,config_hash:require('../services/product-ingestion-site-rule-schema').configHash(value)};
+  const home='https://www.poliform.cn/',misclassified='https://www.poliform.cn/catalog/chairs/alpha/';
+  const pages=new Map([[home,`<a href="${misclassified}">Alpha chair</a>`],[misclassified,fixture('Alpha')]]);
+  const scope={source_id:1,job_id:8,source_status:'active',job_status:'discovering',base_url:home,seed_urls:[home],allowed_hosts:['www.poliform.cn'],allowed_path_prefixes:['/'],max_pages:20,max_products:500,request_interval_ms:1000,page_quota:{used:0,limit:20}};
+  const result=await discoverProductsWithSiteRule(scope,rule,async url=>({url,status:200,contentType:'text/html',html:pages.get(url)||''}),async()=>{}, {sitemapDiscoverer:async()=>({urls:[],summary:{files_scanned:1,urls_found:0,failures:[]}})});
+  assert.notEqual(result.summary.discovery_coverage.status,'complete');
+  assert.equal(result.summary.discovery_coverage.enumeration_complete,false);
+  assert.equal(result.summary.role_conflicts[0].url,misclassified);
 });
 
 test('production discovery never presents frozen sample replay as a full-site result',async()=>{
@@ -518,6 +564,14 @@ test('production extraction executes rule selectors and returns standard candida
   assert.equal(result.payload.product_type,'furniture');
   assert.ok(result.payload.product_details.configurations[0].image_urls.length>=1);
   assert.equal(result.extracted.extraction_method,'frozen_site_rule_v1');
+});
+
+test('sandbox rejects a category label copied into the product description',()=>{
+  const value=config();
+  value.extraction.fields.category={required:false,sources:[{type:'json_ld_product',path:'description'}]};
+  const result=extractPage({url:productUrl,status:200,contentType:'text/html',html:fixture()},value);
+  assert.equal(result.accepted,false);
+  assert.ok(result.validation_errors.includes('DESCRIPTION_EQUALS_CATEGORY'));
 });
 
 test('validation-driven refinement removes disproved optional requirements, template signals and cross-product image sources',()=>{

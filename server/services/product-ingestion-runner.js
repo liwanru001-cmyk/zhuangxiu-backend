@@ -30,7 +30,7 @@ function json(value) { return value == null ? null : JSON.stringify(value); }
 function parsed(value,fallback=null){if(typeof value!=='string')return value??fallback;try{return JSON.parse(value);}catch(_){return fallback;}}
 function issue(error) { return [{ code:error.code || 'EXTRACTION_FAILED', message:String(error.message || '产品解析失败').slice(0, 500),...(error.page_role_assessment?{page_role_assessment:error.page_role_assessment}:{}),...(error.template_drift_decision?{template_drift_decision:error.template_drift_decision}:{}) }]; }
 function digest(value) { return crypto.createHash('sha256').update(value).digest('hex'); }
-function frozenDiscoveryMustStop(summary) { return summary?.discovery_coverage?.status === 'sample_only'; }
+function frozenDiscoveryMustStop(summary) { return summary?.discovery_coverage?.status !== 'complete'; }
 function imageDecisionUrls(payload){
   const parsedPayload=parsed(payload,{}),decisions=parsedPayload?.image_recognition?.decisions||[];
   return [...new Set(decisions.map(item=>canonicalImageKey(item?.url)).filter(Boolean))];
@@ -374,10 +374,11 @@ function createRunner(db, dependencies = {}) {
           );
         }
       }
-      const sampleOnlyFrozenDiscovery=frozenRule&&frozenDiscoveryMustStop(result.summary);
-      if(!result.urls.length||sampleOnlyFrozenDiscovery){
-        const failureCode=sampleOnlyFrozenDiscovery?'SAMPLE_ONLY_PRODUCT_DISCOVERY':'NO_PRODUCTS_DISCOVERED';
-        const failureMessage=sampleOnlyFrozenDiscovery?(result.summary.message||'冻结规则只完成了抽样验证，尚未完成全站产品发现'):(result.summary.message||'未发现产品详情页');
+      const incompleteFrozenDiscovery=frozenRule&&frozenDiscoveryMustStop(result.summary);
+      if(!result.urls.length||incompleteFrozenDiscovery){
+        const coverageStatus=result.summary?.discovery_coverage?.status;
+        const failureCode=incompleteFrozenDiscovery?(coverageStatus==='sample_only'?'SAMPLE_ONLY_PRODUCT_DISCOVERY':'INCOMPLETE_PRODUCT_DISCOVERY'):'NO_PRODUCTS_DISCOVERED';
+        const failureMessage=incompleteFrozenDiscovery?(result.summary.message||'冻结规则尚未完成全站产品发现'):(result.summary.message||'未发现产品详情页');
         await db.query(`UPDATE product_ingestion_jobs SET status='discovery_failed',discovered_urls=?,discovery_summary=?,pages_fetched=?,finished_at=NOW(),failure_code=?,current_stage='failed',heartbeat_at=NOW(),last_error=? WHERE id=? AND status='discovering'`,
           [JSON.stringify(result.urls||[]),JSON.stringify(result.summary),result.summary.pages_scanned,failureCode,`${failureCode}: ${failureMessage}`.slice(0,1000),id]);
         if(job.recovery_mode==='shadow'){

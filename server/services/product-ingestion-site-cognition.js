@@ -166,6 +166,24 @@ function discoveryRole(raw,rule){
   return urlRole(raw,{matching_priority:['exclude','product_detail','listing'],...rule});
 }
 
+function uncoveredProductFamilyClusters(siteMap,rule){
+  const listingPrefixes=(rule.listing_path_prefixes||[]).map(value=>String(value).replace(/\/+$/,'/'));
+  if(!listingPrefixes.length)return [];
+  const depth=value=>String(value||'').split('/').filter(Boolean).length;
+  const gaps=[];
+  for(const cluster of siteMap.clusters||[]){
+    const examples=cluster.url_examples||cluster.representative_urls||[];
+    if(!examples.length||Number(cluster.estimated_count||0)<3)continue;
+    const roles=examples.map(url=>discoveryRole(url,rule));
+    if(roles.includes('product_detail')||roles.every(role=>role==='exclude'))continue;
+    const stable=String(cluster.decoded_path_pattern||'').split(/\{[^/{}]+\}/)[0].replace(/\/+$/,'/');
+    const listing=listingPrefixes.find(prefix=>stable.startsWith(prefix)&&depth(stable)>depth(prefix));
+    if(!listing)continue;
+    gaps.push({cluster_id:cluster.cluster_id,path_pattern:cluster.decoded_path_pattern,estimated_count:Number(cluster.estimated_count||examples.length),sample_urls:examples.slice(0,3)});
+  }
+  return gaps;
+}
+
 function validateDiscoveryAgainstMap(siteMap,rule,seenUrls=[]){
   const all=[...new Set([siteMap.site?.entry_url,...(siteMap.clusters||[]).flatMap(cluster=>cluster.url_examples||[]),...(siteMap.pages||[]).map(page=>page.url)].filter(Boolean))];
   const productUrls=all.filter(url=>discoveryRole(url,rule)==='product_detail');
@@ -175,8 +193,10 @@ function validateDiscoveryAgainstMap(siteMap,rule,seenUrls=[]){
   const errors=[];
   if(productUrls.length<3)errors.push(`PRODUCT_CANDIDATE_COVERAGE_TOO_LOW:${productUrls.length}`);
   if(!unseen.length)errors.push('NO_UNSEEN_PRODUCT_CANDIDATE');
+  const uncoveredClusters=uncoveredProductFamilyClusters(siteMap,rule);
+  for(const cluster of uncoveredClusters.slice(0,8))errors.push(`PRODUCT_FAMILY_CLUSTER_UNCOVERED:${cluster.cluster_id}:${cluster.path_pattern}`);
   for(const item of cases)if(!item.passed)errors.push(`${item.kind.toUpperCase()}_ROLE_MISMATCH:${item.url}`);
-  return {passed:!errors.length,errors,candidate_product_urls:productUrls.slice(0,50),unseen_product_urls:unseen.slice(0,20),cases};
+  return {passed:!errors.length,errors,candidate_product_urls:productUrls.slice(0,50),unseen_product_urls:unseen.slice(0,20),uncovered_product_family_clusters:uncoveredClusters,cases};
 }
 
 function publicApiDiscovery(siteMap){
@@ -578,7 +598,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
     return workflow;
   }
 
-  async function generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback=null,{maxAttempts=1,discoveryTest=null,discoveryExposedUrls=[],requiredValidationUrls=[]}={}){
+  async function generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback=null,{maxAttempts=2,discoveryTest=null,discoveryExposedUrls=[],requiredValidationUrls=[]}={}){
     const baselineRule=workflow.rule_id?await siteRules.get(workflow.rule_id):null,baselineResult=baselineRule?.last_sandbox_result||null;
     let generated;
     const contexts=buildExtractionContexts(extractionMap,{feedback,discoveryRule});
@@ -646,7 +666,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
     const extractionMap=await augmentEvidenceForRule(siteMap,{...siteMap.site,brand_name:siteMap.site.brand,base_url:siteMap.site.entry_url,allowed_hosts:siteMap.site.allowed_hosts,allowed_asset_hosts:siteMap.site.allowed_asset_hosts,allowed_path_prefixes:siteMap.site.allowed_path_prefixes,request_interval_ms:siteMap.site.request_interval_ms,source_status:'active',job_status:'discovering',source_id:workflow.source_id,job_id:workflow.job_id,policy_db:db,page_quota:{used:0,limit:8}},discoveryRule,pageFetcher);
     discoveryRule=normalizeDiscoveryRule(discoveryRule,extractionMap);
     await saveEvidence(workflow,extractionMap);
-    return generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback,{maxAttempts:1,discoveryTest,discoveryExposedUrls});
+    return generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,feedback,{maxAttempts:2,discoveryTest,discoveryExposedUrls});
   }
 
   async function revise(workflow, siteMap, feedback, actor) {
@@ -758,7 +778,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
           await saveEvidence(workflow,extractionMap);
           // Await here so budget and rule-generation failures stay inside this
           // executor's catch block and enter the workflow handoff state.
-          return await generateAndTestExtraction(workflow,extractionMap,normalizeDiscoveryRule(discoveryRule,extractionMap),actor,null,{maxAttempts:1,requiredValidationUrls});
+          return await generateAndTestExtraction(workflow,extractionMap,normalizeDiscoveryRule(discoveryRule,extractionMap),actor,null,{maxAttempts:2,requiredValidationUrls});
         }
       }
       if(siteMap.public_json_api_rule)return await draftAndTest(workflow,siteMap,actor,null,{next_decision:{action:'GENERATE_DISCOVERY_RULE',reason:'已验证的公开 JSON API 合同可直接确定商品记录范围'}},restartRecovery);
@@ -837,7 +857,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
         const extractionMap=await augmentEvidenceForRule(siteMap,{...siteMap.site,brand_name:siteMap.site.brand,base_url:siteMap.site.entry_url,allowed_hosts:siteMap.site.allowed_hosts,allowed_asset_hosts:siteMap.site.allowed_asset_hosts,allowed_path_prefixes:siteMap.site.allowed_path_prefixes,request_interval_ms:siteMap.site.request_interval_ms,source_status:'active',job_status:'discovering',source_id:workflow.source_id,job_id:workflow.job_id,policy_db:db,page_quota:{used:0,limit:8}},checkpoint.discoveryRule,pageFetcher);
         const discoveryRule=normalizeDiscoveryRule(checkpoint.discoveryRule,extractionMap);
         await saveEvidence(workflow,extractionMap);
-        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:1,requiredValidationUrls:checkpoint.requiredValidationUrls});
+        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:2,requiredValidationUrls:checkpoint.requiredValidationUrls});
       }catch(error){console.error('Site cognition stage retry failed:',{workflowId:workflow.id,code:error.code||error.name,message:error.message});await finishWithHandoff(workflow,error,actor);}
     });else schedule(()=>execute(workflow.id,actor));
     return get(workflow.id);
@@ -860,7 +880,7 @@ function createSiteCognitionControl(db, dependencies = {}) {
     if(checkpoint)schedule(async()=>{
       try{
         const extractionMap=checkpoint.siteMap,discoveryRule=normalizeDiscoveryRule(checkpoint.discoveryRule,extractionMap);
-        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:1,requiredValidationUrls:checkpoint.requiredValidationUrls});
+        await generateAndTestExtraction(workflow,extractionMap,discoveryRule,actor,null,{maxAttempts:2,requiredValidationUrls:checkpoint.requiredValidationUrls});
       }catch(error){console.error('Site cognition budget resume failed:',{workflowId:workflow.id,code:error.code||error.name,message:error.message});await finishWithHandoff(workflow,error,actor);}
     });else schedule(()=>execute(workflow.id,actor));
     return get(workflow.id);
@@ -976,4 +996,4 @@ function createSiteCognitionControl(db, dependencies = {}) {
   return {startForJob,execute,get,list,feedback,retryHandoff,approveAiBudget,latestForJob,recoverInterrupted,markFullCrawlStarted,markFullCrawlFinished,returnToHumanAnchor,stopForJob};
 }
 
-module.exports = { createSiteCognitionControl, businessCopy, BUSINESS_ERROR_TYPES, DISCOVERY_ERROR_TYPES, AI_TOKEN_BUDGET, MAX_AI_TOKEN_BUDGET, MAX_EVIDENCE_PROBE_ROUNDS, evidenceProbeFingerprint, canAutoFreezeRule, renderedEvidenceUsable, withBlindTestSeeds, withRequiredValidationSeeds, enforceRequiredValidation, refineFromValidation, validateDiscoveryAgainstMap, publicApiDiscovery, augmentEvidenceForRule, attemptBudgetUsed, aiBudgetLimit, nextAiBudgetLimit, evidenceUrls, sandboxValidationRows, sandboxValidationFingerprint, sandboxValidationProgress };
+module.exports = { createSiteCognitionControl, businessCopy, BUSINESS_ERROR_TYPES, DISCOVERY_ERROR_TYPES, AI_TOKEN_BUDGET, MAX_AI_TOKEN_BUDGET, MAX_EVIDENCE_PROBE_ROUNDS, evidenceProbeFingerprint, canAutoFreezeRule, renderedEvidenceUsable, withBlindTestSeeds, withRequiredValidationSeeds, enforceRequiredValidation, refineFromValidation, validateDiscoveryAgainstMap, uncoveredProductFamilyClusters, publicApiDiscovery, augmentEvidenceForRule, attemptBudgetUsed, aiBudgetLimit, nextAiBudgetLimit, evidenceUrls, sandboxValidationRows, sandboxValidationFingerprint, sandboxValidationProgress };
