@@ -188,7 +188,11 @@ function createRunner(db, dependencies = {}) {
       globalSlot=await globalSlots.acquire({jobId:id,phase:'extraction'});
       if(!globalSlot){scheduleAt(()=>launchWhenFree(Number(id),run),globalSlotRetryMs);return;}
       const job = await loadJob(id);
-      if (!job.scope_snapshot || job.status !== 'queued') throw new Error('任务没有可执行的授权范围快照');
+      // A delayed launch can outlive the state that scheduled it (for example,
+      // another worker may already have claimed the job). Treat that launch as
+      // stale instead of allowing its error handler to overwrite active work.
+      if (job.status !== 'queued') return;
+      if (!job.scope_snapshot) throw new Error('任务没有可执行的授权范围快照');
       const scope = {...job.scope_snapshot,job_id:Number(id),job_status:'running',source_status:job.source_status,policy_db:db};
       scope.policy_authorizer=policyAuthorizer(db,job.source_id,Number(id));
       const frozenRules=job.frozen_site_rule_id?await frozenRuleSetLoader(db,job.source_id):[];
@@ -340,7 +344,11 @@ function createRunner(db, dependencies = {}) {
       globalSlot=await globalSlots.acquire({jobId:id,phase:'discovery'});
       if(!globalSlot){scheduleAt(()=>launchWhenFree(Number(id),runDiscovery),globalSlotRetryMs);return;}
       const job = await loadJob(id);
-      if (!job.scope_snapshot || job.status !== 'discovery_approved' || job.scope_snapshot.job_mode !== 'brand_scan') throw new Error('任务没有可执行的官网分析授权快照');
+      // Discovery can also be queued by both the poller and a cognition
+      // callback. Once either path has advanced the job, the other invocation
+      // is obsolete and must not turn the active job into discovery_failed.
+      if (job.status !== 'discovery_approved') return;
+      if (!job.scope_snapshot || job.scope_snapshot.job_mode !== 'brand_scan') throw new Error('任务没有可执行的官网分析授权快照');
       const scope = {...job.scope_snapshot,job_id:Number(id),job_status:'discovering',source_status:job.source_status,policy_db:db};
       scope.policy_authorizer=policyAuthorizer(db,job.source_id,Number(id));
       scope.page_quota={used:Number(job.discovery_checkpoint?.attempted||job.discovery_checkpoint?.visited?.length||0),limit:scope.max_pages};

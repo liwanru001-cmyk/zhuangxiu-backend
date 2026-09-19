@@ -148,6 +148,30 @@ test('worker makes no request after a queued job is cancelled before claim', asy
   assert.equal(queries.length, 2);
 });
 
+test('stale extraction launch does not overwrite a job already claimed elsewhere', async () => {
+  const queries=[];let releases=0;
+  const db={query:async sql=>{
+    queries.push(sql);
+    if(sql.startsWith('SELECT job.*'))return [[{id:18,source_id:4,status:'running',scope_snapshot:{seed_urls:[]},source_status:'active'}]];
+    throw new Error(`Stale extraction launch mutated the job: ${sql}`);
+  }};
+  await createRunner(db,{globalSlots:{acquire:async()=>({release:async()=>{releases+=1;}})}}).run(18);
+  assert.equal(queries.length,1);
+  assert.equal(releases,1);
+});
+
+test('stale discovery launch does not overwrite a job already advanced elsewhere', async () => {
+  const queries=[];let releases=0;
+  const db={query:async sql=>{
+    queries.push(sql);
+    if(sql.startsWith('SELECT job.*'))return [[{id:19,source_id:4,status:'discovering',scope_snapshot:{job_mode:'brand_scan'},source_status:'active'}]];
+    throw new Error(`Stale discovery launch mutated the job: ${sql}`);
+  }};
+  await createRunner(db,{globalSlots:{acquire:async()=>({release:async()=>{releases+=1;}})}}).runDiscovery(19);
+  assert.equal(queries.length,1);
+  assert.equal(releases,1);
+});
+
 test('extraction resume re-enters full crawl workflow before processing frozen-rule pages', async () => {
   const transitions=[];
   const job={
