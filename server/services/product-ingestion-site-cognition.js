@@ -144,12 +144,18 @@ function refineFromValidation(rawConfig,result){
   const missing=new Set(errors.filter(value=>value.startsWith('TEMPLATE_SIGNALS_MISSING:')).flatMap(value=>value.split(':')[1].split(',')));
   const remaining=config.template.required_signals.filter(signal=>!missing.has(signal));
   if(remaining.length>=2)config.template.required_signals=remaining;
-  if(errors.includes('PRIMARY_IMAGE_CONFLICT')||errors.includes('PRIMARY_IMAGE_REUSED_ACROSS_PRODUCTS')){
-    const role=config.schema_version==='site-rule-config-v1.1'?{role:'main'}:{};
+  if(errors.includes('PRIMARY_IMAGE_CONFLICT')||errors.includes('PRIMARY_IMAGE_REUSED_ACROSS_PRODUCTS')||errors.includes('PRODUCT_V2_DISPLAY_IMAGES_MISSING')){
+    const isV2=config.schema_version==='site-rule-config-v2',role=config.schema_version==='site-rule-config-v1.1'?{role:'main'}:isV2?{role:'hero'}:{};
     config.extraction.images.sources=[
       {type:'meta',property:'og:image',...role},
-      {type:'json_ld_product',path:'image',...role},
+      {type:'json_ld_product',path:'image',...(isV2?{role:'product_gallery'}:role)},
     ];
+    config.extraction.images.exclude_tokens=[];
+    if(isV2)config.extraction.images.top5_roles=['hero','product_gallery'];
+  }
+  if(errors.includes('DESCRIPTION_EQUALS_CATEGORY')&&config.extraction.fields.description){
+    config.extraction.fields.description={required:false,sources:[]};
+    config.validation.required_fields=config.validation.required_fields.filter(name=>name!=='description');
   }
   const optionalMissing=new Set(errors.filter(value=>value.startsWith('REQUIRED_FIELD_MISSING:')).map(value=>value.split(':')[1]).filter(name=>name&&name!=='name'));
   if(optionalMissing.size){

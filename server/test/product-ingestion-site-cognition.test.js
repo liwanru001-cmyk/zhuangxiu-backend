@@ -608,6 +608,18 @@ test('validation-driven image refinement preserves required v1.1 image roles',()
   assert.equal(require('../services/product-ingestion-site-rule-schema').validateSiteRule(refined).schema_valid,true);
 });
 
+test('validation refinement removes category-copy descriptions and restores authoritative v2 images',()=>{
+  const full={schema_version:'site-rule-config-v2',template:{required_signals:['PRODUCT_NAME','PRODUCT_GALLERY']},extraction:{fields:{description:{required:false,sources:[{type:'css_text',selector:'.category p'}]}},images:{sources:[],exclude_tokens:['QUINCY'],top5_roles:[]}},validation:{required_fields:['name','description']},provenance:{evidence_ids:[]}};
+  const refined=refineFromValidation(full,{rejected_products:[{validation_errors:['DESCRIPTION_EQUALS_CATEGORY','PRODUCT_V2_DISPLAY_IMAGES_MISSING']}]});
+  assert.deepEqual(refined.extraction.fields.description,{required:false,sources:[]});
+  assert.deepEqual(refined.validation.required_fields,['name']);
+  assert.deepEqual(refined.extraction.images.exclude_tokens,[]);
+  assert.deepEqual(refined.extraction.images.sources,[
+    {type:'meta',property:'og:image',role:'hero'},
+    {type:'json_ld_product',path:'image',role:'product_gallery'},
+  ]);
+});
+
 test('production page fetch retries a transient reset once but stays bounded',async()=>{
   let calls=0;const scope={page_quota:{used:0,limit:2}};
   const page=await fetchPageWithRetry('https://example.com/product',scope,async()=>{calls+=1;if(calls===1){const error=new Error('reset');error.code='ECONNRESET';throw error;}return {url:'https://example.com/product',html:'ok'};});
