@@ -33,6 +33,14 @@ function assetsFromSources(sources,context,allowedHosts,excluded=[]){
   return assets;
 }
 function productAssetRole(role){return ({main:'hero',angle:'product_gallery',swatch:'material_swatch'})[role]||role||'unknown';}
+function assetMediaType(url,role){
+  let extension='';try{extension=new URL(url).pathname.split('.').pop().toLowerCase();}catch{}
+  if(extension==='pdf')return 'pdf';
+  if(['3dm','fbx','max','skp','dwg','dxf','zip'].includes(extension))return 'model';
+  if(['doc','docx','xls','xlsx','ppt','pptx','txt','rtf'].includes(extension)||['catalog','technical_document','certificate'].includes(productAssetRole(role)))return 'document';
+  if(['jpg','jpeg','png','webp','gif','avif','svg','bmp','tif','tiff'].includes(extension))return 'image';
+  return ['hero','product_gallery','scene','detail','configuration_image','dimension_diagram','material_swatch','decorative'].includes(productAssetRole(role))?'image':'other';
+}
 function businessPresence(bodyText,fieldName){
   const patterns={english_name:/(?:英文名|english\s+name)\s*[:：]\s*[A-Za-z]/i,description:/设计主题|产品说明|product\s+description|design\s+concept/i,model:/(?:型号|货号|sku|model)\s*[:：]\s*[A-Za-z0-9]/i,category:/(?:分类|category)\s*[:：]\s*\S+/i,designer:/(?:设计师|designer)\s*[:：]\s*\S+|(?:19|20)\d{2}\s*年\s+由.{1,100}设计|designed\s+by\s+\S+/i,design_year:/(?:设计年份|design\s+year)\s*[:：]?\s*(?:19|20)\d{2}/i,release_date:/(?:发布日期|发布日|release\s+date|published)\s*[:：]?\s*(?:19|20)\d{2}/i,material:/(?:材质|面料|皮革|饰面|material|fabric|leather|finish)\s*[:：]\s*\S+/i,dimensions:/(?:尺寸|dimension|measurement|\bsize\b)[^\d]{0,30}\d+(?:\.\d+)?\s*(?:mm|cm|m|毫米|厘米)?\s*[×xX*]/i,configurations:/(?:产品)?(?:款型|款式|组合方式)|configuration\s+(?:options?|variants?)|product\s+variants?/i,option_groups:/(?:色彩|颜色|色卡|面料|皮革|材质|饰面)(?:选择|选项|可选)|(?:colour|color|fabric|leather|material|finish)\s+(?:options?|choices?|swatches?)/i};
   return Boolean(patterns[fieldName]?.test(String(bodyText||'')));
@@ -183,7 +191,7 @@ function buildProductDocumentV2(page,config,baseRow,structured){
   for(const [name,[path,value]] of Object.entries(productFields))addField(document,path,value,documentStatus({value},businessPresence(bodyText,name)),evidence[name]?{...evidence[name],raw_value:value}:null);
   addField(document,'/product/product_type',product.product_type,product.product_type?'provided':businessPresence(bodyText,'configurations')?'extraction_failed':'source_absent',typeEvidence);
   const assetsByUrl=new Map();
-  const addAsset=(raw,role,binding=null)=>{if(!raw?.url)return null;const id=documentStableId('asset',raw.url);let asset=assetsByUrl.get(raw.url);if(!asset){asset={id,url:raw.url,media_type:/\.pdf(?:$|[?#])/i.test(raw.url)?'pdf':'image',role:productAssetRole(role),sort_order:assetsByUrl.size,bindings:[]};assetsByUrl.set(raw.url,asset);}if(binding&&!asset.bindings.some(item=>item.target_type===binding.target_type&&item.target_id===binding.target_id))asset.bindings.push(binding);return asset;};
+  const addAsset=(raw,role,binding=null)=>{if(!raw?.url)return null;const id=documentStableId('asset',raw.url);let asset=assetsByUrl.get(raw.url);if(!asset){asset={id,url:raw.url,media_type:assetMediaType(raw.url,role),role:productAssetRole(role),sort_order:assetsByUrl.size,bindings:[]};assetsByUrl.set(raw.url,asset);}if(binding&&!asset.bindings.some(item=>item.target_type===binding.target_type&&item.target_id===binding.target_id))asset.bindings.push(binding);return asset;};
   for(const raw of structured.assets)addAsset(raw,raw.role,{target_type:'product',target_id:'product'});
   for(const [index,item] of structured.configurations.entries()){
     const id=item.id||documentStableId('cfg',`${index}|${item.code||''}|${item.name||''}`),values={};for(const [key,value] of Object.entries(item.dimensions||{}))values[key]=value==null?null:Number(value);const hasDimensions=Object.values(values).some(value=>Number.isFinite(value)&&value>0),dimensionId=documentStableId('dim',`${id}|overall`),assetIds=[];

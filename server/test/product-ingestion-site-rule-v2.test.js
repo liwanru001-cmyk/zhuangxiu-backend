@@ -144,9 +144,9 @@ test('embedded JSON enriches product copy, images and official attachments',()=>
   const config=rule();
   config.extraction.fields.technical_specifications={required:false,sources:[{type:'embedded_json_text',selector:'#__NEXT_DATA__',json_path:'product.technical[*]',strip_html:true,join_with:'\n'}]};
   config.extraction.images.sources=[{type:'embedded_json',role:'hero',selector:'#__NEXT_DATA__',json_path:'product.images[*].url'}];
-  config.extraction.attachments.link_sources=[{type:'embedded_json',selector:'#__NEXT_DATA__',attribute:'text',json_path:'product.documents[*].url',kind:'technical'}];
-  config.extraction.attachments.allowed_extensions=['pdf'];
-  const data={product:{technical:['<p>Structure: metal</p>','Removable fabric cover'],images:[{url:'https://assets.example/one.jpg'},{url:'https://assets.example/two.jpg'}],documents:[{url:'https://assets.example/spec.pdf'}]}};
+  config.extraction.attachments.link_sources=[{type:'embedded_json',selector:'#__NEXT_DATA__',attribute:'text',json_path:'product.documents[*].url',kind:'technical'},{type:'embedded_json',selector:'#__NEXT_DATA__',attribute:'text',json_path:'product.drawing.url',kind:'drawing'}];
+  config.extraction.attachments.allowed_extensions=['pdf','zip'];
+  const data={product:{technical:['<p>Structure: metal</p>','Removable fabric cover'],images:[{url:'https://assets.example/one.jpg'},{url:'https://assets.example/two.jpg'}],documents:[{url:'https://assets.example/spec.pdf'}],drawing:{url:'https://assets.example/model.zip'}}};
   const html=fixture().replace('</head>','').replace('<html><body>',`<html><head><script id="__NEXT_DATA__" type="application/json">${JSON.stringify(data)}</script></head><body>`);
   const result=extractPage({url:config.discovery.seed_urls[0],html,status:200,contentType:'text/html'},config),document=result.structured.product_document;
   assert.equal(validateSiteRule(config).valid,true);
@@ -154,6 +154,7 @@ test('embedded JSON enriches product copy, images and official attachments',()=>
   assert.ok(document.data.assets.some(item=>item.url==='https://assets.example/one.jpg'));
   assert.ok(document.data.assets.some(item=>item.url==='https://assets.example/two.jpg'));
   assert.ok(document.data.assets.some(item=>item.media_type==='pdf'&&item.role==='technical_document'));
+  assert.ok(document.data.assets.some(item=>item.media_type==='model'&&item.role==='drawing'));
 });
 
 test('indexed field sources pair parallel labels with configuration and option images',()=>{
