@@ -243,3 +243,24 @@ test('design-document renderings are counted and routed separately from plans', 
   settings.spaces[0].show_rendering = false;
   assert.equal(service.buildRenderPlan(source, settings, outlineFixture()).spaces[0].renderings.length, 0);
 });
+
+test('presentation reads product-level public selections from their pinned snapshot', async () => {
+  const db = { query: async sql => {
+    if (sql.includes('FROM renovation_projects')) return [[{ id: 3, project_name: '测试' }]];
+    if (sql.includes('FROM project_spaces')) return [[{ id: 31, name: '客厅' }]];
+    if (sql.includes('FROM project_design_documents')) return [[]];
+    if (sql.includes('FROM project_space_images')) return [[]];
+    if (sql.includes('FROM project_scheme_products')) return [[{
+      id: 41, space_id: 31, source_type: 'public_library', quantity: 1, unit: '件',
+      selected_spec: '放置于客厅', selection_details: { selection_scope: 'product', ppt: { included: true } },
+      product_snapshot: { product: { name: '无规格边几', brand: '示例品牌', cover_url: '/cover.jpg' }, configuration: null },
+    }]];
+    throw new Error(sql);
+  } };
+  const source = await service.loadPresentationSource(3, { db });
+  const product = source.spaces[0].products[0];
+  assert.equal(product.name, '无规格边几');
+  assert.equal(product.brand, '示例品牌');
+  assert.equal(product.image_url, '/cover.jpg');
+  assert.equal(product.specification, '放置于客厅');
+});

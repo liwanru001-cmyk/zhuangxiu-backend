@@ -47,7 +47,7 @@ function parseInput(body) {
   if (selectedSources.length !== 1 || !['merchant', 'personal', 'public_library'].includes(sourceType)) throw new Error('请选择一种有效的产品来源');
   if (productId !== null && (sourceType !== 'merchant' || !Number.isSafeInteger(productId) || productId <= 0)) throw new Error('商家产品来源不正确');
   if (personalId !== null && (sourceType !== 'personal' || !Number.isSafeInteger(personalId) || personalId <= 0)) throw new Error('个人产品来源不正确');
-  if (publicProductId !== null && (sourceType !== 'public_library' || !Number.isSafeInteger(publicProductId) || publicProductId <= 0 || !Number.isSafeInteger(publicVersionId) || publicVersionId <= 0 || !Number.isSafeInteger(publicConfigurationId) || publicConfigurationId <= 0)) throw new Error('公共产品及规格来源不正确');
+  if (publicProductId !== null && (sourceType !== 'public_library' || !Number.isSafeInteger(publicProductId) || publicProductId <= 0 || !Number.isSafeInteger(publicVersionId) || publicVersionId <= 0 || (publicConfigurationId !== null && (!Number.isSafeInteger(publicConfigurationId) || publicConfigurationId <= 0)))) throw new Error('公共产品来源不正确');
   if (sourceType !== 'public_library' && (publicVersionId !== null || publicConfigurationId !== null)) throw new Error('公共产品来源不正确');
   if (!Number.isFinite(quantity) || quantity <= 0 || quantity > 999999999 || Math.abs(quantity * 1000 - Math.round(quantity * 1000)) > 0.0001) throw new Error('数量必须大于0，最多三位小数');
   if (price !== null && (!Number.isFinite(price) || price < 0 || price > 9999999999.99 || Math.abs(price * 100 - Math.round(price * 100)) > 0.0001)) throw new Error('客户单价须为非负金额，最多两位小数');
@@ -59,13 +59,14 @@ function parseInput(body) {
 
 function publicSnapshot(row) {
   const payload = readDetails(row.product_payload);
-  const configuration = readDetails(row.configuration_payload);
-  if (!payload || !configuration) throw new Error('公共产品正式版本数据不完整');
+  const configuration = row.configuration_id == null ? null : readDetails(row.configuration_payload);
+  if (!payload || (row.configuration_id != null && !configuration)) throw new Error('公共产品正式版本数据不完整');
+  const documentProduct = payload.product_document?.data?.product || {};
   const product = {
     name: String(payload.name || row.name || ''),
     brand: String(payload.brand || row.brand_name || ''),
-    model: String(payload.product_details?.model || row.model || ''),
-    description: String(payload.description || row.description || ''),
+    model: String(documentProduct.model || payload.product_details?.model || row.model || ''),
+    description: String(documentProduct.description || payload.description || row.description || ''),
     product_group: payload.product_group || row.product_group || null,
     product_type: payload.product_type || row.product_type || null,
     cover_url: String(payload.cover_url || row.cover_url || ''),
@@ -78,8 +79,8 @@ function publicSnapshot(row) {
     version_id: Number(row.version_id),
     version_no: Number(row.version_no),
     content_fingerprint: row.content_fingerprint,
-    configuration_id: Number(row.configuration_id),
-    configuration_key: String(row.configuration_key),
+    configuration_id: row.configuration_id == null ? null : Number(row.configuration_id),
+    configuration_key: row.configuration_key == null ? null : String(row.configuration_key),
     product,
     configuration,
   };
@@ -94,9 +95,18 @@ function selectionForPublicProduct(selection, configuration, configurationKey) {
   };
   return {
     ...base,
-    configuration_id: String(configurationKey),
-    configuration_name: String(configuration.name || ''),
+    selection_scope: configuration ? 'configuration' : 'product',
+    configuration_id: configuration ? String(configurationKey) : null,
+    configuration_name: configuration ? String(configuration.name || '') : '',
   };
+}
+
+function assertPublicConfigurationChoice(input, row) {
+  if (input.publicConfigurationId == null) {
+    if (Number(row.has_configurations || 0) > 0) throw new Error('该公共产品有规格，请选择具体规格');
+    return;
+  }
+  if (row.configuration_id == null) throw new Error('公共产品或规格不可用，请重新选择');
 }
 
 function parseSelectionDetails(raw) {
@@ -107,8 +117,9 @@ function parseSelectionDetails(raw) {
     try { value = JSON.parse(value); } catch (_) { throw new Error('选用配置格式不正确'); }
   }
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('选用配置格式不正确');
+  const productLevel = value.selection_scope === 'product';
   const configurationId = String(value.configuration_id || '').trim();
-  if (!configurationId || configurationId.length > 80) throw new Error('请选择标准配置');
+  if ((!productLevel && !configurationId) || configurationId.length > 80 || (productLevel && configurationId)) throw new Error('请选择标准配置');
   const materials = Array.isArray(value.materials) ? value.materials : [];
   if (materials.length > 20) throw new Error('每件产品最多选择20个材质部位');
   const seen = new Set();
@@ -141,7 +152,8 @@ function parseSelectionDetails(raw) {
   const ppt = value.ppt && typeof value.ppt === 'object' && !Array.isArray(value.ppt) ? value.ppt : {};
   return {
     schema_version: 1,
-    configuration_id: configurationId,
+    selection_scope: productLevel ? 'product' : 'configuration',
+    configuration_id: productLevel ? null : configurationId,
     configuration_name: String(value.configuration_name || '').trim().slice(0, 120),
     materials: normalizedMaterials,
     price_status: priceStatus,
@@ -160,6 +172,10 @@ function validateSelectionAgainstProduct(details, selection) {
   // Legacy clients still submit selected_spec only. New clients send this
   // structure and receive strict configuration/material validation.
   if (!selection) return;
+  if (selection.selection_scope === 'product') {
+    if (value.configurations.length || selection.materials?.length) throw new Error('该产品须选择具体规格');
+    return;
+  }
   const configuration = value.configurations.find(item => String(item.id) === selection.configuration_id);
   if (!configuration) throw new Error('所选标准配置已变化，请重新选择');
   const groups = Array.isArray(value.material_groups) ? value.material_groups : [];
@@ -221,7 +237,7 @@ async function list(req, res) {
       product_details: {
         schema_version: 1,
         model: snapshotProduct.model || '',
-        configurations: [snapshotConfiguration],
+        configurations: snapshot.configuration == null ? [] : [snapshotConfiguration],
         material_groups: [],
         customization: { enabled: false, fields: [], limits: '', pricing_note: '' },
       },
@@ -256,13 +272,14 @@ function hydrateSelectionStatus(item) {
   const details = item.product_details;
   if (!selection || !details) return { ...item, selection_warnings: [] };
   const warnings = [];
-  const configuration = (details.configurations || []).find(
-    value => String(value.id) === String(selection.configuration_id)
-  );
-  if (!configuration) {
-    warnings.push({ type: 'configuration_missing', message: '原选标准配置已下架或删除，请重新选择' });
-  } else if (selection.configuration_name && selection.configuration_name !== configuration.name) {
-    warnings.push({ type: 'configuration_changed', message: '标准配置名称或资料已更新，请核对' });
+  const configuration = selection.selection_scope === 'product' ? null :
+    (details.configurations || []).find(value => String(value.id) === String(selection.configuration_id));
+  if (selection.selection_scope !== 'product') {
+    if (!configuration) {
+      warnings.push({ type: 'configuration_missing', message: '原选标准配置已下架或删除，请重新选择' });
+    } else if (selection.configuration_name && selection.configuration_name !== configuration.name) {
+      warnings.push({ type: 'configuration_changed', message: '标准配置名称或资料已更新，请核对' });
+    }
   }
   const materials = (details.material_groups || []).flatMap(group => group.materials || []);
   selection.materials = (selection.materials || []).map(snapshot => {
@@ -323,21 +340,24 @@ async function save(req, res) {
       const samePinnedSelection = existing && existing.source_type === 'public_library'
         && Number(existing.public_product_id) === input.publicProductId
         && Number(existing.public_product_version_id) === input.publicVersionId
-        && Number(existing.public_product_configuration_id) === input.publicConfigurationId;
+        && (existing.public_product_configuration_id == null ? null : Number(existing.public_product_configuration_id)) === input.publicConfigurationId;
       const [products] = await conn.query(
         `SELECT product.id product_id,product.source_url,product.status,product.current_version_id,product.product_group,product.product_type,
          version.id version_id,version.version_no,version.content_fingerprint,version.name,version.brand_name,version.model,version.cover_url,version.description,version.product_payload,version.asset_status,
-         configuration.id configuration_id,configuration.configuration_key,configuration.configuration_payload
+         configuration.id configuration_id,configuration.configuration_key,configuration.configuration_payload,
+         EXISTS(SELECT 1 FROM public_product_library_configurations other WHERE other.version_id=version.id) has_configurations
          FROM public_product_library_products product
          JOIN public_product_library_versions version ON version.product_id=product.id
-         JOIN public_product_library_configurations configuration ON configuration.version_id=version.id
-         WHERE product.id=? AND version.id=? AND configuration.id=? FOR UPDATE`,
-        [input.publicProductId, input.publicVersionId, input.publicConfigurationId]
+         LEFT JOIN public_product_library_configurations configuration ON configuration.version_id=version.id AND configuration.id=?
+         WHERE product.id=? AND version.id=? FOR UPDATE`,
+        [input.publicConfigurationId, input.publicProductId, input.publicVersionId]
       );
       const publicProduct = products[0];
       if (!publicProduct || publicProduct.asset_status !== 'complete') {
         await conn.rollback(); return error(res, '公共产品或规格不可用，请重新选择');
       }
+      try { assertPublicConfigurationChoice(input, publicProduct); }
+      catch (e) { await conn.rollback(); return error(res, e.message); }
       if (!samePinnedSelection && (publicProduct.status !== 'active' || Number(publicProduct.current_version_id) !== input.publicVersionId)) {
         await conn.rollback(); return error(res, '公共产品已有新版本或已下架，请重新选择');
       }
@@ -354,8 +374,8 @@ async function save(req, res) {
           selection={...selection,materials:[...selection.materials.filter(material=>!officialParts.has(material.part)),...canonical]};
         }
       } catch (e) { await conn.rollback(); return error(res, e.message); }
-      selectedSpec = input.spec || String(configuration.name || '');
-      publicConfigurationKey = String(publicProduct.configuration_key);
+      selectedSpec = input.spec || String(configuration?.name || '');
+      publicConfigurationKey = publicProduct.configuration_key == null ? null : String(publicProduct.configuration_key);
       snapshotChanged = !samePinnedSelection || !existing?.product_snapshot;
       snapshot = snapshotChanged ? publicSnapshot(publicProduct) : readDetails(existing.product_snapshot);
     } else {
@@ -409,4 +429,4 @@ async function remove(req, res) {
   return success(res);
 }
 
-module.exports = { list, save, remove, parseInput, validateSelectionAgainstProduct, hydrateSelectionStatus, publicSnapshot, selectionForPublicProduct };
+module.exports = { list, save, remove, parseInput, validateSelectionAgainstProduct, hydrateSelectionStatus, publicSnapshot, selectionForPublicProduct, assertPublicConfigurationChoice };

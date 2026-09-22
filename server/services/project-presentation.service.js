@@ -145,7 +145,7 @@ async function loadPresentationSource(projectId, options = {}) {
   );
   const [productRows] = await connection.query(
     `SELECT item.id, item.space_id, item.quantity, item.unit, item.selected_spec,
-            item.selection_details, item.customer_unit_price, item.note,
+            item.source_type, item.product_snapshot, item.selection_details, item.customer_unit_price, item.note,
             COALESCE(merchant.name, personal.name) AS name,
             COALESCE(merchant.brand, personal.brand) AS brand,
             COALESCE(merchant.spec, personal.spec) AS spec,
@@ -163,17 +163,20 @@ async function loadPresentationSource(projectId, options = {}) {
   for (const row of productRows) {
     const selection = parseJson(row.selection_details) || {};
     if (selection.ppt?.included === false) continue;
+    const snapshot = row.source_type === 'public_library' ? parseJson(row.product_snapshot) || {} : {};
+    const snapshotProduct = snapshot.product || {};
+    const snapshotConfiguration = snapshot.configuration || null;
     const details = readDetails(row.product_details) || {};
-    const configuration = (details.configurations || []).find(
+    const configuration = snapshotConfiguration || (details.configurations || []).find(
       item => String(item.id) === String(selection.configuration_id)
     );
     const item = {
       id: Number(row.id),
-      name: row.name || '未命名产品',
-      brand: row.brand || '',
+      name: snapshotProduct.name || row.name || '未命名产品',
+      brand: snapshotProduct.brand || row.brand || '',
       specification: row.spec || row.selected_spec || '',
       configuration: configuration?.name || selection.configuration_name || row.selected_spec || '',
-      image_url: configuration?.image_url || row.cover_url || '',
+      image_url: configuration?.image_url || snapshotProduct.cover_url || row.cover_url || '',
       quantity: Number(row.quantity),
       unit: row.unit || '件',
       customer_unit_price: row.customer_unit_price == null ? null : Number(row.customer_unit_price),

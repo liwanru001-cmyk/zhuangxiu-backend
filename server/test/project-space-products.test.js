@@ -76,7 +76,7 @@ test('selection warnings only follow the configuration and materials actually se
   assert.equal(unavailable.selection_warnings[0].type, 'material_unavailable');
 });
 
-test('public library source requires a pinned product version and configuration', () => {
+test('public library source pins a version and optionally one configuration', () => {
   const input = controller.parseInput({
     source_type: 'public_library',
     public_product_id: 3,
@@ -87,13 +87,61 @@ test('public library source requires a pinned product version and configuration'
   });
   assert.equal(input.sourceType, 'public_library');
   assert.equal(input.publicVersionId, 7);
+  assert.equal(controller.parseInput({
+    source_type: 'public_library', public_product_id: 3,
+    public_product_version_id: 7, quantity: 1, unit: '件',
+  }).publicConfigurationId, null);
   assert.throws(() => controller.parseInput({
     source_type: 'public_library', public_product_id: 3, quantity: 1, unit: '件',
-  }), /公共产品及规格/);
+  }), /公共产品来源/);
   assert.throws(() => controller.parseInput({
     source_type: 'public_library', public_product_id: 3, public_product_version_id: 7,
     public_product_configuration_id: 11, merchant_product_id: 2, quantity: 1, unit: '件',
   }), /一种有效的产品来源/);
+});
+
+test('product-level public selection is allowed only for a version without configurations', () => {
+  const input = controller.parseInput({
+    source_type: 'public_library', public_product_id: 3,
+    public_product_version_id: 7, quantity: 1, unit: '件',
+    selection_details: {
+      selection_scope: 'product', materials: [], price_status: 'pending',
+      ppt: { included: true, show_materials: true, show_quantity: true, show_price: false },
+    },
+  });
+  assert.equal(input.selection.selection_scope, 'product');
+  assert.equal(input.selection.configuration_id, null);
+  assert.doesNotThrow(() => controller.assertPublicConfigurationChoice(input, {
+    has_configurations: 0, configuration_id: null,
+  }));
+  assert.throws(() => controller.assertPublicConfigurationChoice(input, {
+    has_configurations: 1, configuration_id: null,
+  }), /请选择具体规格/);
+  assert.throws(() => controller.assertPublicConfigurationChoice({
+    publicConfigurationId: 11,
+  }, { has_configurations: 1, configuration_id: null }), /不可用/);
+  assert.throws(() => controller.validateSelectionAgainstProduct({
+    configurations: [{ id: 'standard' }],
+  }, input.selection), /须选择具体规格/);
+  const selection = controller.selectionForPublicProduct(input.selection, null, null);
+  assert.equal(selection.selection_scope, 'product');
+  assert.equal(selection.configuration_id, null);
+});
+
+test('product-level snapshot and status keep the product without inventing a configuration', () => {
+  const snapshot = controller.publicSnapshot({
+    product_id: 3, version_id: 7, version_no: 1,
+    configuration_id: null, configuration_key: null, configuration_payload: null,
+    product_payload: { name: '无规格沙发', brand: '示例品牌', cover_url: '/cover.jpg' },
+  });
+  assert.equal(snapshot.configuration, null);
+  assert.equal(snapshot.configuration_id, null);
+  const hydrated = controller.hydrateSelectionStatus({
+    source_type: 'public_library',
+    product_details: { configurations: [], material_groups: [] },
+    selection_details: { selection_scope: 'product', configuration_id: null, materials: [] },
+  });
+  assert.deepEqual(hydrated.selection_warnings, []);
 });
 
 test('official brand material selection snapshot keeps its source boundary',()=>{
