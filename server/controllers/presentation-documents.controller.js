@@ -1,0 +1,126 @@
+'use strict';
+
+const path = require('path');
+const jwt = require('jsonwebtoken');
+const db = require('../config/db');
+const { requireProjectContext } = require('../utils/project-context');
+const { success, error } = require('../utils/response');
+const documents = require('../services/presentation-document.service');
+const storage = require('../services/storage.service');
+
+const previewPage = path.join(__dirname, '../services/presentation-document/web/index.html');
+
+async function authorize(req, res, editing = false) {
+  const context = await requireProjectContext(req, res);
+  if (!context.ok) return null;
+  if (editing && !['owner', 'designer'].includes(context.role)) {
+    error(res, '仅项目设计师或业主可以保存汇报方案', 403);
+    return null;
+  }
+  return context;
+}
+
+function previewUrl(req, projectId, documentId, userId) {
+  const ticket = jwt.sign(
+    { scope: 'presentation_document_preview', projectId, documentId, userId: Number(userId) },
+    process.env.JWT_SECRET,
+    { expiresIn: '15m' }
+  );
+  return `${req.protocol}://${req.get('host')}/api/renovation/projects/${projectId}/presentation-documents/${documentId}/preview?ticket=${encodeURIComponent(ticket)}`;
+}
+
+async function save(req, res) {
+  const context = await authorize(req, res, true);
+  if (!context) return;
+  const settings = req.body?.settings;
+  if (!settings || typeof settings !== 'object' || Array.isArray(settings)) {
+    return error(res, '请填写汇报设置');
+  }
+  const result = await documents.save(context.projectId, req.user.id, settings, {
+    baseUrl: `${req.protocol}://${req.get('host')}`,
+  });
+  return success(res, {
+    id: result.id,
+    title: result.document.presentation.title,
+    slide_count: result.document.slides.length,
+    preview_url: previewUrl(req, context.projectId, result.id, req.user.id),
+  }, '汇报方案已保存');
+}
+
+async function list(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  return success(res, await documents.list(context.projectId));
+}
+
+async function link(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  const document = await documents.find(context.projectId, req.params.documentId);
+  if (!document) return error(res, '汇报方案不存在', 404);
+  return success(res, {
+    preview_url: previewUrl(req, context.projectId, document.id, req.user.id),
+  });
+}
+
+async function authorizeTicket(req, res) {
+  const projectId = Number(req.params.id);
+  const documentId = String(req.params.documentId || '');
+  let ticket;
+  try {
+    ticket = jwt.verify(String(req.query.ticket || ''), process.env.JWT_SECRET);
+  } catch (_) {
+    error(res, '预览链接已失效，请从项目重新打开', 401);
+    return null;
+  }
+  if (ticket.scope !== 'presentation_document_preview' ||
+      ticket.projectId !== projectId || ticket.documentId !== documentId ||
+      !Number.isSafeInteger(ticket.userId)) {
+    error(res, '预览链接不正确', 403);
+    return null;
+  }
+  const [access] = await db.query(
+    `SELECT p.id FROM renovation_projects p
+     LEFT JOIN project_members pm ON pm.project_id = p.id
+       AND pm.user_id = ? AND pm.status = 1
+     WHERE p.id = ? AND COALESCE(p.lifecycle_status, 'active') <> 'deleted'
+       AND (p.user_id = ? OR pm.id IS NOT NULL) LIMIT 1`,
+    [ticket.userId, projectId, ticket.userId]
+  );
+  if (!access.length) {
+    error(res, '项目不存在或无权限', 404);
+    return null;
+  }
+  return { projectId, documentId };
+}
+
+async function preview(req, res) {
+  const ticket = await authorizeTicket(req, res);
+  if (!ticket) return;
+  const document = await documents.find(ticket.projectId, ticket.documentId);
+  if (!document) return error(res, '汇报方案不存在', 404);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  return res.sendFile(previewPage);
+}
+
+async function data(req, res) {
+  const ticket = await authorizeTicket(req, res);
+  if (!ticket) return;
+  const document = await documents.find(ticket.projectId, ticket.documentId);
+  if (!document) return error(res, '汇报方案不存在', 404);
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  return success(res, {
+    ...document,
+    document: {
+      ...document.document,
+      asset_manifest: (document.document.asset_manifest || []).map(asset => ({
+        ...asset,
+        url: storage.signedUrlForStorageUri(asset.url, 7200),
+      })),
+    },
+  });
+}
+
+module.exports = { save, list, link, preview, data };

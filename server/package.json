@@ -47,6 +47,7 @@
     "playwright-core": "^1.63.0",
     "pptxgenjs": "^4.0.1",
     "redis": "^4.7.1",
+    "reveal.js": "^6.0.2",
     "sharp": "^0.35.4",
     "tldts": "^7.4.13"
   },

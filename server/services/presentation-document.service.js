@@ -1,0 +1,176 @@
+'use strict';
+
+const crypto = require('crypto');
+const db = require('../config/db');
+const presentation = require('./project-presentation.service');
+const { candidates } = require('./presentation-v2/assets');
+const storage = require('./storage.service');
+
+const layoutByType = Object.freeze({
+  cover: 'cover_01',
+  project_profile: 'project_profile_01',
+  client_requirements: 'client_requirements_01',
+  whole_house_plan: 'plan_gallery_01',
+  space_design: 'space_hero_01',
+  product_selection: 'product_grid_01',
+  ending: 'ending_01',
+});
+
+function idPart(value) {
+  return String(value ?? '').replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 80);
+}
+
+function buildAssetManifest(source, settings) {
+  const seen = new Map();
+  return candidates(source, settings).map(asset => {
+    const base = [asset.source_type, asset.source_id, asset.image_role, `v${asset.version_no}`].map(idPart).join(':');
+    const count = (seen.get(base) || 0) + 1;
+    seen.set(base, count);
+    return {
+      asset_id: count === 1 ? base : `${base}:${count}`,
+      source_type: asset.source_type,
+      source_id: asset.source_id,
+      image_role: asset.image_role,
+      space_id: asset.space_id,
+      title: asset.title,
+      category: asset.category,
+      url: asset.type === 'pdf' && asset.legacy_url === asset.url
+        ? null
+        : storage.canonicalStorageUri(
+          asset.type === 'pdf' ? asset.legacy_url : asset.url
+        ),
+      media_type: asset.type,
+    };
+  });
+}
+
+function buildDocument(source, rawSettings) {
+  const settings = presentation.normalizeSettings(rawSettings, source);
+  const assets = buildAssetManifest(source, settings);
+  const sourceForModel = presentation.sourceForModel(source, settings);
+  const slides = [];
+  const add = (type, values = {}) => slides.push({
+    id: `${type}-${slides.length + 1}`,
+    type,
+    layout: layoutByType[type],
+    ...values,
+  });
+  const matchingAssets = (spaceId, role) => assets
+    .filter(asset => String(asset.space_id) === String(spaceId) && asset.image_role === role)
+    .map(asset => asset.asset_id);
+
+  add('cover', {
+    title: settings.title,
+    subtitle: settings.stage,
+    asset_ids: matchingAssets('whole_house', 'rendering').slice(0, 1),
+  });
+  if (settings.sections.project_profile) add('project_profile', {
+    title: '项目概况',
+    project: sourceForModel.project,
+  });
+  if (settings.sections.client_requirements) add('client_requirements', {
+    title: '客户需求',
+    facts: {
+      resident_info: source.project.resident_info || '',
+      lifestyle_notes: source.project.lifestyle_notes || '',
+      style_preference: source.project.style_preference || '',
+      key_spaces: source.project.key_spaces || '',
+      special_needs: source.project.special_needs || '',
+    },
+    missing_fields: source.missing_fields,
+  });
+  if (settings.sections.whole_house_plan) {
+    const assetIds = matchingAssets('whole_house', 'plan');
+    if (assetIds.length) add('whole_house_plan', {
+      title: '全屋方案',
+      asset_ids: assetIds,
+    });
+  }
+  for (const choice of settings.spaces.filter(space => space.included)) {
+    const space = source.spaces.find(item => Number(item.id) === Number(choice.space_id));
+    if (!space) continue;
+    if (settings.sections.space_solutions) {
+      const renderingIds = choice.show_rendering ? matchingAssets(space.id, 'rendering') : [];
+      const planIds = choice.show_plan ? matchingAssets(space.id, 'plan') : [];
+      if (renderingIds.length || planIds.length) add('space_design', {
+        space_id: String(space.id),
+        title: `${space.name}设计`,
+        rendering_asset_ids: renderingIds,
+        plan_asset_ids: planIds,
+        description: '',
+      });
+    }
+    if ((settings.sections.product_summary || settings.sections.space_solutions) && choice.show_products) {
+      const allowed = new Set(choice.selected_product_ids);
+      const productIds = space.products
+        .filter(product => !allowed.size || allowed.has(product.id))
+        .map(product => String(product.id));
+      if (productIds.length) add('product_selection', {
+        space_id: String(space.id),
+        title: `${space.name}产品选用`,
+        product_ids: productIds,
+      });
+    }
+  }
+  add('ending', { title: '汇报结束' });
+  return {
+    schema_version: 1,
+    kind: 'presentation_document',
+    presentation: {
+      title: settings.title,
+      audience: settings.audience,
+      stage: settings.stage,
+      project_id: source.project.id,
+    },
+    settings,
+    project: sourceForModel.project,
+    spaces: sourceForModel.spaces,
+    asset_manifest: assets,
+    slides,
+  };
+}
+
+async function save(projectId, userId, rawSettings, options = {}) {
+  const source = await presentation.loadPresentationSource(projectId, options);
+  const document = buildDocument(source, rawSettings);
+  const id = crypto.randomUUID();
+  await (options.db || db).query(
+    `INSERT INTO project_presentation_documents
+       (id, project_id, created_by, title, settings_json, document_json)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [id, projectId, userId, document.presentation.title,
+      JSON.stringify(document.settings), JSON.stringify(document)]
+  );
+  return { id, document };
+}
+
+async function find(projectId, documentId, database = db) {
+  const [rows] = await database.query(
+    `SELECT id, project_id, created_by, title, document_json, created_at, updated_at
+     FROM project_presentation_documents WHERE project_id = ? AND id = ? LIMIT 1`,
+    [projectId, documentId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    id: row.id,
+    project_id: row.project_id,
+    created_by: row.created_by,
+    title: row.title,
+    document: typeof row.document_json === 'string' ? JSON.parse(row.document_json) : row.document_json,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+  };
+}
+
+async function list(projectId, database = db) {
+  const [rows] = await database.query(
+    `SELECT id, project_id, created_by, title, created_at, updated_at
+     FROM project_presentation_documents WHERE project_id = ?
+     ORDER BY created_at DESC, id DESC LIMIT 100`,
+    [projectId]
+  );
+  return rows;
+}
+
+module.exports = { buildAssetManifest, buildDocument, save, find, list };

@@ -5,6 +5,7 @@ const rollout = require('../services/independent-project-rollout');
 const independentProjects = require('../controllers/independent-projects.controller');
 const spaceProducts = require('../controllers/project-space-products.controller');
 const projectPresentations = require('../controllers/project-presentations.controller');
+const presentationDocuments = require('../controllers/presentation-documents.controller');
 const projectContentSharesController = require('../controllers/project-content-shares.controller');
 const asyncHandler = require('../utils/async-handler');
 const { requireProjectContext } = require('../utils/project-context');
@@ -17,6 +18,16 @@ const path = require('path');
 const persistUploadedFiles = require('../middleware/persist-uploaded-files');
 
 const router = express.Router();
+router.use('/presentation-preview-assets/reveal', express.static(
+  path.dirname(require.resolve('reveal.js'))
+));
+router.use('/presentation-preview-assets', express.static(
+  path.join(__dirname, '../services/presentation-document/web')
+));
+router.get('/projects/:id/presentation-documents/:documentId/preview',
+  asyncHandler(presentationDocuments.preview));
+router.get('/projects/:id/presentation-documents/:documentId/preview-data',
+  asyncHandler(presentationDocuments.data));
 const inspectionKbEnabled = process.env.FEATURE_INSPECTION_KB === 'true';
 
 function inspectionKbGate(req, res, next) {
@@ -357,6 +368,10 @@ router.post('/projects/:id/spaces/:spaceId/products', ...protectedRoute, asyncHa
 router.put('/projects/:id/spaces/:spaceId/products/:itemId', ...protectedRoute, asyncHandler(spaceProducts.save));
 router.delete('/projects/:id/spaces/:spaceId/products/:itemId', ...protectedRoute, asyncHandler(spaceProducts.remove));
 router.get('/projects/:id/presentations', ...protectedRoute, asyncHandler(projectPresentations.listJobs));
+router.get('/projects/:id/presentation-documents', ...protectedRoute, asyncHandler(presentationDocuments.list));
+router.post('/projects/:id/presentation-documents', ...protectedRoute, asyncHandler(presentationDocuments.save));
+router.get('/projects/:id/presentation-documents/:documentId/preview-link',
+  ...protectedRoute, asyncHandler(presentationDocuments.link));
 router.post('/projects/:id/presentations', ...protectedRoute, asyncHandler(projectPresentations.createJob));
 router.post('/projects/:id/presentations/:jobId/retry', ...protectedRoute, asyncHandler(projectPresentations.retryJob));
 router.get('/projects/:id/presentations/:jobId/download', ...protectedRoute, asyncHandler(projectPresentations.downloadJob));
