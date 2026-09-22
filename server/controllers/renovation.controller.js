@@ -1990,9 +1990,12 @@ async function getProjectSpaces(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   await ensureDefaultProjectSpaces(projectId, req.user.id);
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  const canSelectMainDesignDocument = ['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role);
 
   const [spaces] = await db.query(
-    `SELECT id, project_id, name, sort_order, is_default, created_at
+    `SELECT id, project_id, name, sort_order, is_default,
+            main_design_document_id, created_at
      FROM project_spaces
      WHERE project_id = ?
      ORDER BY sort_order, id`,
@@ -2021,9 +2024,71 @@ async function getProjectSpaces(req, res) {
     spaces.map((space) => ({
       ...space,
       is_default: Boolean(space.is_default),
+      can_select_main_design_document: canSelectMainDesignDocument,
       images: imagesBySpace.get(space.id) || [],
     }))
   );
+}
+
+function isSelectableMainDesignDocument(document, projectId, spaceId) {
+  return document != null
+    && Number(document.project_id) === projectId
+    && String(document.space_key) === String(spaceId)
+    && (document.is_current == null || Number(document.is_current) === 1)
+    && !['voided', 'archived', 'superseded'].includes(String(document.status))
+    && (document.file_type === 'image' || String(document.mime_type || '').startsWith('image/'))
+    && String(document.file_url || '').trim() !== '';
+}
+
+async function setProjectSpaceMainDesignDocument(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const spaceId = Number(req.params.spaceId);
+  const documentId = req.body?.document_id == null ? null : Number(req.body.document_id);
+  if (!Number.isSafeInteger(spaceId) || spaceId <= 0
+      || (documentId != null && (!Number.isSafeInteger(documentId) || documentId <= 0))) {
+    return error(res, '空间或资料参数不正确');
+  }
+  const role = await getProjectMemberRole(projectId, req.user.id);
+  if (!['owner', 'designer', 'project_manager', 'project_supervisor'].includes(role)) {
+    return error(res, '项目不存在或无编辑权限', 403);
+  }
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [spaces] = await connection.query(
+      'SELECT id FROM project_spaces WHERE id = ? AND project_id = ? FOR UPDATE',
+      [spaceId, projectId]
+    );
+    if (!spaces[0]) {
+      await connection.rollback();
+      return error(res, '空间不存在', 404);
+    }
+    if (documentId != null) {
+      const [documents] = await connection.query(
+        `SELECT id, project_id, space_key, is_current, status,
+                file_type, mime_type, file_url
+         FROM project_design_documents WHERE id = ? AND project_id = ? FOR UPDATE`,
+        [documentId, projectId]
+      );
+      if (!isSelectableMainDesignDocument(documents[0], projectId, spaceId)) {
+        await connection.rollback();
+        return error(res, '请选择本空间当前可用的图片资料');
+      }
+    }
+    await connection.query(
+      'UPDATE project_spaces SET main_design_document_id = ? WHERE id = ? AND project_id = ?',
+      [documentId, spaceId, projectId]
+    );
+    await connection.commit();
+    return success(res, { document_id: documentId }, '主效果图已更新');
+  } catch (updateError) {
+    await connection.rollback();
+    throw updateError;
+  } finally {
+    connection.release();
+  }
 }
 
 async function createProjectSpace(req, res) {
@@ -5589,7 +5654,7 @@ async function updateProjectDesignDocument(req, res) {
   }
   if (!title) return error(res, '请填写资料标题');
   const [documents] = await db.query(
-    `SELECT id, file_type
+    `SELECT id, file_type, space_key
      FROM project_design_documents
      WHERE id = ? AND project_id = ?`,
     [documentId, projectId]
@@ -5609,6 +5674,12 @@ async function updateProjectDesignDocument(req, res) {
       projectId,
     ]
   );
+  if (document.space_key !== (spaceKey || 'whole_house')) {
+    await db.query(
+      'UPDATE project_spaces SET main_design_document_id = NULL WHERE project_id = ? AND main_design_document_id = ?',
+      [projectId, documentId]
+    );
+  }
   return success(res, null, '设计资料已更新');
 }
 
@@ -11473,6 +11544,8 @@ module.exports = {
   getProjectSpaces,
   createProjectSpace,
   updateProjectSpace,
+  setProjectSpaceMainDesignDocument,
+  isSelectableMainDesignDocument,
   deleteProjectSpace,
   uploadProjectSpaceImages,
   setDefaultProjectSpaceImage,
