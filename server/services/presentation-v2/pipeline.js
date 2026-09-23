@@ -6,6 +6,7 @@ const model = require('./model');
 const validator = require('./validate');
 const renderer = require('./render');
 const { failure } = require('./config');
+const { buildPptContent } = require('../presentation-page-plan');
 const changed = (a, b) => Math.abs(Number(a) - Number(b)) > 0.001;
 const draftableLayoutErrors = new Set([
   'text_overflow', 'out_of_bounds', 'text_collision', 'text_occluded',
@@ -145,15 +146,31 @@ async function run({ source, rawSettings, legacy, context, output, limits, signa
       await save({ manifest, settings, prompt_version: model.PROMPT_VERSION, limits_snapshot: limits });
     }
     if (!state.design) {
-      const sourceForModel = legacy.sourceForModel(original, settings);
+      const sourceForModel = settingsSnapshot._presentation_document_snapshot && settingsSnapshot._page_plan_snapshot
+        ? buildPptContent(
+          settingsSnapshot._presentation_document_snapshot,
+          settingsSnapshot._page_plan_snapshot,
+          state.manifest
+        )
+        : legacy.sourceForModel(original, settings);
       // Images are represented exclusively by the scoped manifest. Respect section toggles.
-      if (!settings.sections.whole_house_plan) sourceForModel.whole_house_documents = [];
-      for (const space of sourceForModel.spaces) {
-        if (!settings.sections.space_solutions) { space.documents = []; space.renderings = []; }
-        if (!settings.sections.product_summary && !settings.sections.space_solutions) space.products = [];
+      if (!sourceForModel.page_plan) {
+        if (!settings.sections.whole_house_plan) sourceForModel.whole_house_documents = [];
+        for (const space of sourceForModel.spaces) {
+          if (!settings.sections.space_solutions) { space.documents = []; space.renderings = []; }
+          if (!settings.sections.product_summary && !settings.sections.space_solutions) space.products = [];
+        }
       }
       const design = await generate({ source: sourceForModel, settings, manifest: state.manifest, limits, signal, reserve: context.reserve, record,
         modelAttempt: { inspect: context.inspectModelAttempt, markDispatched: context.markModelDispatched, persistResponse: context.persistModelResponse, fail: context.failModelAttempt } });
+      if (sourceForModel.page_plan) {
+        const planned = sourceForModel.page_plan.pages;
+        const actual = Array.isArray(design?.slides) ? design.slides : [];
+        const mismatch = actual.length !== planned.length || planned.some((item, index) =>
+          actual[index]?.id !== item.page_id || actual[index]?.type !== item.type
+        );
+        if (mismatch) throw failure('page_plan_mismatch', '模型输出未遵循已保存的页面编排');
+      }
       await save({ design, model_source: sourceForModel });
       await context.commitModelAttempt?.('initial');
     } else {

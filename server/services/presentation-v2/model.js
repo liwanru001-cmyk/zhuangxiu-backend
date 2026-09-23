@@ -20,7 +20,9 @@ async function request({ source, settings, manifest, repair, limits, signal, res
   const needed = repair ? new Set(repair.design.slides.filter(s => repair.ids.includes(s.id)).flatMap(s => s.elements.filter(e => e.type === 'image').map(e => e.asset_id))) : null;
   const sentManifest = manifest.map(a => ({ ...a, vision_preview_provided: a.vision_preview_provided && (!needed || needed.has(a.asset_id)) }));
   const content = [{ type: 'text', text: JSON.stringify({
-    task: repair ? '只重新设计指定失败页，保持所有原始信息和整套风格，返回 {slides:[修复页]}；不得增加、删除或重命名页面。' : '自主完成整套室内设计方案汇报，每个 slide 就是最终一页；直接返回可执行的设计 JSON。',
+    task: repair ? '只重新设计指定失败页，保持所有原始信息和整套风格，返回 {slides:[修复页]}；不得增加、删除或重命名页面。' : source.page_plan
+      ? '根据 Presentation Document 的事实和 Page Plan 的可见页生成整套室内设计方案汇报。严格保持 Page Plan 的页面顺序、页面数量、页面类型、素材引用和产品引用；theme_id 决定整套视觉气质。每个 slide 就是最终一页，直接返回可执行的设计 JSON。'
+      : '自主完成整套室内设计方案汇报，每个 slide 就是最终一页；直接返回可执行的设计 JSON。',
     presentation_spec: spec,
     execution: { supported_elements: ['text', 'image', 'shape', 'line'], total_elements_max: 600,
       units: 'x/y/w/h 英寸；font_size、line_spacing、paragraph_spacing、margin、stroke.width、line.width 均为 pt；opacity 0..1，1不透明；rotation 为绕元素中心顺时针角度。',
@@ -30,6 +32,7 @@ async function request({ source, settings, manifest, repair, limits, signal, res
       text_layout: '修复文字溢出不能只增加文本框高度。先核对页面剩余空间与邻近元素，再调整宽度、位置、字号、行距或段距；不得删除原文。错误若标记 structural_relayout_required=true，禁止只缩字号、行距、段距或增加文本框高度；必须调整该正文的 x/y/w，或缩小、移动相邻图片、shape、panel，真正重新分配页面空间，并完整保留原文。不要同时用大量空行和大段距制造重复留白。提交前逐一计算修正元素的 x+w 和 y+h，不能以产生越界来换取文字不溢出。',
       factual_basis: '将内容区分为已提供事实、图像可见现象、待确认建议。项目要求、材质性能、现状保留、施工方式和产品可定制范围必须有文字依据；不能从效果图推断防滑性能、原有乔木或改色承诺。无依据的内容省略，或明确标为“建议/待确认”，不得写成已确定方案。缺失需求不靠空泛抒情补足页数。产品数值与单位按原始记录保留；明显异常时标注“尺寸待确认”，禁止擅自换算或猜测。',
       image_usage: 'duplicate_of 表示图片内容完全相同，不能因空间名称不同而当成不同视角或不同空间的独立证据。合并重复的效果展示，注明共用参考图。封面和结尾可以复用，正文避免反复展示同图而没有新增信息。平面图和产品图优先 contain 完整显示；效果图 cover 允许裁切但应保留设计主体。',
+      ...(source.page_plan ? { page_plan_contract: '输出 slides 必须与 page_plan.pages 一一对应，顺序完全一致；每个 slide.id 必须等于对应 page_id，slide.type 必须等于对应 type。不得补页、删页、合并页或重排。' } : {}),
     },
     output_schema: repair ? { type: 'object', properties: { slides: schema.properties.slides }, required: ['slides'], additionalProperties: false } : schema,
     settings: designSettings, source, asset_manifest: publicManifest(sentManifest),

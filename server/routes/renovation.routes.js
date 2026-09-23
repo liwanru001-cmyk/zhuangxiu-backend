@@ -372,6 +372,10 @@ router.get('/projects/:id/presentation-documents', ...protectedRoute, asyncHandl
 router.post('/projects/:id/presentation-documents', ...protectedRoute, asyncHandler(presentationDocuments.save));
 router.get('/projects/:id/presentation-documents/:documentId/preview-link',
   ...protectedRoute, asyncHandler(presentationDocuments.link));
+router.get('/projects/:id/presentation-documents/:documentId/page-plan',
+  ...protectedRoute, asyncHandler(presentationDocuments.pagePlan));
+router.put('/projects/:id/presentation-documents/:documentId/page-plan',
+  ...protectedRoute, asyncHandler(presentationDocuments.updatePagePlan));
 router.post('/projects/:id/presentations', ...protectedRoute, asyncHandler(projectPresentations.createJob));
 router.post('/projects/:id/presentations/:jobId/retry', ...protectedRoute, asyncHandler(projectPresentations.retryJob));
 router.get('/projects/:id/presentations/:jobId/download', ...protectedRoute, asyncHandler(projectPresentations.downloadJob));

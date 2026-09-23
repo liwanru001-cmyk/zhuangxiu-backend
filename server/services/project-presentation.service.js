@@ -5,7 +5,12 @@ const storageService = require('./storage.service');
 const { readDetails } = require('./product-details');
 
 const allowedDetailLevels = new Set(['concise', 'standard', 'detailed']);
-const allowedTemplates = new Set(['warm_minimal']);
+const allowedTemplates = new Set([
+  'modern_minimal', 'wabi_sabi', 'italian_luxury', 'modern_chinese',
+  'scandinavian', 'french_classic', 'industrial', 'natural_resort',
+  // Compatibility with saved settings created before Presentation Themes.
+  'warm_minimal',
+]);
 const allowedSlideTypes = new Set([
   'cover',
   'project_profile',
@@ -68,7 +73,9 @@ function normalizeSettings(raw, source) {
     audience: text(value.audience, 30) || '业主',
     stage: text(value.stage, 40) || '平面方案汇报',
     detail_level: allowedDetailLevels.has(value.detail_level) ? value.detail_level : 'standard',
-    template_id: allowedTemplates.has(value.template_id) ? value.template_id : 'warm_minimal',
+    template_id: allowedTemplates.has(value.template_id)
+      ? (value.template_id === 'warm_minimal' ? 'modern_minimal' : value.template_id)
+      : 'modern_minimal',
     user_instruction: text(value.user_instruction, 1000),
     sections: {
       project_profile: boolean(sections.project_profile),
@@ -150,6 +157,8 @@ async function loadPresentationSource(projectId, options = {}) {
             COALESCE(merchant.brand, personal.brand) AS brand,
             COALESCE(merchant.spec, personal.spec) AS spec,
             COALESCE(merchant.cover_url, personal.cover_url) AS cover_url,
+            merchant.image_urls AS merchant_image_urls,
+            COALESCE(merchant.summary, personal.description) AS description,
             COALESCE(merchant.product_details, personal.product_details) AS product_details
      FROM project_scheme_products item
      JOIN project_design_schemes scheme ON scheme.id = item.scheme_id AND scheme.version_no = 1
@@ -170,6 +179,15 @@ async function loadPresentationSource(projectId, options = {}) {
     const configuration = snapshotConfiguration || (details.configurations || []).find(
       item => String(item.id) === String(selection.configuration_id)
     );
+    const gallery = [
+      configuration?.image_url,
+      ...(Array.isArray(configuration?.image_urls) ? configuration.image_urls : []),
+      snapshotProduct.cover_url,
+      ...(parseJson(row.merchant_image_urls) || []),
+      row.cover_url,
+    ].filter(Boolean);
+    const materials = selectedMaterials(selection, true);
+    const configurationParts = Array.isArray(configuration?.parts) ? configuration.parts : [];
     const item = {
       id: Number(row.id),
       name: snapshotProduct.name || row.name || '未命名产品',
@@ -177,6 +195,16 @@ async function loadPresentationSource(projectId, options = {}) {
       specification: row.spec || row.selected_spec || '',
       configuration: configuration?.name || selection.configuration_name || row.selected_spec || '',
       image_url: configuration?.image_url || snapshotProduct.cover_url || row.cover_url || '',
+      image_urls: [...new Set(gallery)].slice(0, 8),
+      description: row.description || '',
+      dimensions: configuration?.dimensions || null,
+      dimension_unit: configuration?.dimension_unit || '',
+      dimension_note: configuration?.dimension_note || '',
+      materials,
+      colors: [...new Set([
+        ...materials.map(material => material.name),
+        ...configurationParts.map(part => part.color),
+      ].filter(Boolean))],
       quantity: Number(row.quantity),
       unit: row.unit || '件',
       customer_unit_price: row.customer_unit_price == null ? null : Number(row.customer_unit_price),
