@@ -159,7 +159,9 @@
         embedded: true,
         hash: true,
         controls: true,
+        controlsLayout: 'edges',
         progress: true,
+        keyboard: false,
         center: false,
         transition: 'fade',
         width: portrait ? 640 : 1280,
@@ -167,6 +169,19 @@
         margin: 0.03,
       });
       await deck.initialize();
+      const handleKeyboardNavigation = event => {
+        if (event.defaultPrevented || event.altKey || event.ctrlKey || event.metaKey || event.shiftKey) return;
+        const target = event.target;
+        if (target instanceof HTMLElement && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+        if (event.key === 'ArrowLeft') deck.prev();
+        else if (event.key === 'ArrowRight') deck.next();
+        else return;
+        event.preventDefault();
+      };
+      document.addEventListener('keydown', handleKeyboardNavigation);
+      root.setAttribute('tabindex', '-1');
+      root.addEventListener('pointerdown', () => root.focus({ preventScroll: true }));
+      root.focus({ preventScroll: true });
       fullscreenButton.addEventListener('click', toggleFullscreen);
       document.addEventListener('fullscreenchange', syncFullscreenState);
       document.addEventListener('webkitfullscreenchange', syncFullscreenState);

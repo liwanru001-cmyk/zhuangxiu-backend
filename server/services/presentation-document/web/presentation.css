@@ -14,6 +14,14 @@ body.fullscreen-active .viewer-bar button:hover, body.fullscreen-active .viewer-
 body.fullscreen-active .reveal, body.fullscreen-active .viewer-error { inset: 0; }
 .reveal .slides section { height: 100%; text-align: left; }
 .reveal .controls { color: #a85c3b; }
+.reveal .controls[data-controls-layout="edges"] .navigate-left, .reveal .controls[data-controls-layout="edges"] .navigate-right { top: 50%; width: 76px; height: 168px; margin-top: -84px; display: grid; place-items: center; }
+.reveal .controls[data-controls-layout="edges"] .navigate-left { left: 0; }
+.reveal .controls[data-controls-layout="edges"] .navigate-right { right: 0; }
+.reveal .controls[data-controls-layout="edges"] .navigate-left .controls-arrow, .reveal .controls[data-controls-layout="edges"] .navigate-right .controls-arrow { margin: auto; }
+@media (hover: hover) and (pointer: fine) {
+  .reveal .controls[data-controls-layout="edges"] .navigate-left.enabled, .reveal .controls[data-controls-layout="edges"] .navigate-right.enabled { opacity: 0; }
+  .reveal .controls[data-controls-layout="edges"] .navigate-left.enabled:hover, .reveal .controls[data-controls-layout="edges"] .navigate-right.enabled:hover, .reveal .controls[data-controls-layout="edges"] .navigate-left.enabled:focus-visible, .reveal .controls[data-controls-layout="edges"] .navigate-right.enabled:focus-visible { opacity: 1; }
+}
 .reveal .progress { color: #a85c3b; height: 4px; }
 .slide-shell { width: 100%; height: 100%; padding: 64px 74px 62px; background: #fffdfa; display: flex; flex-direction: column; overflow: hidden; }
 .slide-shell.cover, .slide-shell.ending { background: linear-gradient(135deg, #f6ede5, #fffdfa 70%); }

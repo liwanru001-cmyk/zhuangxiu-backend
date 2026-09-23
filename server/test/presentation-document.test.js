@@ -94,3 +94,14 @@ test('Reveal preview provides WebKit fullscreen support and an embedded-view fal
   assert.match(script, /退出全屏/);
   assert.match(styles, /body\.fullscreen-active \.reveal/);
 });
+
+test('Reveal preview places navigation on the edges and handles horizontal arrow keys', () => {
+  const webRoot = path.join(__dirname, '../services/presentation-document/web');
+  const script = fs.readFileSync(path.join(webRoot, 'presentation.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(webRoot, 'presentation.css'), 'utf8');
+  assert.match(script, /controlsLayout: 'edges'/);
+  assert.match(script, /event\.key === 'ArrowLeft'\) deck\.prev\(\)/);
+  assert.match(script, /event\.key === 'ArrowRight'\) deck\.next\(\)/);
+  assert.match(styles, /navigate-left\.enabled[^}]*opacity: 0/);
+  assert.match(styles, /navigate-right\.enabled:hover/);
+});
