@@ -61,6 +61,7 @@ async function save(req, res) {
     id: result.id,
     title: result.document.presentation.title,
     slide_count: result.document.slides.length,
+    page_count: result.page_plan.pages.length,
     preview_url: previewUrl(req, context.projectId, result.id, req.user.id),
   }, '汇报方案已保存');
 }
@@ -79,6 +80,34 @@ async function link(req, res) {
   return success(res, {
     preview_url: previewUrl(req, context.projectId, document.id, req.user.id),
   });
+}
+
+async function pagePlan(req, res) {
+  const context = await authorize(req, res);
+  if (!context) return;
+  const document = await documents.find(context.projectId, req.params.documentId);
+  if (!document) return error(res, '汇报方案不存在', 404);
+  return success(res, {
+    page_plan: document.page_plan,
+    page_plan_version: document.page_plan_version,
+  });
+}
+
+async function updatePagePlan(req, res) {
+  const context = await authorize(req, res, true);
+  if (!context) return;
+  try {
+    const result = await documents.updatePagePlan(
+      context.projectId,
+      req.params.documentId,
+      req.user.id,
+      req.body?.page_plan || req.body
+    );
+    if (!result) return error(res, '汇报方案不存在', 404);
+    return success(res, result, '页面编排已保存');
+  } catch (validationError) {
+    return error(res, validationError.message || '页面编排格式不正确');
+  }
 }
 
 async function authorizeTicket(req, res) {
@@ -144,6 +173,8 @@ module.exports = {
   save,
   list,
   link,
+  pagePlan,
+  updatePagePlan,
   preview,
   data,
   previewContentSecurityPolicy,

@@ -7,6 +7,7 @@ const { requireProjectContext } = require('../utils/project-context');
 const { success, error } = require('../utils/response');
 const jobs = require('../services/presentation-jobs');
 const presentationService = require('../services/project-presentation.service');
+const presentationDocuments = require('../services/presentation-document.service');
 const { generateFromPlan, safeFileName } = require('../scripts/generate-ppt-from-plan');
 
 function requestBaseUrl(req) {
@@ -106,9 +107,32 @@ async function createJob(req, res) {
   const context = await authorize(req, res);
   if (!context) return;
   const body = req.body || {};
-  if (!body.settings || typeof body.settings !== 'object' || Array.isArray(body.settings)) return error(res, '请填写汇报设置');
   if (!/^[0-9a-f-]{36}$/i.test(body.request_key || '')) return error(res, '任务标识不正确');
-  const result = await jobs.submit(context.projectId, req.user.id, { ...body.settings, project_id: context.projectId, _asset_base_url: requestBaseUrl(req) }, body.request_key);
+  let documentSnapshot;
+  let pagePlanSnapshot;
+  let settings = body.settings;
+  if (body.presentation_document_id) {
+    if (!/^[0-9a-f-]{36}$/i.test(String(body.presentation_document_id))) return error(res, '汇报方案标识不正确');
+    const saved = await presentationDocuments.find(context.projectId, body.presentation_document_id);
+    if (!saved) return error(res, '汇报方案不存在', 404);
+    documentSnapshot = saved.document;
+    pagePlanSnapshot = saved.page_plan;
+    settings = saved.document.settings;
+  } else {
+    if (!settings || typeof settings !== 'object' || Array.isArray(settings)) return error(res, '请填写汇报设置');
+    const source = await presentationService.loadPresentationSource(context.projectId, { baseUrl: requestBaseUrl(req) });
+    documentSnapshot = presentationDocuments.buildDocument(source, settings);
+    pagePlanSnapshot = presentationDocuments.buildPagePlan(documentSnapshot);
+    settings = documentSnapshot.settings;
+  }
+  const result = await jobs.submit(context.projectId, req.user.id, {
+    ...settings,
+    project_id: context.projectId,
+    _asset_base_url: requestBaseUrl(req),
+    _presentation_document_id: body.presentation_document_id || null,
+    _presentation_document_snapshot: documentSnapshot,
+    _page_plan_snapshot: pagePlanSnapshot,
+  }, body.request_key);
   return success(res, result, '已加入生成队列');
 }
 async function retryJob(req, res) {

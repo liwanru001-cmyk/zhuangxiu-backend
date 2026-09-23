@@ -5,6 +5,7 @@ const db = require('../config/db');
 const presentation = require('./project-presentation.service');
 const { candidates } = require('./presentation-v2/assets');
 const storage = require('./storage.service');
+const { buildPagePlan, validatePagePlan } = require('./presentation-page-plan');
 
 const layoutByType = Object.freeze({
   cover: 'cover_01',
@@ -22,7 +23,7 @@ function idPart(value) {
 
 function buildAssetManifest(source, settings) {
   const seen = new Map();
-  return candidates(source, settings).map(asset => {
+  const manifest = candidates(source, settings).map(asset => {
     const base = [asset.source_type, asset.source_id, asset.image_role, `v${asset.version_no}`].map(idPart).join(':');
     const count = (seen.get(base) || 0) + 1;
     seen.set(base, count);
@@ -40,6 +41,63 @@ function buildAssetManifest(source, settings) {
           asset.type === 'pdf' ? asset.legacy_url : asset.url
         ),
       media_type: asset.type,
+    };
+  });
+  const existing = new Set(manifest.map(asset => `${asset.source_type}:${asset.source_id}:${asset.url}`));
+  for (const choice of settings.spaces.filter(item => item.included && item.show_products)) {
+    const space = source.spaces.find(item => Number(item.id) === Number(choice.space_id));
+    if (!space) continue;
+    const allowed = new Set(choice.selected_product_ids.map(Number));
+    for (const product of space.products.filter(item => !allowed.size || allowed.has(Number(item.id)))) {
+      for (const [index, rawUrl] of (product.image_urls || []).entries()) {
+        const url = storage.canonicalStorageUri(rawUrl);
+        const identity = `scheme_product:${product.id}:${url}`;
+        if (!url || existing.has(identity)) continue;
+        existing.add(identity);
+        manifest.push({
+          asset_id: `scheme_product:${idPart(product.id)}:gallery-${index + 1}:v1`,
+          source_type: 'scheme_product',
+          source_id: product.id,
+          image_role: `gallery:${index + 1}`,
+          space_id: space.id,
+          title: `${product.name} · 图片${index + 1}`,
+          category: 'product',
+          url,
+          media_type: 'image',
+        });
+      }
+    }
+  }
+  return manifest;
+}
+
+function documentSpaces(source, settings) {
+  const selected = new Map(settings.spaces.filter(item => item.included).map(item => [Number(item.space_id), item]));
+  return source.spaces.filter(space => selected.has(Number(space.id))).map(space => {
+    const choice = selected.get(Number(space.id));
+    const allowed = new Set(choice.selected_product_ids.map(Number));
+    return {
+      id: space.id,
+      name: space.name,
+      products: choice.show_products ? space.products
+        .filter(product => !allowed.size || allowed.has(Number(product.id)))
+        .map(product => ({
+          id: product.id,
+          name: product.name,
+          brand: product.brand,
+          description: product.description,
+          specification: product.specification,
+          configuration: product.configuration,
+          dimensions: product.dimensions,
+          dimension_unit: product.dimension_unit,
+          dimension_note: product.dimension_note,
+          materials: product.materials,
+          colors: product.colors,
+          quantity: `${product.quantity}${product.unit}`,
+          customer_quote: product.selection?.ppt?.show_price === true && product.customer_unit_price != null
+            ? product.customer_unit_price : null,
+          note: product.note,
+        })) : [],
     };
   });
 }
@@ -124,7 +182,7 @@ function buildDocument(source, rawSettings) {
     },
     settings,
     project: sourceForModel.project,
-    spaces: sourceForModel.spaces,
+    spaces: documentSpaces(source, settings),
     asset_manifest: assets,
     slides,
   };
@@ -133,34 +191,69 @@ function buildDocument(source, rawSettings) {
 async function save(projectId, userId, rawSettings, options = {}) {
   const source = await presentation.loadPresentationSource(projectId, options);
   const document = buildDocument(source, rawSettings);
+  const pagePlan = buildPagePlan(document);
   const id = crypto.randomUUID();
   await (options.db || db).query(
     `INSERT INTO project_presentation_documents
-       (id, project_id, created_by, title, settings_json, document_json)
-     VALUES (?, ?, ?, ?, ?, ?)`,
+       (id, project_id, created_by, title, settings_json, document_json, page_plan_json, page_plan_updated_by)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [id, projectId, userId, document.presentation.title,
-      JSON.stringify(document.settings), JSON.stringify(document)]
+      JSON.stringify(document.settings), JSON.stringify(document), JSON.stringify(pagePlan), userId]
   );
-  return { id, document };
+  return { id, document, page_plan: pagePlan };
+}
+
+function parseJson(value) {
+  if (typeof value !== 'string') return value || null;
+  try { return JSON.parse(value); } catch (_) { return null; }
 }
 
 async function find(projectId, documentId, database = db) {
   const [rows] = await database.query(
-    `SELECT id, project_id, created_by, title, document_json, created_at, updated_at
+    `SELECT id, project_id, created_by, title, document_json, page_plan_json,
+            page_plan_version, page_plan_updated_by, created_at, updated_at
      FROM project_presentation_documents WHERE project_id = ? AND id = ? LIMIT 1`,
     [projectId, documentId]
   );
   const row = rows[0];
   if (!row) return null;
+  const document = parseJson(row.document_json);
+  let pagePlan = parseJson(row.page_plan_json);
+  if (!pagePlan && document) {
+    pagePlan = buildPagePlan(document);
+    await database.query(
+      `UPDATE project_presentation_documents
+       SET page_plan_json = ?, page_plan_version = 1
+       WHERE project_id = ? AND id = ? AND page_plan_json IS NULL`,
+      [JSON.stringify(pagePlan), projectId, documentId]
+    );
+  }
   return {
     id: row.id,
     project_id: row.project_id,
     created_by: row.created_by,
     title: row.title,
-    document: typeof row.document_json === 'string' ? JSON.parse(row.document_json) : row.document_json,
+    document,
+    page_plan: pagePlan,
+    page_plan_version: Number(row.page_plan_version || 1),
+    page_plan_updated_by: row.page_plan_updated_by == null ? null : Number(row.page_plan_updated_by),
     created_at: row.created_at,
     updated_at: row.updated_at,
   };
+}
+
+async function updatePagePlan(projectId, documentId, userId, rawPagePlan, database = db) {
+  const current = await find(projectId, documentId, database);
+  if (!current) return null;
+  const pagePlan = validatePagePlan(rawPagePlan, current.document);
+  await database.query(
+    `UPDATE project_presentation_documents
+     SET page_plan_json = ?, page_plan_version = page_plan_version + 1,
+         page_plan_updated_by = ?
+     WHERE project_id = ? AND id = ?`,
+    [JSON.stringify(pagePlan), userId, projectId, documentId]
+  );
+  return { page_plan: pagePlan, page_plan_version: current.page_plan_version + 1 };
 }
 
 async function list(projectId, database = db) {
@@ -173,4 +266,4 @@ async function list(projectId, database = db) {
   return rows;
 }
 
-module.exports = { buildAssetManifest, buildDocument, save, find, list };
+module.exports = { buildAssetManifest, buildDocument, buildPagePlan, validatePagePlan, save, find, updatePagePlan, list };

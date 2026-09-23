@@ -10,12 +10,56 @@
 </head>
 <body>
   <header class="viewer-bar">
-    <div class="viewer-brand">装筱窝 <span>方案汇报</span></div>
+    <div class="viewer-brand">装筱窝 <span>设计提案</span></div>
     <div class="viewer-title" id="viewer-title">正在打开汇报方案…</div>
-    <button id="fullscreen-button" type="button" aria-label="全屏展示" aria-pressed="false">全屏展示</button>
+    <div class="viewer-actions">
+      <button id="overview-button" type="button">页面总览</button>
+      <button id="display-button" type="button" aria-expanded="false">显示设置</button>
+      <button id="fullscreen-button" type="button" aria-pressed="false">全屏展示</button>
+    </div>
   </header>
+  <div class="display-menu" id="display-menu" hidden>
+    <label class="theme-field"><span>汇报风格</span>
+      <select id="theme-select">
+        <option value="modern_minimal">现代简约</option>
+        <option value="wabi_sabi">侘寂</option>
+        <option value="italian_luxury">意式轻奢</option>
+        <option value="modern_chinese">现代中式</option>
+        <option value="scandinavian">北欧</option>
+        <option value="french_classic">法式经典</option>
+        <option value="industrial">工业风</option>
+        <option value="natural_resort">自然度假</option>
+      </select>
+    </label>
+    <label><input id="toggle-brand" type="checkbox"> 品牌</label>
+    <label><input id="toggle-price" type="checkbox"> 价格</label>
+    <label><input id="toggle-dimensions" type="checkbox"> 尺寸</label>
+  </div>
   <main class="reveal" id="deck"><div class="slides" id="slides"></div></main>
   <div class="viewer-error" id="viewer-error" hidden></div>
+  <div class="overlay" id="overview-overlay" hidden>
+    <div class="overview-panel" role="dialog" aria-modal="true" aria-labelledby="overview-title">
+      <div class="overlay-heading"><div><span>Presentation map</span><h2 id="overview-title">页面总览</h2></div><button type="button" data-close="overview">关闭</button></div>
+      <div class="overview-grid" id="overview-grid"></div>
+    </div>
+  </div>
+  <div class="overlay lightbox" id="lightbox" hidden>
+    <button class="overlay-close" type="button" data-close="lightbox">关闭</button>
+    <img id="lightbox-image" alt="高清图片">
+    <div id="lightbox-caption"></div>
+  </div>
+  <div class="overlay" id="product-overlay" hidden>
+    <article class="product-dialog" role="dialog" aria-modal="true" aria-labelledby="product-dialog-title">
+      <button class="overlay-close" type="button" data-close="product">关闭</button>
+      <div class="product-dialog-gallery" id="product-dialog-gallery"></div>
+      <div class="product-dialog-copy">
+        <div class="eyebrow">Product selection</div>
+        <h2 id="product-dialog-title"></h2>
+        <div id="product-dialog-meta"></div>
+        <div class="product-dialog-nav"><button id="previous-product" type="button">上一款</button><span id="product-position"></span><button id="next-product" type="button">下一款</button></div>
+      </div>
+    </article>
+  </div>
   <script src="/api/renovation/presentation-preview-assets/reveal/reveal.js"></script>
   <script src="/api/renovation/presentation-preview-assets/presentation.js" defer></script>
 </body>
