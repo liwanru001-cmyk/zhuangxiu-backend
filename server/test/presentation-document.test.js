@@ -5,6 +5,10 @@ const assert = require('node:assert/strict');
 const dbPath = require.resolve('../config/db');
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {} };
 const { buildDocument } = require('../services/presentation-document.service');
+const {
+  previewContentSecurityPolicy,
+  setPreviewHeaders,
+} = require('../controllers/presentation-documents.controller');
 
 const source = {
   project: {
@@ -68,4 +72,13 @@ test('presentation document respects disabled sections and excluded spaces', () 
   });
   assert.deepEqual(document.slides.map(slide => slide.type), ['cover', 'ending']);
   assert.deepEqual(document.asset_manifest, []);
+});
+
+test('Reveal preview allows HTTPS images while keeping scripts same-origin', () => {
+  const headers = new Map();
+  setPreviewHeaders({ setHeader: (name, value) => headers.set(name, value) });
+  assert.equal(headers.get('Content-Security-Policy'), previewContentSecurityPolicy);
+  assert.match(previewContentSecurityPolicy, /img-src 'self' data: blob: https:/);
+  assert.match(previewContentSecurityPolicy, /script-src 'self'/);
+  assert.doesNotMatch(previewContentSecurityPolicy, /script-src[^;]*https:/);
 });

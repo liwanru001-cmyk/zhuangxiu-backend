@@ -9,6 +9,24 @@ const documents = require('../services/presentation-document.service');
 const storage = require('../services/storage.service');
 
 const previewPage = path.join(__dirname, '../services/presentation-document/web/index.html');
+const previewContentSecurityPolicy = [
+  "default-src 'self'",
+  "base-uri 'self'",
+  "font-src 'self' data:",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  "img-src 'self' data: blob: https:",
+  "object-src 'none'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "connect-src 'self'",
+].join('; ');
+
+function setPreviewHeaders(res) {
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  res.setHeader('Content-Security-Policy', previewContentSecurityPolicy);
+}
 
 async function authorize(req, res, editing = false) {
   const context = await requireProjectContext(req, res);
@@ -99,8 +117,7 @@ async function preview(req, res) {
   if (!ticket) return;
   const document = await documents.find(ticket.projectId, ticket.documentId);
   if (!document) return error(res, '汇报方案不存在', 404);
-  res.setHeader('Cache-Control', 'no-store');
-  res.setHeader('Referrer-Policy', 'no-referrer');
+  setPreviewHeaders(res);
   return res.sendFile(previewPage);
 }
 
@@ -123,4 +140,12 @@ async function data(req, res) {
   });
 }
 
-module.exports = { save, list, link, preview, data };
+module.exports = {
+  save,
+  list,
+  link,
+  preview,
+  data,
+  previewContentSecurityPolicy,
+  setPreviewHeaders,
+};
