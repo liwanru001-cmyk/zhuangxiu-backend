@@ -4,6 +4,49 @@
   const slidesRoot = document.getElementById('slides');
   const errorRoot = document.getElementById('viewer-error');
   const titleRoot = document.getElementById('viewer-title');
+  const fullscreenButton = document.getElementById('fullscreen-button');
+
+  function fullscreenElement() {
+    return document.fullscreenElement || document.webkitFullscreenElement || null;
+  }
+
+  function syncFullscreenState() {
+    const active = Boolean(fullscreenElement()) || document.body.classList.contains('presentation-mode');
+    document.body.classList.toggle('fullscreen-active', active);
+    fullscreenButton.textContent = active ? '退出全屏' : '全屏展示';
+    fullscreenButton.setAttribute('aria-label', active ? '退出全屏' : '全屏展示');
+    fullscreenButton.setAttribute('aria-pressed', String(active));
+  }
+
+  async function toggleFullscreen() {
+    if (document.body.classList.contains('presentation-mode')) {
+      document.body.classList.remove('presentation-mode');
+      syncFullscreenState();
+      return;
+    }
+    if (fullscreenElement()) {
+      const exit = document.exitFullscreen || document.webkitExitFullscreen;
+      if (exit) await exit.call(document);
+      syncFullscreenState();
+      return;
+    }
+
+    const request = document.documentElement.requestFullscreen || document.documentElement.webkitRequestFullscreen;
+    if (request) {
+      try {
+        await request.call(document.documentElement);
+        if (fullscreenElement()) {
+          syncFullscreenState();
+          return;
+        }
+      } catch (_) {
+        // Embedded WebViews commonly expose the API but reject the request.
+      }
+    }
+
+    document.body.classList.add('presentation-mode');
+    syncFullscreenState();
+  }
 
   function node(tag, className, value) {
     const element = document.createElement(tag);
@@ -124,10 +167,10 @@
         margin: 0.03,
       });
       await deck.initialize();
-      document.getElementById('fullscreen-button').addEventListener('click', () => {
-        if (document.fullscreenElement) document.exitFullscreen();
-        else document.documentElement.requestFullscreen?.();
-      });
+      fullscreenButton.addEventListener('click', toggleFullscreen);
+      document.addEventListener('fullscreenchange', syncFullscreenState);
+      document.addEventListener('webkitfullscreenchange', syncFullscreenState);
+      syncFullscreenState();
     } catch (error) {
       errorRoot.hidden = false;
       errorRoot.textContent = error.message || '汇报方案打开失败';

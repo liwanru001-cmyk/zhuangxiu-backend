@@ -7,6 +7,11 @@ body { margin: 0; background: #f7f4f0; color: #302c29; }
 .viewer-title { min-width: 0; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #7d746e; font-size: 14px; }
 .viewer-bar button { border: 1px solid #ddc2b3; border-radius: 9px; padding: 8px 14px; background: white; color: #a85c3b; font: inherit; cursor: pointer; }
 .reveal { position: absolute; inset: 58px 0 0; color: #302c29; font-family: inherit; }
+body.fullscreen-active .viewer-bar { position: fixed; inset: 0; height: 0; padding: 0; border: 0; background: transparent; overflow: visible; z-index: 30; pointer-events: none; }
+body.fullscreen-active .viewer-brand, body.fullscreen-active .viewer-title { display: none; }
+body.fullscreen-active .viewer-bar button { position: fixed; top: max(12px, env(safe-area-inset-top)); right: max(12px, env(safe-area-inset-right)); z-index: 31; pointer-events: auto; padding: 7px 12px; background: rgba(255, 253, 250, .86); box-shadow: 0 3px 14px rgba(70, 48, 36, .14); backdrop-filter: blur(8px); opacity: .55; transition: opacity .16s ease; }
+body.fullscreen-active .viewer-bar button:hover, body.fullscreen-active .viewer-bar button:focus-visible { opacity: 1; }
+body.fullscreen-active .reveal, body.fullscreen-active .viewer-error { inset: 0; }
 .reveal .slides section { height: 100%; text-align: left; }
 .reveal .controls { color: #a85c3b; }
 .reveal .progress { color: #a85c3b; height: 4px; }

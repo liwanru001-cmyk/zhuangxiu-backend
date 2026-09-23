@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const dbPath = require.resolve('../config/db');
 require.cache[dbPath] = { id: dbPath, filename: dbPath, loaded: true, exports: {} };
 const { buildDocument } = require('../services/presentation-document.service');
@@ -81,4 +83,14 @@ test('Reveal preview allows HTTPS images while keeping scripts same-origin', () 
   assert.match(previewContentSecurityPolicy, /img-src 'self' data: blob: https:/);
   assert.match(previewContentSecurityPolicy, /script-src 'self'/);
   assert.doesNotMatch(previewContentSecurityPolicy, /script-src[^;]*https:/);
+});
+
+test('Reveal preview provides WebKit fullscreen support and an embedded-view fallback', () => {
+  const webRoot = path.join(__dirname, '../services/presentation-document/web');
+  const script = fs.readFileSync(path.join(webRoot, 'presentation.js'), 'utf8');
+  const styles = fs.readFileSync(path.join(webRoot, 'presentation.css'), 'utf8');
+  assert.match(script, /webkitRequestFullscreen/);
+  assert.match(script, /classList\.add\('presentation-mode'\)/);
+  assert.match(script, /退出全屏/);
+  assert.match(styles, /body\.fullscreen-active \.reveal/);
 });
