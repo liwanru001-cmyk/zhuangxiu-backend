@@ -52,6 +52,28 @@ function productPages(slide) {
   return result;
 }
 
+function descriptionRanges(value, maxLength = 420) {
+  const text = String(value || '');
+  if (!text) return [];
+  const ranges = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(text.length, start + maxLength);
+    if (end < text.length) {
+      const candidate = text.slice(start, end);
+      const boundary = Math.max(
+        candidate.lastIndexOf('\n'), candidate.lastIndexOf('。'),
+        candidate.lastIndexOf('；'), candidate.lastIndexOf('！'), candidate.lastIndexOf('？')
+      );
+      if (boundary >= Math.floor(maxLength * 0.55)) end = start + boundary + 1;
+    }
+    ranges.push([start, end]);
+    start = end;
+    while (start < text.length && /\s/.test(text[start])) start += 1;
+  }
+  return ranges;
+}
+
 function buildPagePlan(document) {
   const pages = [];
   const assets = new Map((document.asset_manifest || []).map(asset => [asset.asset_id, asset]));
@@ -92,7 +114,16 @@ function buildPagePlan(document) {
       const planIds = (slide.plan_asset_ids || []).filter(id => assets.has(id));
       const architectural = planIds.filter(id => ['layout_plan', 'floor_plan'].includes(String(assets.get(id)?.category || '')));
       const materials = planIds.filter(id => !architectural.includes(id));
-      if (slide.description || architectural.length) pages.push(page(
+      const narrativeRanges = descriptionRanges(slide.description);
+      if (narrativeRanges.length) narrativeRanges.forEach((range, index) => pages.push(page(
+        slide, 'space_story', 'space_story_01', `story-${index + 1}`,
+        {
+          space_id: String(slide.space_id),
+          asset_ids: architectural.slice(0, 2),
+          description_range: range,
+        }
+      )));
+      else if (architectural.length) pages.push(page(
         slide, 'space_story', 'space_story_01', 'story',
         { space_id: String(slide.space_id), asset_ids: architectural.slice(0, 2) }
       ));
@@ -168,6 +199,18 @@ function validatePagePlan(raw, document) {
     if (referencedProducts.some(id => !products.has(id))) throw new Error('页面引用的产品已不存在');
     const title = item.title_override == null ? '' : String(item.title_override).trim();
     if (title.length > 160) throw new Error('页面标题过长');
+    let descriptionRange = null;
+    if (item.description_range != null) {
+      if (type !== 'space_story' || !Array.isArray(item.description_range)
+          || item.description_range.length !== 2) throw new Error('方案说明分页范围不正确');
+      const start = Number(item.description_range[0]);
+      const end = Number(item.description_range[1]);
+      const slide = (document.slides || []).find(value => String(value.id) === sourceSlideId);
+      const length = String(slide?.description || '').length;
+      if (!Number.isSafeInteger(start) || !Number.isSafeInteger(end)
+          || start < 0 || end <= start || end > length) throw new Error('方案说明分页范围不正确');
+      descriptionRange = [start, end];
+    }
     return {
       page_id: pageId,
       source_slide_id: sourceSlideId,
@@ -179,6 +222,7 @@ function validatePagePlan(raw, document) {
       ...(referencedAssets.length ? { asset_ids: referencedAssets } : {}),
       ...(referencedProducts.length ? { product_ids: referencedProducts } : {}),
       ...(title ? { title_override: title } : {}),
+      ...(descriptionRange ? { description_range: descriptionRange } : {}),
     };
   });
   if (pages.every(item => item.hidden)) throw new Error('至少保留一页用于汇报');

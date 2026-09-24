@@ -31,7 +31,8 @@ const source = {
   whole_house_documents: [{ id: 3, title: '户型图', category: 'layout_plan', type: 'image', url: 'https://example.test/floor.jpg', source_type: 'design_document' }],
   whole_house_renderings: [],
   spaces: [{
-    id: 7, name: '主卧', plan_count: 0, rendering_count: 1, product_count: 1,
+    id: 7, name: '主卧', design_description: '以安静的休息体验为核心，使用柔和材质与低饱和色彩。',
+    plan_count: 0, rendering_count: 1, product_count: 1,
     documents: [],
     renderings: [{ id: 11, title: '主卧效果图', type: 'image', url: 'https://example.test/room.jpg', source_type: 'design_document' }],
     products: [{
@@ -55,6 +56,7 @@ test('saved presentation document uses semantic slides and stable asset referenc
   const space = document.slides.find(slide => slide.type === 'space_design');
   assert.equal(space.space_id, '7');
   assert.equal(space.layout, 'space_hero_01');
+  assert.equal(space.description, source.spaces[0].design_description);
   assert.equal(space.rendering_asset_ids.length, 1);
   assert.ok(document.asset_manifest.some(asset => asset.asset_id === space.rendering_asset_ids[0]));
   const products = document.slides.find(slide => slide.type === 'product_selection');
@@ -81,12 +83,30 @@ test('page plan is stable, semantic and chooses product layout from content coun
   const chapterIndex = first.pages.findIndex(item => item.type === 'chapter');
   const heroIndex = first.pages.findIndex(item => item.type === 'space_hero');
   const productIndex = first.pages.findIndex(item => item.type === 'product_feature');
-  assert.ok(chapterIndex >= 0 && chapterIndex < heroIndex && heroIndex < productIndex);
+  const storyIndex = first.pages.findIndex(item => item.type === 'space_story');
+  assert.ok(chapterIndex >= 0 && chapterIndex < heroIndex && heroIndex < storyIndex && storyIndex < productIndex);
   assert.deepEqual(first.pages[productIndex].product_ids, ['21']);
   assert.ok(document.asset_manifest.some(asset => asset.image_role === 'gallery:2'));
   assert.equal(document.spaces[0].products[0].dimensions.width, 1800);
   assert.equal(document.spaces[0].products[0].official_url, 'https://example.test/products/bed');
   assert.equal(document.spaces[0].products[0].public_product_id, 221);
+  assert.equal(document.spaces[0].design_description, source.spaces[0].design_description);
+});
+
+test('long space descriptions become stable story pages with ranges into Document content', () => {
+  const longDescription = `${'安静舒适的睡眠空间。'.repeat(55)}\n${'材质保持自然温润。'.repeat(35)}`;
+  const document = buildDocument({
+    ...source,
+    spaces: [{ ...source.spaces[0], design_description: longDescription }],
+  }, {});
+  const plan = buildPagePlan(document);
+  const stories = plan.pages.filter(page => page.type === 'space_story');
+  assert.ok(stories.length >= 2);
+  assert.deepEqual(stories[0].description_range[0], 0);
+  assert.equal(stories.at(-1).description_range[1], longDescription.length);
+  const restored = stories.map(page => longDescription.slice(...page.description_range)).join('');
+  assert.equal(restored.replace(/\s/g, ''), longDescription.replace(/\s/g, ''));
+  assert.doesNotThrow(() => validatePagePlan(plan, document));
 });
 
 test('page plan validation saves order, hidden state, layout and theme without changing Document', () => {
@@ -253,4 +273,5 @@ test('Reveal renderer uses Page Plan layouts, eight themes and proposal interact
   assert.match(script, /open_public_product/);
   assert.match(styles, /product-gallery-thumbs/);
   assert.match(script, /buildOverview/);
+  assert.doesNotMatch(script, /本空间.*设计资料与方案逻辑/);
 });

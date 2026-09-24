@@ -166,7 +166,10 @@
     else visual.append(node('div', 'narrative-number', String(number).padStart(2, '0')));
     const copy = node('div', 'narrative-copy');
     copy.append(node('div', 'eyebrow', 'Design narrative'), node('h1', '', pageTitle(page)));
-    copy.append(node('p', '', text(source(page).description) || `${space(page).name || '本空间'}的设计资料与方案逻辑。`));
+    const fullDescription = text(source(page).description) || text(space(page).design_description);
+    const range = Array.isArray(page.description_range) ? page.description_range : null;
+    const description = range ? text(fullDescription.slice(range[0], range[1])) : fullDescription;
+    if (description) copy.append(node('p', '', description));
     content.append(visual, copy);
     footer(content, number, space(page).name || '空间说明');
     return section;

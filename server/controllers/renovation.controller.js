@@ -2013,21 +2013,91 @@ async function getProjectSpaces(req, res) {
      ORDER BY psi.is_primary DESC, psi.id DESC`,
     [projectId]
   );
+  const [schemeSpaces] = await db.query(
+    `SELECT content.space_id, content.design_description, content.updated_at,
+            content.updated_by
+     FROM project_design_scheme_spaces content
+     JOIN project_design_schemes scheme ON scheme.id = content.scheme_id
+     WHERE content.project_id = ? AND scheme.project_id = ? AND scheme.version_no = 1`,
+    [projectId, projectId]
+  );
 
   const imagesBySpace = new Map();
   for (const image of images) {
     if (!imagesBySpace.has(image.space_id)) imagesBySpace.set(image.space_id, []);
     imagesBySpace.get(image.space_id).push(image);
   }
+  const contentBySpace = new Map(schemeSpaces.map(item => [Number(item.space_id), item]));
   return success(
     res,
     spaces.map((space) => ({
       ...space,
       is_default: Boolean(space.is_default),
       can_select_main_design_document: canSelectMainDesignDocument,
+      design_description: contentBySpace.get(Number(space.id))?.design_description || '',
+      design_description_updated_at: contentBySpace.get(Number(space.id))?.updated_at || null,
+      can_edit_design_description: ['owner', 'designer'].includes(role),
       images: imagesBySpace.get(space.id) || [],
     }))
   );
+}
+
+async function updateProjectSpaceDesignDescription(req, res) {
+  const projectContext = await requireProjectContext(req, res);
+  if (!projectContext.ok) return projectContext.response;
+  const projectId = Number(req.params.id);
+  const spaceId = Number(req.params.spaceId);
+  if (!Number.isSafeInteger(spaceId) || spaceId <= 0) {
+    return error(res, '空间参数不正确');
+  }
+  if (projectContext.lifecycleStatus !== 'active'
+      || !['owner', 'designer'].includes(projectContext.role)) {
+    return error(res, '仅业主和项目设计师可编辑方案说明', 403);
+  }
+  const rawDescription = req.body?.design_description;
+  if (typeof rawDescription !== 'string') return error(res, '方案说明格式不正确');
+  const description = rawDescription.trim();
+  if (description.length > 3000) return error(res, '方案说明不能超过3000字');
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    const [spaces] = await connection.query(
+      'SELECT id FROM project_spaces WHERE id = ? AND project_id = ? FOR UPDATE',
+      [spaceId, projectId]
+    );
+    if (!spaces[0]) {
+      await connection.rollback();
+      return error(res, '空间不存在', 404);
+    }
+    await connection.query(
+      `INSERT INTO project_design_schemes (project_id, version_no)
+       VALUES (?, 1) ON DUPLICATE KEY UPDATE id = LAST_INSERT_ID(id)`,
+      [projectId]
+    );
+    const [schemes] = await connection.query(
+      'SELECT id FROM project_design_schemes WHERE project_id = ? AND version_no = 1 LIMIT 1',
+      [projectId]
+    );
+    await connection.query(
+      `INSERT INTO project_design_scheme_spaces
+         (scheme_id, project_id, space_id, design_description, updated_by)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE design_description = VALUES(design_description),
+         updated_by = VALUES(updated_by), updated_at = CURRENT_TIMESTAMP`,
+      [schemes[0].id, projectId, spaceId, description, req.user.id]
+    );
+    await connection.commit();
+    return success(res, {
+      space_id: spaceId,
+      design_description: description,
+    }, '方案说明已保存');
+  } catch (updateError) {
+    await connection.rollback();
+    throw updateError;
+  } finally {
+    connection.release();
+  }
 }
 
 function isSelectableMainDesignDocument(document, projectId, spaceId) {
@@ -11545,6 +11615,7 @@ module.exports = {
   createProjectSpace,
   updateProjectSpace,
   setProjectSpaceMainDesignDocument,
+  updateProjectSpaceDesignDescription,
   isSelectableMainDesignDocument,
   deleteProjectSpace,
   uploadProjectSpaceImages,

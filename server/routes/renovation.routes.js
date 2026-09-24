@@ -901,6 +901,11 @@ router.put(
   ...protectedRoute,
   asyncHandler(controller.setProjectSpaceMainDesignDocument)
 );
+router.put(
+  '/projects/:id/spaces/:spaceId/design-description',
+  ...protectedRoute,
+  asyncHandler(controller.updateProjectSpaceDesignDescription)
+);
 router.delete(
   '/projects/:id/spaces/:spaceId',
   ...protectedRoute,

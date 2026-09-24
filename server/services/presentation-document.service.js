@@ -79,6 +79,7 @@ function documentSpaces(source, settings) {
     return {
       id: space.id,
       name: space.name,
+      design_description: space.design_description || '',
       products: choice.show_products ? space.products
         .filter(product => !allowed.size || allowed.has(Number(product.id)))
         .map(product => ({
@@ -157,7 +158,7 @@ function buildDocument(source, rawSettings) {
         title: `${space.name}设计`,
         rendering_asset_ids: renderingIds,
         plan_asset_ids: planIds,
-        description: '',
+        description: space.design_description || '',
       });
     }
     if ((settings.sections.product_summary || settings.sections.space_solutions) && choice.show_products) {

@@ -129,8 +129,14 @@ async function loadPresentationSource(projectId, options = {}) {
   if (!projects.length) throw new Error('项目不存在');
   const project = projects[0];
   const [spaces] = await connection.query(
-    `SELECT id, name, sort_order FROM project_spaces
-     WHERE project_id = ? ORDER BY sort_order, id`,
+    `SELECT space.id, space.name, space.sort_order,
+            COALESCE(content.design_description, '') AS design_description
+     FROM project_spaces space
+     LEFT JOIN project_design_schemes scheme
+       ON scheme.project_id = space.project_id AND scheme.version_no = 1
+     LEFT JOIN project_design_scheme_spaces content
+       ON content.scheme_id = scheme.id AND content.space_id = space.id
+     WHERE space.project_id = ? ORDER BY space.sort_order, space.id`,
     [projectId]
   );
   const [documents] = await connection.query(
@@ -305,6 +311,7 @@ async function loadPresentationSource(projectId, options = {}) {
     spaces: spaces.map(space => ({
       id: Number(space.id),
       name: space.name,
+      design_description: space.design_description || '',
       documents: docsBySpace.get(Number(space.id)) || [],
       renderings: renderingBySpace.get(Number(space.id)) || [],
       products: productBySpace.get(Number(space.id)) || [],
@@ -374,6 +381,7 @@ function sourceForModel(source, settings) {
       return {
         id: space.id,
         name: space.name,
+        design_description: space.design_description || '',
         documents: choice.show_plan ? space.documents.map(item => ({ id: item.id, title: item.title, category: item.category })) : [],
         renderings: choice.show_rendering ? space.renderings.map(item => ({ id: item.id, title: item.title })) : [],
         products: choice.show_products ? space.products
@@ -562,7 +570,7 @@ function buildRenderPlan(source, rawSettings, rawOutline) {
     return {
       id: space.id,
       name: space.name,
-      summary: outline.slides.find(item => item.type === 'space_solution' && item.space_id === space.id)?.narrative || '',
+      summary: space.design_description || '',
       documents: choice.show_plan ? space.documents : [],
       renderings: choice.show_rendering ? space.renderings : [],
       products: choice.show_products ? space.products
