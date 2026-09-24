@@ -12,6 +12,7 @@ const {
   validatePagePlan,
   find,
   updatePagePlan,
+  rename,
   remove,
 } = require('../services/presentation-document.service');
 const { buildPptContent } = require('../services/presentation-page-plan');
@@ -231,6 +232,32 @@ test('saved presentation documents can be deleted within their project', async (
   assert.equal(await remove(91, 'doc-to-delete', database), true);
   assert.match(queries[0].sql, /DELETE FROM project_presentation_documents/);
   assert.deepEqual(queries[0].params, [91, 'doc-to-delete']);
+});
+
+test('renaming a saved presentation updates the original title path and cover', async () => {
+  const document = buildDocument(source, { title: '旧方案名' });
+  const settings = structuredClone(document.settings);
+  const pagePlan = buildPagePlan(document);
+  const queries = [];
+  const database = { query: async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('SELECT title, settings_json')) return [[{
+      title: '旧方案名', settings_json: JSON.stringify(settings),
+      document_json: JSON.stringify(document), page_plan_json: JSON.stringify(pagePlan),
+    }]];
+    return [{ affectedRows: 1 }];
+  } };
+  const result = await rename(91, 'rename-doc', '  新方案名  ', database);
+  assert.equal(result.title, '新方案名');
+  const update = queries.find(item => item.sql.includes('SET title = ?'));
+  const savedSettings = JSON.parse(update.params[1]);
+  const savedDocument = JSON.parse(update.params[2]);
+  assert.equal(update.params[0], '新方案名');
+  assert.equal(savedSettings.title, '新方案名');
+  assert.equal(savedDocument.presentation.title, '新方案名');
+  assert.equal(savedDocument.settings.title, '新方案名');
+  assert.equal(savedDocument.slides.find(slide => slide.type === 'cover').title, '新方案名');
+  await assert.rejects(() => rename(91, 'rename-doc', '   ', database), /不能为空/);
 });
 
 test('PDF design sources use a preview image when one exists', () => {

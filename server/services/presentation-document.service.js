@@ -329,6 +329,41 @@ async function list(projectId, database = db) {
   return rows;
 }
 
+async function rename(projectId, documentId, rawTitle, database = db) {
+  const title = String(rawTitle || '').trim();
+  if (!title) throw new Error('方案名称不能为空');
+  if (title.length > 120) throw new Error('方案名称不能超过120字');
+  const [rows] = await database.query(
+    `SELECT title, settings_json, document_json, page_plan_json
+     FROM project_presentation_documents WHERE project_id = ? AND id = ? LIMIT 1`,
+    [projectId, documentId]
+  );
+  if (!rows[0]) return null;
+  const settings = parseJson(rows[0].settings_json) || {};
+  const document = parseJson(rows[0].document_json) || {};
+  const pagePlan = parseJson(rows[0].page_plan_json);
+  settings.title = title;
+  document.settings = { ...(document.settings || {}), title };
+  document.presentation = { ...(document.presentation || {}), title };
+  const cover = (document.slides || []).find(slide => slide.type === 'cover');
+  if (cover) cover.title = title;
+  if (pagePlan?.pages) {
+    for (const page of pagePlan.pages) {
+      if (page.type === 'cover' && page.title_override === rows[0].title) {
+        page.title_override = title;
+      }
+    }
+  }
+  await database.query(
+    `UPDATE project_presentation_documents
+     SET title = ?, settings_json = ?, document_json = ?, page_plan_json = ?
+     WHERE project_id = ? AND id = ?`,
+    [title, JSON.stringify(settings), JSON.stringify(document),
+      pagePlan == null ? null : JSON.stringify(pagePlan), projectId, documentId]
+  );
+  return { id: documentId, title };
+}
+
 async function remove(projectId, documentId, database = db) {
   const [result] = await database.query(
     `DELETE FROM project_presentation_documents
@@ -338,4 +373,4 @@ async function remove(projectId, documentId, database = db) {
   return Number(result.affectedRows || 0) > 0;
 }
 
-module.exports = { buildAssetManifest, buildDocument, buildPagePlan, validatePagePlan, save, find, updatePagePlan, list, remove };
+module.exports = { buildAssetManifest, buildDocument, buildPagePlan, validatePagePlan, save, find, updatePagePlan, list, rename, remove };

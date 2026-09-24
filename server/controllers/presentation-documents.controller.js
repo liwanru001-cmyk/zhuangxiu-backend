@@ -110,6 +110,22 @@ async function updatePagePlan(req, res) {
   }
 }
 
+async function rename(req, res) {
+  const context = await authorize(req, res, true);
+  if (!context) return;
+  try {
+    const result = await documents.rename(
+      context.projectId,
+      String(req.params.documentId || ''),
+      req.body?.title
+    );
+    if (!result) return error(res, '汇报方案不存在', 404);
+    return success(res, result, '方案名称已修改');
+  } catch (validationError) {
+    return error(res, validationError.message || '方案名称格式不正确');
+  }
+}
+
 async function remove(req, res) {
   const context = await authorize(req, res, true);
   if (!context) return;
@@ -186,6 +202,7 @@ module.exports = {
   link,
   pagePlan,
   updatePagePlan,
+  rename,
   remove,
   preview,
   data,

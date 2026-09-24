@@ -376,6 +376,8 @@ router.get('/projects/:id/presentation-documents/:documentId/page-plan',
   ...protectedRoute, asyncHandler(presentationDocuments.pagePlan));
 router.put('/projects/:id/presentation-documents/:documentId/page-plan',
   ...protectedRoute, asyncHandler(presentationDocuments.updatePagePlan));
+router.put('/projects/:id/presentation-documents/:documentId/title',
+  ...protectedRoute, asyncHandler(presentationDocuments.rename));
 router.delete('/projects/:id/presentation-documents/:documentId',
   ...protectedRoute, asyncHandler(presentationDocuments.remove));
 router.post('/projects/:id/presentations', ...protectedRoute, asyncHandler(projectPresentations.createJob));
