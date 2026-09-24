@@ -98,6 +98,7 @@ function documentSpaces(source, settings) {
             ? product.customer_unit_price : null,
           note: product.note,
           official_url: product.official_url,
+          public_product_id: product.public_product_id,
         })) : [],
     };
   });
@@ -209,6 +210,29 @@ function parseJson(value) {
   try { return JSON.parse(value); } catch (_) { return null; }
 }
 
+async function enrichPublicProductIds(projectId, document, database) {
+  const products = (document?.spaces || []).flatMap(space => space.products || []);
+  const missing = products
+    .filter(product => product.public_product_id == null)
+    .map(product => Number(product.id))
+    .filter(Number.isSafeInteger);
+  if (!missing.length) return false;
+  const [rows] = await database.query(
+    `SELECT id, public_product_id FROM project_scheme_products
+     WHERE project_id = ? AND id IN (?) AND public_product_id IS NOT NULL`,
+    [projectId, missing]
+  );
+  const publicIds = new Map(rows.map(row => [Number(row.id), Number(row.public_product_id)]));
+  let changed = false;
+  for (const product of products) {
+    const publicProductId = publicIds.get(Number(product.id));
+    if (!publicProductId) continue;
+    product.public_product_id = publicProductId;
+    changed = true;
+  }
+  return changed;
+}
+
 async function find(projectId, documentId, database = db) {
   const [rows] = await database.query(
     `SELECT id, project_id, created_by, title, document_json, page_plan_json,
@@ -219,6 +243,13 @@ async function find(projectId, documentId, database = db) {
   const row = rows[0];
   if (!row) return null;
   const document = parseJson(row.document_json);
+  if (document && await enrichPublicProductIds(projectId, document, database)) {
+    await database.query(
+      `UPDATE project_presentation_documents SET document_json = ?
+       WHERE project_id = ? AND id = ?`,
+      [JSON.stringify(document), projectId, documentId]
+    );
+  }
   let pagePlan = parseJson(row.page_plan_json);
   if (!pagePlan && document) {
     pagePlan = buildPagePlan(document);

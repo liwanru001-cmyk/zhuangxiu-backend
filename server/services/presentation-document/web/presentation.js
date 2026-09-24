@@ -351,6 +351,19 @@
     currentProductImageIndex = (currentProductImageIndex + delta + count) % count;
     renderProductGallery(product);
   }
+  function openNativeProduct(product) {
+    if (!product?.public_product_id) return false;
+    const message = { type: 'open_public_product', product_id: Number(product.public_product_id) };
+    if (window.ZhuangxiaoBridge?.postMessage) {
+      window.ZhuangxiaoBridge.postMessage(JSON.stringify(message));
+      return true;
+    }
+    if (window.chrome?.webview?.postMessage) {
+      window.chrome.webview.postMessage(message);
+      return true;
+    }
+    return false;
+  }
   function renderProductDialog() {
     const product = productById(planProductIds[currentProductIndex]);
     if (!product) return;
@@ -383,7 +396,10 @@
   function openProduct(productId) {
     const index = planProductIds.indexOf(String(productId));
     if (index < 0) return;
-    currentProductIndex = index; currentProductImageIndex = 0; renderProductDialog(); setOverlay($('product-overlay'), true);
+    currentProductIndex = index;
+    const product = productById(planProductIds[currentProductIndex]);
+    if (openNativeProduct(product)) return;
+    currentProductImageIndex = 0; renderProductDialog(); setOverlay($('product-overlay'), true);
   }
   function moveProduct(delta) {
     if (!planProductIds.length) return;
