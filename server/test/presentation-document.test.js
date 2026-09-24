@@ -204,9 +204,10 @@ test('version one page plans move the first design-description range onto the ch
   assert.ok(queries.some(item => item.sql.includes('page_plan_version = page_plan_version + 1')));
 });
 
-test('old documents are enriched with their public library product id', async () => {
+test('old documents are enriched with their public library product id and official URL', async () => {
   const document = buildDocument(source, {});
   delete document.spaces[0].products[0].public_product_id;
+  delete document.spaces[0].products[0].official_url;
   const queries = [];
   const database = { query: async (sql, params) => {
     queries.push({ sql, params });
@@ -215,12 +216,35 @@ test('old documents are enriched with their public library product id', async ()
       document_json: JSON.stringify(document), page_plan_json: JSON.stringify(buildPagePlan(document)),
       page_plan_version: 1, page_plan_updated_by: null,
     }]];
-    if (sql.includes('FROM project_scheme_products')) return [[{ id: 21, public_product_id: 221 }]];
+    if (sql.includes('FROM project_scheme_products')) return [[{
+      id: 21, public_product_id: 221,
+      product_snapshot: { product: { source_url: 'https://example.test/products/bed' } },
+    }]];
     return [{ affectedRows: 1 }];
   } };
   const saved = await find(91, 'old-doc', database);
   assert.equal(saved.document.spaces[0].products[0].public_product_id, 221);
+  assert.equal(saved.document.spaces[0].products[0].official_url, 'https://example.test/products/bed');
   assert.ok(queries.some(item => item.sql.includes('SET document_json = ?')));
+});
+
+test('old documents recover a personal product source URL', async () => {
+  const document = buildDocument(source, {});
+  delete document.spaces[0].products[0].official_url;
+  const database = { query: async sql => {
+    if (sql.includes('FROM project_presentation_documents')) return [[{
+      id: 'personal-doc', project_id: 91, created_by: 7, title: '旧汇报',
+      document_json: JSON.stringify(document), page_plan_json: JSON.stringify(buildPagePlan(document)),
+      page_plan_version: 1, page_plan_updated_by: null,
+    }]];
+    if (sql.includes('FROM project_scheme_products')) return [[{
+      id: 21, public_product_id: null,
+      personal_source_url: 'https://brand.example/products/bed',
+    }]];
+    return [{ affectedRows: 1 }];
+  } };
+  const saved = await find(91, 'personal-doc', database);
+  assert.equal(saved.document.spaces[0].products[0].official_url, 'https://brand.example/products/bed');
 });
 
 test('saved presentation documents can be deleted within their project', async () => {
@@ -332,7 +356,8 @@ test('Reveal renderer uses Page Plan layouts, eight themes and proposal interact
   assert.match(script, /moveProduct/);
   assert.match(script, /moveProductImage/);
   assert.match(script, /product\.official_url/);
-  assert.match(script, /open_public_product/);
+  assert.match(html, />查看品牌官网资料</);
+  assert.doesNotMatch(script, /open_public_product/);
   assert.match(styles, /product-gallery-thumbs/);
   assert.match(script, /buildOverview/);
   assert.doesNotMatch(script, /本空间.*设计资料与方案逻辑/);

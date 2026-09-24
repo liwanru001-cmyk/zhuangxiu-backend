@@ -165,6 +165,7 @@ async function loadPresentationSource(projectId, options = {}) {
             COALESCE(merchant.spec, personal.spec) AS spec,
             COALESCE(merchant.cover_url, personal.cover_url) AS cover_url,
             merchant.image_urls AS merchant_image_urls,
+            personal.source_url AS personal_source_url,
             COALESCE(merchant.summary, personal.description) AS description,
             COALESCE(merchant.product_details, personal.product_details) AS product_details
      FROM project_scheme_products item
@@ -216,7 +217,7 @@ async function loadPresentationSource(projectId, options = {}) {
       unit: row.unit || '件',
       customer_unit_price: row.customer_unit_price == null ? null : Number(row.customer_unit_price),
       note: row.note || '',
-      official_url: snapshotProduct.source_url || details.source_url || '',
+      official_url: snapshotProduct.source_url || row.personal_source_url || details.source_url || '',
       public_product_id: row.public_product_id == null ? null : Number(row.public_product_id),
       selection,
       source_type: 'scheme_product',

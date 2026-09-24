@@ -266,3 +266,24 @@ test('presentation reads product-level public selections from their pinned snaps
   assert.equal(product.official_url, 'https://example.com/products/table');
   assert.equal(product.public_product_id, 241);
 });
+
+test('presentation uses the saved source URL for a personal web product', async () => {
+  const db = { query: async sql => {
+    if (sql.includes('FROM renovation_projects')) return [[{ id: 3, project_name: '测试' }]];
+    if (sql.includes('FROM project_spaces')) return [[{ id: 31, name: '客厅' }]];
+    if (sql.includes('FROM project_design_documents')) return [[]];
+    if (sql.includes('FROM project_space_images')) return [[]];
+    if (sql.includes('FROM project_scheme_products')) {
+      assert.match(sql, /personal\.source_url AS personal_source_url/);
+      return [[{
+        id: 42, space_id: 31, source_type: 'personal', quantity: 1, unit: '件',
+        name: '简牍沙发', brand: '班兰', cover_url: '/personal-cover.jpg',
+        personal_source_url: 'https://www.banlan.com.cn/product/show/id/396',
+        selection_details: { ppt: { included: true } },
+      }]];
+    }
+    throw new Error(sql);
+  } };
+  const source = await service.loadPresentationSource(3, { db });
+  assert.equal(source.spaces[0].products[0].official_url, 'https://www.banlan.com.cn/product/show/id/396');
+});

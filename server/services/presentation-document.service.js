@@ -231,25 +231,43 @@ function upgradePagePlan(document, current) {
   return validatePagePlan(rebuilt, document);
 }
 
-async function enrichPublicProductIds(projectId, document, database) {
+async function enrichProductLinks(projectId, document, database) {
   const products = (document?.spaces || []).flatMap(space => space.products || []);
   const missing = products
-    .filter(product => product.public_product_id == null)
+    .filter(product => product.public_product_id == null || !product.official_url)
     .map(product => Number(product.id))
     .filter(Number.isSafeInteger);
   if (!missing.length) return false;
   const [rows] = await database.query(
-    `SELECT id, public_product_id FROM project_scheme_products
-     WHERE project_id = ? AND id IN (?) AND public_product_id IS NOT NULL`,
+    `SELECT item.id, item.public_product_id, item.product_snapshot,
+            personal.source_url AS personal_source_url,
+            COALESCE(merchant.product_details, personal.product_details) AS product_details
+     FROM project_scheme_products item
+     LEFT JOIN merchant_products merchant ON merchant.id = item.merchant_product_id
+     LEFT JOIN personal_products personal ON personal.id = item.personal_product_id
+     WHERE item.project_id = ? AND item.id IN (?)`,
     [projectId, missing]
   );
-  const publicIds = new Map(rows.map(row => [Number(row.id), Number(row.public_product_id)]));
+  const enrichment = new Map(rows.map(row => {
+    const snapshot = parseJson(row.product_snapshot) || {};
+    const details = parseJson(row.product_details) || {};
+    return [Number(row.id), {
+      public_product_id: row.public_product_id == null ? null : Number(row.public_product_id),
+      official_url: snapshot.product?.source_url || row.personal_source_url || details.source_url || '',
+    }];
+  }));
   let changed = false;
   for (const product of products) {
-    const publicProductId = publicIds.get(Number(product.id));
-    if (!publicProductId) continue;
-    product.public_product_id = publicProductId;
-    changed = true;
+    const values = enrichment.get(Number(product.id));
+    if (!values) continue;
+    if (product.public_product_id == null && values.public_product_id) {
+      product.public_product_id = values.public_product_id;
+      changed = true;
+    }
+    if (!product.official_url && values.official_url) {
+      product.official_url = values.official_url;
+      changed = true;
+    }
   }
   return changed;
 }
@@ -264,7 +282,7 @@ async function find(projectId, documentId, database = db) {
   const row = rows[0];
   if (!row) return null;
   const document = parseJson(row.document_json);
-  if (document && await enrichPublicProductIds(projectId, document, database)) {
+  if (document && await enrichProductLinks(projectId, document, database)) {
     await database.query(
       `UPDATE project_presentation_documents SET document_json = ?
        WHERE project_id = ? AND id = ?`,

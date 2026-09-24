@@ -362,19 +362,6 @@
     currentProductImageIndex = (currentProductImageIndex + delta + count) % count;
     renderProductGallery(product);
   }
-  function openNativeProduct(product) {
-    if (!product?.public_product_id) return false;
-    const message = { type: 'open_public_product', product_id: Number(product.public_product_id) };
-    if (window.ZhuangxiaoBridge?.postMessage) {
-      window.ZhuangxiaoBridge.postMessage(JSON.stringify(message));
-      return true;
-    }
-    if (window.chrome?.webview?.postMessage) {
-      window.chrome.webview.postMessage(message);
-      return true;
-    }
-    return false;
-  }
   function renderProductDialog() {
     const product = productById(planProductIds[currentProductIndex]);
     if (!product) return;
@@ -392,14 +379,10 @@
       row.append(node('span', '', label), node('strong', '', value)); meta.append(row);
     });
     const officialUrl = safeHttpUrl(product.official_url);
-    if (officialUrl) {
-      const row = node('div', 'product-detail-row product-official-link');
-      const link = node('a', '', '访问产品官网');
-      link.href = officialUrl;
-      link.rel = 'noreferrer';
-      row.append(node('span', '', '官网'), link);
-      meta.append(row);
-    }
+    const officialLink = $('product-official-link');
+    officialLink.hidden = !officialUrl;
+    if (officialUrl) officialLink.href = officialUrl;
+    else officialLink.removeAttribute('href');
     $('product-position').textContent = `${currentProductIndex + 1} / ${planProductIds.length}`;
     $('previous-product').disabled = planProductIds.length < 2;
     $('next-product').disabled = planProductIds.length < 2;
@@ -408,8 +391,6 @@
     const index = planProductIds.indexOf(String(productId));
     if (index < 0) return;
     currentProductIndex = index;
-    const product = productById(planProductIds[currentProductIndex]);
-    if (openNativeProduct(product)) return;
     currentProductImageIndex = 0; renderProductDialog(); setOverlay($('product-overlay'), true);
   }
   function moveProduct(delta) {
