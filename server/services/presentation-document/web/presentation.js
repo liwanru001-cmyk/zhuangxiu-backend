@@ -146,6 +146,14 @@
     const copy = node('div', 'section-copy');
     copy.append(node('span', 'section-index', String(number).padStart(2, '0')));
     copy.append(node('div', 'eyebrow', 'Space chapter'), node('h1', '', pageTitle(page)), node('p', '', `${space(page).name || '空间'} · 设计与产品选用`));
+    const fullDescription = text(source(page).description) || text(space(page).design_description);
+    const range = Array.isArray(page.description_range) ? page.description_range : null;
+    const description = range ? text(fullDescription.slice(range[0], range[1])) : '';
+    if (description) {
+      const points = node('div', 'chapter-design-points');
+      points.append(node('span', '', '设计要点'), node('p', '', description));
+      copy.append(points);
+    }
     content.append(copy);
     return section;
   }

@@ -153,7 +153,7 @@ function buildDocument(source, rawSettings) {
     if (settings.sections.space_solutions) {
       const renderingIds = choice.show_rendering ? matchingAssets(space.id, 'rendering') : [];
       const planIds = choice.show_plan ? matchingAssets(space.id, 'plan') : [];
-      if (renderingIds.length || planIds.length) add('space_design', {
+      if (renderingIds.length || planIds.length || space.design_description) add('space_design', {
         space_id: String(space.id),
         title: `${space.name}设计`,
         rendering_asset_ids: renderingIds,
@@ -211,6 +211,26 @@ function parseJson(value) {
   try { return JSON.parse(value); } catch (_) { return null; }
 }
 
+function upgradePagePlan(document, current) {
+  if (!current || Number(current.schema_version || 1) >= 2) return current;
+  const rebuilt = buildPagePlan(document);
+  rebuilt.theme_id = current.theme_id || rebuilt.theme_id;
+  rebuilt.display = { ...rebuilt.display, ...(current.display || {}) };
+  const previous = new Map((current.pages || [])
+    .filter(page => page.type !== 'space_story')
+    .map(page => [String(page.page_id), page]));
+  rebuilt.pages = rebuilt.pages.map(page => {
+    const prior = previous.get(String(page.page_id));
+    if (!prior) return page;
+    return {
+      ...page,
+      hidden: prior.hidden === true,
+      ...(prior.title_override ? { title_override: prior.title_override } : {}),
+    };
+  });
+  return validatePagePlan(rebuilt, document);
+}
+
 async function enrichPublicProductIds(projectId, document, database) {
   const products = (document?.spaces || []).flatMap(space => space.products || []);
   const missing = products
@@ -252,12 +272,22 @@ async function find(projectId, documentId, database = db) {
     );
   }
   let pagePlan = parseJson(row.page_plan_json);
+  let pagePlanVersion = Number(row.page_plan_version || 1);
   if (!pagePlan && document) {
     pagePlan = buildPagePlan(document);
     await database.query(
       `UPDATE project_presentation_documents
        SET page_plan_json = ?, page_plan_version = 1
        WHERE project_id = ? AND id = ? AND page_plan_json IS NULL`,
+      [JSON.stringify(pagePlan), projectId, documentId]
+    );
+  } else if (document && Number(pagePlan.schema_version || 1) < 2) {
+    pagePlan = upgradePagePlan(document, pagePlan);
+    pagePlanVersion += 1;
+    await database.query(
+      `UPDATE project_presentation_documents
+       SET page_plan_json = ?, page_plan_version = page_plan_version + 1
+       WHERE project_id = ? AND id = ?`,
       [JSON.stringify(pagePlan), projectId, documentId]
     );
   }
@@ -268,7 +298,7 @@ async function find(projectId, documentId, database = db) {
     title: row.title,
     document,
     page_plan: pagePlan,
-    page_plan_version: Number(row.page_plan_version || 1),
+    page_plan_version: pagePlanVersion,
     page_plan_updated_by: row.page_plan_updated_by == null ? null : Number(row.page_plan_updated_by),
     created_at: row.created_at,
     updated_at: row.updated_at,

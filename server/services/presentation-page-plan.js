@@ -52,7 +52,7 @@ function productPages(slide) {
   return result;
 }
 
-function descriptionRanges(value, maxLength = 420) {
+function descriptionRanges(value, maxLength = 180) {
   const text = String(value || '');
   if (!text) return [];
   const ranges = [];
@@ -79,13 +79,14 @@ function buildPagePlan(document) {
   const assets = new Map((document.asset_manifest || []).map(asset => [asset.asset_id, asset]));
   const spaceNames = new Map((document.spaces || []).map(space => [String(space.id), space.name]));
   const sectionSpaces = new Set();
-  const ensureSection = slide => {
+  const ensureSection = (slide, descriptionRange = null) => {
     const spaceId = String(slide.space_id || '');
     if (!spaceId || sectionSpaces.has(spaceId)) return;
     sectionSpaces.add(spaceId);
     pages.push(page(slide, 'chapter', 'chapter_hero_01', 'chapter', {
       space_id: spaceId,
       title_override: spaceNames.get(spaceId) || slide.title || '',
+      ...(descriptionRange ? { description_range: descriptionRange } : {}),
     }));
   };
 
@@ -105,7 +106,9 @@ function buildPagePlan(document) {
         asset_ids: (slide.asset_ids || []).slice(0, 4),
       }));
     } else if (slide.type === 'space_design') {
-      ensureSection(slide);
+      const narrativeRanges = descriptionRanges(slide.description);
+      const chapterRange = narrativeRanges.shift() || null;
+      ensureSection(slide, chapterRange);
       const renderingIds = (slide.rendering_asset_ids || []).filter(id => assets.has(id));
       renderingIds.forEach((assetId, index) => pages.push(page(
         slide, 'space_hero', 'space_hero_full_bleed_01', `hero-${index + 1}`,
@@ -114,7 +117,6 @@ function buildPagePlan(document) {
       const planIds = (slide.plan_asset_ids || []).filter(id => assets.has(id));
       const architectural = planIds.filter(id => ['layout_plan', 'floor_plan'].includes(String(assets.get(id)?.category || '')));
       const materials = planIds.filter(id => !architectural.includes(id));
-      const narrativeRanges = descriptionRanges(slide.description);
       if (narrativeRanges.length) narrativeRanges.forEach((range, index) => pages.push(page(
         slide, 'space_story', 'space_story_01', `story-${index + 1}`,
         {
@@ -149,7 +151,7 @@ function buildPagePlan(document) {
 
   pages.forEach((item, index) => { item.order = index + 1; });
   return {
-    schema_version: 1,
+    schema_version: 2,
     kind: 'presentation_page_plan',
     document_schema_version: Number(document.schema_version || 1),
     theme_id: themeIds.includes(document.settings?.template_id)
@@ -201,7 +203,7 @@ function validatePagePlan(raw, document) {
     if (title.length > 160) throw new Error('页面标题过长');
     let descriptionRange = null;
     if (item.description_range != null) {
-      if (type !== 'space_story' || !Array.isArray(item.description_range)
+      if (!['chapter', 'space_story'].includes(type) || !Array.isArray(item.description_range)
           || item.description_range.length !== 2) throw new Error('方案说明分页范围不正确');
       const start = Number(item.description_range[0]);
       const end = Number(item.description_range[1]);
@@ -227,7 +229,7 @@ function validatePagePlan(raw, document) {
   });
   if (pages.every(item => item.hidden)) throw new Error('至少保留一页用于汇报');
   return {
-    schema_version: 1,
+    schema_version: 2,
     kind: 'presentation_page_plan',
     document_schema_version: Number(document.schema_version || 1),
     theme_id: themeIds.includes(raw.theme_id) ? raw.theme_id : 'modern_minimal',
@@ -269,6 +271,7 @@ function buildPptContent(document, pagePlan, preparedManifest) {
       ...(item.title_override ? { title_override: item.title_override } : {}),
       ...(item.product_ids?.length ? { product_ids: item.product_ids.map(String) } : {}),
       ...(item.asset_ids?.length ? { asset_ids: item.asset_ids.map(mapAssetId) } : {}),
+      ...(item.description_range?.length === 2 ? { description_range: item.description_range.map(Number) } : {}),
     }));
   return {
     presentation_document: {

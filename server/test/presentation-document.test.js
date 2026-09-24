@@ -84,7 +84,9 @@ test('page plan is stable, semantic and chooses product layout from content coun
   const heroIndex = first.pages.findIndex(item => item.type === 'space_hero');
   const productIndex = first.pages.findIndex(item => item.type === 'product_feature');
   const storyIndex = first.pages.findIndex(item => item.type === 'space_story');
-  assert.ok(chapterIndex >= 0 && chapterIndex < heroIndex && heroIndex < storyIndex && storyIndex < productIndex);
+  assert.ok(chapterIndex >= 0 && chapterIndex < heroIndex && heroIndex < productIndex);
+  assert.equal(storyIndex, -1);
+  assert.deepEqual(first.pages[chapterIndex].description_range, [0, source.spaces[0].design_description.length]);
   assert.deepEqual(first.pages[productIndex].product_ids, ['21']);
   assert.ok(document.asset_manifest.some(asset => asset.image_role === 'gallery:2'));
   assert.equal(document.spaces[0].products[0].dimensions.width, 1800);
@@ -101,10 +103,11 @@ test('long space descriptions become stable story pages with ranges into Documen
   }, {});
   const plan = buildPagePlan(document);
   const stories = plan.pages.filter(page => page.type === 'space_story');
+  const chapter = plan.pages.find(page => page.type === 'chapter');
   assert.ok(stories.length >= 2);
-  assert.deepEqual(stories[0].description_range[0], 0);
+  assert.deepEqual(chapter.description_range[0], 0);
   assert.equal(stories.at(-1).description_range[1], longDescription.length);
-  const restored = stories.map(page => longDescription.slice(...page.description_range)).join('');
+  const restored = [chapter, ...stories].map(page => longDescription.slice(...page.description_range)).join('');
   assert.equal(restored.replace(/\s/g, ''), longDescription.replace(/\s/g, ''));
   assert.doesNotThrow(() => validatePagePlan(plan, document));
 });
@@ -166,6 +169,38 @@ test('old saved documents receive one persisted page plan and updates increment 
   const updated = await updatePagePlan(91, 'doc', 8, { ...saved.page_plan, theme_id: 'natural_resort' }, database);
   assert.equal(updated.page_plan.theme_id, 'natural_resort');
   assert.equal(updated.page_plan_version, 2);
+});
+
+test('version one page plans move the first design-description range onto the chapter page', async () => {
+  const document = buildDocument(source, {});
+  const oldPlan = buildPagePlan(document);
+  oldPlan.schema_version = 1;
+  const chapter = oldPlan.pages.find(page => page.type === 'chapter');
+  delete chapter.description_range;
+  oldPlan.pages.splice(oldPlan.pages.indexOf(chapter) + 1, 0, {
+    page_id: `page-${document.slides.find(slide => slide.type === 'space_design').id}-story-1`,
+    source_slide_id: document.slides.find(slide => slide.type === 'space_design').id,
+    type: 'space_story', layout: 'space_story_01', hidden: false, order: 2,
+    space_id: '7', description_range: [0, source.spaces[0].design_description.length],
+  });
+  oldPlan.pages.forEach((page, index) => { page.order = index + 1; });
+  const queries = [];
+  const database = { query: async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('FROM project_presentation_documents')) return [[{
+      id: 'legacy-plan', project_id: 91, created_by: 7, title: '旧编排',
+      document_json: JSON.stringify(document), page_plan_json: JSON.stringify(oldPlan),
+      page_plan_version: 3, page_plan_updated_by: 7,
+    }]];
+    return [{ affectedRows: 1 }];
+  } };
+  const saved = await find(91, 'legacy-plan', database);
+  const upgradedChapter = saved.page_plan.pages.find(page => page.type === 'chapter');
+  assert.equal(saved.page_plan.schema_version, 2);
+  assert.deepEqual(upgradedChapter.description_range, [0, source.spaces[0].design_description.length]);
+  assert.equal(saved.page_plan.pages.some(page => page.type === 'space_story'), false);
+  assert.equal(saved.page_plan_version, 4);
+  assert.ok(queries.some(item => item.sql.includes('page_plan_version = page_plan_version + 1')));
 });
 
 test('old documents are enriched with their public library product id', async () => {

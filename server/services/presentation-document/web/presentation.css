@@ -82,11 +82,14 @@ body.overlay-open { overflow: hidden; }
 .chapter_hero_01 { padding: 0; background: #2d2824; color: white; }
 .section-media { opacity: .62; }
 .section-wash { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(22,18,15,.86), rgba(22,18,15,.18)); }
-.section-copy { position: absolute; left: 84px; top: 50%; z-index: 2; transform: translateY(-50%); }
-.section-index { display: block; margin-bottom: 68px; color: rgba(255,255,255,.44); font-size: 18px; }
+.section-copy { position: absolute; left: 84px; top: 50%; z-index: 2; width: min(560px,44%); transform: translateY(-50%); }
+.section-index { display: block; margin-bottom: 46px; color: rgba(255,255,255,.44); font-size: 18px; }
 .section-copy .eyebrow { color: #e6c8b9; margin-bottom: 18px; }
 .section-copy h1 { font-size: 76px; color: white; }
 .section-copy p { margin-top: 18px; color: rgba(255,255,255,.72); font-size: 18px; }
+.chapter-design-points { margin-top: 34px; padding-top: 18px; border-top: 1px solid rgba(255,255,255,.28); }
+.chapter-design-points > span { color: #e6c8b9; font-size: 12px; font-weight: 700; letter-spacing: .16em; }
+.chapter-design-points > p { margin-top: 10px; color: rgba(255,255,255,.84); font-size: 15px; line-height: 1.72; white-space: pre-line; }
 
 .space_hero_full_bleed_01 { padding: 0; background: #211d1a; color: white; }
 .space-hero-caption { position: absolute; z-index: 3; left: 58px; bottom: 52px; padding: 20px 26px; background: rgba(28,23,20,.58); backdrop-filter: blur(12px); }
@@ -235,6 +238,7 @@ body[data-theme="modern_chinese"] .cover-copy h1 { font-size: 62px; letter-spaci
 body[data-theme="modern_chinese"] .cover-wash { background:linear-gradient(0deg,rgba(25,18,13,.76),rgba(25,18,13,.04) 68%); }
 body[data-theme="modern_chinese"] .chapter_hero_01 .section-copy { left:50%; transform:translate(-50%,-50%); text-align:center; }
 body[data-theme="modern_chinese"] .chapter_hero_01 .section-index { margin-bottom:34px; }
+body[data-theme="modern_chinese"] .chapter-design-points { text-align:left; }
 body[data-theme="modern_chinese"] .space_story_01 { grid-template-columns:1fr 1fr; }
 body[data-theme="modern_chinese"] .product_feature_01 { grid-template-columns:1fr 1fr; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
 body[data-theme="modern_chinese"] .proposal-product-grid { column-gap:36px; }
