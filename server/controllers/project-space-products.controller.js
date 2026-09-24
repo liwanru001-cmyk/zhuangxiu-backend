@@ -199,7 +199,9 @@ async function list(req, res) {
     COALESCE(product.id, personal.id) AS source_id,
     COALESCE(product.name, personal.name) AS name, COALESCE(product.brand, personal.brand) AS brand,
     COALESCE(product.spec, personal.spec) AS spec, COALESCE(product.cover_url, personal.cover_url) AS cover_url,
-    product.merchant_user_id, product.image_urls, COALESCE(product.price_text, personal.price_text) AS price_text,
+    product.merchant_user_id, COALESCE(product.image_urls, personal.image_urls) AS image_urls,
+    personal.source_url AS source_url, personal.description AS description,
+    COALESCE(product.price_text, personal.price_text) AS price_text,
     COALESCE(product.product_group, personal.product_group) AS product_group,
     COALESCE(product.product_type, personal.product_type) AS product_type,
     COALESCE(product.product_details, personal.product_details) AS product_details,
@@ -217,6 +219,7 @@ async function list(req, res) {
     const selectionDetails = readDetails(row.selection_details);
     if (row.source_type !== 'public_library') return {
       ...row,
+      image_urls: readDetails(row.image_urls) || [],
       product_details: readDetails(row.product_details),
       selection_details: selectionDetails,
     };

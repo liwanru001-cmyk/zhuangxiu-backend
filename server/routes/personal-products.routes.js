@@ -8,6 +8,7 @@ router.get('/', asyncHandler(controller.list));
 router.post('/', asyncHandler(controller.save));
 router.post('/document', upload.single('document'), asyncHandler(controller.uploadDocument));
 router.post('/image', upload.single('image'), asyncHandler(controller.upload));
+router.post('/images/import', asyncHandler(controller.importImages));
 router.get('/:id', asyncHandler(controller.get));
 router.put('/:id', asyncHandler(controller.save));
 router.delete('/:id', asyncHandler(controller.remove));
