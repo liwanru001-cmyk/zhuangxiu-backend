@@ -12,6 +12,7 @@ const {
   validatePagePlan,
   find,
   updatePagePlan,
+  remove,
 } = require('../services/presentation-document.service');
 const { buildPptContent } = require('../services/presentation-page-plan');
 const {
@@ -164,6 +165,17 @@ test('old documents are enriched with their public library product id', async ()
   const saved = await find(91, 'old-doc', database);
   assert.equal(saved.document.spaces[0].products[0].public_product_id, 221);
   assert.ok(queries.some(item => item.sql.includes('SET document_json = ?')));
+});
+
+test('saved presentation documents can be deleted within their project', async () => {
+  const queries = [];
+  const database = { query: async (sql, params) => {
+    queries.push({ sql, params });
+    return [{ affectedRows: 1 }];
+  } };
+  assert.equal(await remove(91, 'doc-to-delete', database), true);
+  assert.match(queries[0].sql, /DELETE FROM project_presentation_documents/);
+  assert.deepEqual(queries[0].params, [91, 'doc-to-delete']);
 });
 
 test('PDF design sources use a preview image when one exists', () => {

@@ -110,6 +110,17 @@ async function updatePagePlan(req, res) {
   }
 }
 
+async function remove(req, res) {
+  const context = await authorize(req, res, true);
+  if (!context) return;
+  const deleted = await documents.remove(
+    context.projectId,
+    String(req.params.documentId || '')
+  );
+  if (!deleted) return error(res, '汇报方案不存在', 404);
+  return success(res, { id: req.params.documentId, deleted: true }, '汇报方案已删除');
+}
+
 async function authorizeTicket(req, res) {
   const projectId = Number(req.params.id);
   const documentId = String(req.params.documentId || '');
@@ -175,6 +186,7 @@ module.exports = {
   link,
   pagePlan,
   updatePagePlan,
+  remove,
   preview,
   data,
   previewContentSecurityPolicy,

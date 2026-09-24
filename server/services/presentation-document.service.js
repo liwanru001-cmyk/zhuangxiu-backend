@@ -298,4 +298,13 @@ async function list(projectId, database = db) {
   return rows;
 }
 
-module.exports = { buildAssetManifest, buildDocument, buildPagePlan, validatePagePlan, save, find, updatePagePlan, list };
+async function remove(projectId, documentId, database = db) {
+  const [result] = await database.query(
+    `DELETE FROM project_presentation_documents
+     WHERE project_id = ? AND id = ?`,
+    [projectId, documentId]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
+module.exports = { buildAssetManifest, buildDocument, buildPagePlan, validatePagePlan, save, find, updatePagePlan, list, remove };
