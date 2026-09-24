@@ -9,6 +9,7 @@
   let deck, documentData, pagePlan, assets, sourceSlides, spaces, products;
   let planProductIds = [];
   let currentProductIndex = 0;
+  let currentProductImageIndex = 0;
 
   function node(tag, className, value) {
     const element = document.createElement(tag);
@@ -23,7 +24,20 @@
   const productById = id => products.get(String(id));
   const pageTitle = page => text(page.title_override) || text(source(page).title) || text(space(page).name) || '设计提案';
   const assetList = ids => (ids || []).map(id => assets.get(String(id))).filter(Boolean);
-  const productAssets = productId => [...assets.values()].filter(asset => asset.source_type === 'scheme_product' && String(asset.source_id) === String(productId));
+  const productAssets = productId => {
+    const seen = new Set();
+    return [...assets.values()].filter(asset => {
+      if (asset.source_type !== 'scheme_product' || String(asset.source_id) !== String(productId) || !asset.url || seen.has(asset.url)) return false;
+      seen.add(asset.url);
+      return true;
+    });
+  };
+  const safeHttpUrl = value => {
+    try {
+      const url = new URL(text(value));
+      return /^https?:$/.test(url.protocol) ? url.href : '';
+    } catch (_) { return ''; }
+  };
 
   function media(asset, className = '') {
     const button = node('button', `media ${className}`.trim());
@@ -297,13 +311,51 @@
     $('lightbox-caption').textContent = asset.title || '';
     setOverlay($('lightbox'), true);
   }
+  function renderProductGallery(product) {
+    const gallery = $('product-dialog-gallery'); gallery.replaceChildren();
+    const images = productAssets(product.id).slice(0, 8);
+    if (!images.length) {
+      gallery.append(node('div', 'media-empty', '暂无产品图片'));
+      return;
+    }
+    currentProductImageIndex = Math.min(currentProductImageIndex, images.length - 1);
+    const stage = node('div', 'product-gallery-stage');
+    stage.append(media(images[currentProductImageIndex], 'product-gallery-main'));
+    if (images.length > 1) {
+      const previous = node('button', 'product-gallery-arrow previous', '‹');
+      previous.type = 'button'; previous.setAttribute('aria-label', '上一张产品图片');
+      previous.addEventListener('click', event => { event.stopPropagation(); moveProductImage(-1); });
+      const next = node('button', 'product-gallery-arrow next', '›');
+      next.type = 'button'; next.setAttribute('aria-label', '下一张产品图片');
+      next.addEventListener('click', event => { event.stopPropagation(); moveProductImage(1); });
+      stage.append(previous, next, node('span', 'product-image-position', `${currentProductImageIndex + 1} / ${images.length}`));
+    }
+    gallery.append(stage);
+    if (images.length > 1) {
+      const thumbs = node('div', 'product-gallery-thumbs');
+      images.forEach((asset, index) => {
+        const button = node('button', `product-gallery-thumb${index === currentProductImageIndex ? ' active' : ''}`);
+        button.type = 'button'; button.setAttribute('aria-label', `查看第 ${index + 1} 张产品图片`);
+        const image = node('img'); image.src = asset.url; image.alt = text(asset.title) || `产品图片 ${index + 1}`; image.referrerPolicy = 'no-referrer';
+        button.append(image);
+        button.addEventListener('click', () => { currentProductImageIndex = index; renderProductGallery(product); });
+        thumbs.append(button);
+      });
+      gallery.append(thumbs);
+    }
+  }
+  function moveProductImage(delta) {
+    const product = productById(planProductIds[currentProductIndex]);
+    const count = product ? productAssets(product.id).slice(0, 8).length : 0;
+    if (count < 2) return;
+    currentProductImageIndex = (currentProductImageIndex + delta + count) % count;
+    renderProductGallery(product);
+  }
   function renderProductDialog() {
     const product = productById(planProductIds[currentProductIndex]);
     if (!product) return;
     $('product-dialog-title').textContent = product.name;
-    const gallery = $('product-dialog-gallery'); gallery.replaceChildren();
-    productAssets(product.id).slice(0, 8).forEach(asset => gallery.append(media(asset)));
-    if (!gallery.childElementCount) gallery.append(node('div', 'media-empty', '暂无产品图片'));
+    renderProductGallery(product);
     const meta = $('product-dialog-meta'); meta.replaceChildren();
     [
       ['品牌', product.brand, 'meta-brand'], ['尺寸', dimensionText(product), 'meta-dimensions'],
@@ -315,6 +367,15 @@
       const row = node('div', `product-detail-row ${className}`.trim());
       row.append(node('span', '', label), node('strong', '', value)); meta.append(row);
     });
+    const officialUrl = safeHttpUrl(product.official_url);
+    if (officialUrl) {
+      const row = node('div', 'product-detail-row product-official-link');
+      const link = node('a', '', '访问产品官网');
+      link.href = officialUrl;
+      link.rel = 'noreferrer';
+      row.append(node('span', '', '官网'), link);
+      meta.append(row);
+    }
     $('product-position').textContent = `${currentProductIndex + 1} / ${planProductIds.length}`;
     $('previous-product').disabled = planProductIds.length < 2;
     $('next-product').disabled = planProductIds.length < 2;
@@ -322,11 +383,12 @@
   function openProduct(productId) {
     const index = planProductIds.indexOf(String(productId));
     if (index < 0) return;
-    currentProductIndex = index; renderProductDialog(); setOverlay($('product-overlay'), true);
+    currentProductIndex = index; currentProductImageIndex = 0; renderProductDialog(); setOverlay($('product-overlay'), true);
   }
   function moveProduct(delta) {
     if (!planProductIds.length) return;
     currentProductIndex = (currentProductIndex + delta + planProductIds.length) % planProductIds.length;
+    currentProductImageIndex = 0;
     renderProductDialog();
   }
   function buildOverview(visiblePages) {

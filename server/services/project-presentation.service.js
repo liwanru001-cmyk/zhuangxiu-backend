@@ -209,6 +209,7 @@ async function loadPresentationSource(projectId, options = {}) {
       unit: row.unit || '件',
       customer_unit_price: row.customer_unit_price == null ? null : Number(row.customer_unit_price),
       note: row.note || '',
+      official_url: snapshotProduct.source_url || details.source_url || '',
       selection,
       source_type: 'scheme_product',
       image_role: configuration?.image_url ? `configuration:${selection.configuration_id}` : 'cover',
