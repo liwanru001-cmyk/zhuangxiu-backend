@@ -253,7 +253,7 @@ test('presentation reads product-level public selections from their pinned snaps
     if (sql.includes('FROM project_scheme_products')) return [[{
       id: 41, space_id: 31, source_type: 'public_library', quantity: 1, unit: '件',
       selected_spec: '放置于客厅', selection_details: { selection_scope: 'product', ppt: { included: true } },
-      product_snapshot: { product: { name: '无规格边几', brand: '示例品牌', cover_url: '/cover.jpg' }, configuration: null },
+      product_snapshot: { product: { name: '无规格边几', brand: '示例品牌', cover_url: '/cover.jpg', source_url: 'https://example.com/products/table' }, configuration: null },
     }]];
     throw new Error(sql);
   } };
@@ -263,4 +263,5 @@ test('presentation reads product-level public selections from their pinned snaps
   assert.equal(product.brand, '示例品牌');
   assert.equal(product.image_url, '/cover.jpg');
   assert.equal(product.specification, '放置于客厅');
+  assert.equal(product.official_url, 'https://example.com/products/table');
 });

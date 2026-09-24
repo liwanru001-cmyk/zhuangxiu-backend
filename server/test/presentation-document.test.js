@@ -37,6 +37,7 @@ const source = {
       id: 21, name: '床', brand: '品牌', image_url: 'https://example.test/bed.jpg',
       image_urls: ['https://example.test/bed.jpg', 'https://example.test/bed-side.jpg'],
       description: '低靠背软包床', dimensions: { width: 1800, depth: 2100, height: 950 }, dimension_unit: 'mm',
+      official_url: 'https://example.test/products/bed',
       materials: [{ part: '床体', name: '织物' }], colors: ['米白'],
       quantity: 1, unit: '张', selection: { ppt: { included: true } },
     }],
@@ -83,6 +84,7 @@ test('page plan is stable, semantic and chooses product layout from content coun
   assert.deepEqual(first.pages[productIndex].product_ids, ['21']);
   assert.ok(document.asset_manifest.some(asset => asset.image_role === 'gallery:2'));
   assert.equal(document.spaces[0].products[0].dimensions.width, 1800);
+  assert.equal(document.spaces[0].products[0].official_url, 'https://example.test/products/bed');
 });
 
 test('page plan validation saves order, hidden state, layout and theme without changing Document', () => {
@@ -214,5 +216,8 @@ test('Reveal renderer uses Page Plan layouts, eight themes and proposal interact
   assert.match(script, /openLightbox/);
   assert.match(script, /openProduct/);
   assert.match(script, /moveProduct/);
+  assert.match(script, /moveProductImage/);
+  assert.match(script, /product\.official_url/);
+  assert.match(styles, /product-gallery-thumbs/);
   assert.match(script, /buildOverview/);
 });

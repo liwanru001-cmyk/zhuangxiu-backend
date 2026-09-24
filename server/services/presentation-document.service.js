@@ -97,6 +97,7 @@ function documentSpaces(source, settings) {
           customer_quote: product.selection?.ppt?.show_price === true && product.customer_unit_price != null
             ? product.customer_unit_price : null,
           note: product.note,
+          official_url: product.official_url,
         })) : [],
     };
   });
