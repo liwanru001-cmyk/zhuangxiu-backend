@@ -37,7 +37,7 @@ const source = {
       id: 21, name: '床', brand: '品牌', image_url: 'https://example.test/bed.jpg',
       image_urls: ['https://example.test/bed.jpg', 'https://example.test/bed-side.jpg'],
       description: '低靠背软包床', dimensions: { width: 1800, depth: 2100, height: 950 }, dimension_unit: 'mm',
-      official_url: 'https://example.test/products/bed',
+      official_url: 'https://example.test/products/bed', public_product_id: 221,
       materials: [{ part: '床体', name: '织物' }], colors: ['米白'],
       quantity: 1, unit: '张', selection: { ppt: { included: true } },
     }],
@@ -85,6 +85,7 @@ test('page plan is stable, semantic and chooses product layout from content coun
   assert.ok(document.asset_manifest.some(asset => asset.image_role === 'gallery:2'));
   assert.equal(document.spaces[0].products[0].dimensions.width, 1800);
   assert.equal(document.spaces[0].products[0].official_url, 'https://example.test/products/bed');
+  assert.equal(document.spaces[0].products[0].public_product_id, 221);
 });
 
 test('page plan validation saves order, hidden state, layout and theme without changing Document', () => {
@@ -144,6 +145,25 @@ test('old saved documents receive one persisted page plan and updates increment 
   const updated = await updatePagePlan(91, 'doc', 8, { ...saved.page_plan, theme_id: 'natural_resort' }, database);
   assert.equal(updated.page_plan.theme_id, 'natural_resort');
   assert.equal(updated.page_plan_version, 2);
+});
+
+test('old documents are enriched with their public library product id', async () => {
+  const document = buildDocument(source, {});
+  delete document.spaces[0].products[0].public_product_id;
+  const queries = [];
+  const database = { query: async (sql, params) => {
+    queries.push({ sql, params });
+    if (sql.includes('FROM project_presentation_documents')) return [[{
+      id: 'old-doc', project_id: 91, created_by: 7, title: '旧汇报',
+      document_json: JSON.stringify(document), page_plan_json: JSON.stringify(buildPagePlan(document)),
+      page_plan_version: 1, page_plan_updated_by: null,
+    }]];
+    if (sql.includes('FROM project_scheme_products')) return [[{ id: 21, public_product_id: 221 }]];
+    return [{ affectedRows: 1 }];
+  } };
+  const saved = await find(91, 'old-doc', database);
+  assert.equal(saved.document.spaces[0].products[0].public_product_id, 221);
+  assert.ok(queries.some(item => item.sql.includes('SET document_json = ?')));
 });
 
 test('PDF design sources use a preview image when one exists', () => {
@@ -218,6 +238,7 @@ test('Reveal renderer uses Page Plan layouts, eight themes and proposal interact
   assert.match(script, /moveProduct/);
   assert.match(script, /moveProductImage/);
   assert.match(script, /product\.official_url/);
+  assert.match(script, /open_public_product/);
   assert.match(styles, /product-gallery-thumbs/);
   assert.match(script, /buildOverview/);
 });

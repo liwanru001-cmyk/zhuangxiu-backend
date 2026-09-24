@@ -152,6 +152,7 @@ async function loadPresentationSource(projectId, options = {}) {
   );
   const [productRows] = await connection.query(
     `SELECT item.id, item.space_id, item.quantity, item.unit, item.selected_spec,
+            item.public_product_id,
             item.source_type, item.product_snapshot, item.selection_details, item.customer_unit_price, item.note,
             COALESCE(merchant.name, personal.name) AS name,
             COALESCE(merchant.brand, personal.brand) AS brand,
@@ -210,6 +211,7 @@ async function loadPresentationSource(projectId, options = {}) {
       customer_unit_price: row.customer_unit_price == null ? null : Number(row.customer_unit_price),
       note: row.note || '',
       official_url: snapshotProduct.source_url || details.source_url || '',
+      public_product_id: row.public_product_id == null ? null : Number(row.public_product_id),
       selection,
       source_type: 'scheme_product',
       image_role: configuration?.image_url ? `configuration:${selection.configuration_id}` : 'cover',
