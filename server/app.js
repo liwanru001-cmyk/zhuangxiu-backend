@@ -1,3 +1,4 @@
+const adminCompanyProjects = require('./services/admin-company-projects');
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -1151,6 +1152,27 @@ app.put('/api/admin/wechat-binding-appeals/:id', adminAuth, async (req, res) => 
   return success(res, { id, status }, '处理状态已更新');
 });
 
+app.post('/api/admin/phone-locations/sync', adminAuth, require('./utils/async-handler')(async (req, res) => {
+  const service = require('./services/phone-location.service');
+  if (!service.isConfigured()) return error(res, '手机号归属地服务尚未配置', 503);
+  const data = await service.syncUserPhones(db, req.body?.user_ids);
+  return success(res, data);
+}));
+
+app.use('/api/admin/project-directory', adminAuth, require('./routes/admin-project-directory.routes')(db));
+app.use('/api/admin/merchant-storefronts', adminAuth, require('./routes/admin-merchant-storefronts.routes')(db));
+
+// Business-record-based feature adoption; protected by the same admin authentication.
+app.get('/api/admin/feature-usage', adminAuth, require('./utils/async-handler')(async (req, res) => {
+  try {
+    const data = await require('./services/feature-usage').getUsage(db, req.query);
+    return success(res, data);
+  } catch (err) {
+    if (err.status === 400) return error(res, err.message, 400);
+    throw err;
+  }
+}));
+
 // admin 概览
 app.get('/api/admin/stats', adminAuth, async (req, res) => {
   const [[userStats]] = await db.query(
@@ -1326,6 +1348,19 @@ app.get('/api/admin/companies', adminAuth, async (req, res) => {
     total: countRows[0].total,
     page,
     pageSize,
+  });
+});
+
+app.get('/api/admin/companies/:id/projects', adminAuth, async (req, res) => {
+  const companyId = Number(req.params.id);
+  if (!Number.isInteger(companyId) || companyId <= 0) return error(res, '公司不存在', 404);
+
+  const [[company]] = await db.query('SELECT id, name FROM companies WHERE id = ? LIMIT 1', [companyId]);
+  if (!company) return error(res, '公司不存在', 404);
+  const projects = await adminCompanyProjects.list(db, companyId);
+  return success(res, {
+    company: { id: Number(company.id), name: company.name || '' },
+    projects,
   });
 });
 
@@ -4402,6 +4437,20 @@ app.get('/api/admin/user-feedback', adminAuth, async (req, res) => {
     page: pageNo,
     pageSize,
   });
+});
+
+app.get('/api/admin/merchant-case-reports', adminAuth, async (req, res) => {
+  const [rows] = await db.query(`SELECT r.*, c.title, c.admin_hidden, c.admin_hidden_reason
+    FROM merchant_case_reports r LEFT JOIN merchant_cases c ON c.id = r.case_id
+    ORDER BY r.id DESC LIMIT 100`);
+  return success(res, { items: rows });
+});
+app.post('/api/admin/merchant-cases/:id/hide', adminAuth, async (req, res) => {
+  const reason = String(req.body.reason || '').trim().slice(0, 500);
+  if (!reason) return error(res, '请填写下架原因', 400);
+  const [result] = await db.query("UPDATE merchant_cases SET admin_hidden = 1, admin_hidden_reason = ?, status = 'hidden' WHERE id = ?", [reason, Number(req.params.id)]);
+  if (!result.affectedRows) return error(res, '案例不存在', 404);
+  return success(res, null, '案例已由管理员下架');
 });
 
 app.get('/api/admin/reports', adminAuth, async (req, res) => {

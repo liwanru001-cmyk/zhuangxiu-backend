@@ -6,6 +6,16 @@ function parsed(value, fallback = {}) {
   try { return JSON.parse(value); } catch (_) { return fallback; }
 }
 
+function commandRow(row) {
+  if (!row) return null;
+  return {
+    ...row,
+    id:Number(row.id),
+    payload:parsed(row.payload, {}),
+    result:parsed(row.result, null),
+  };
+}
+
 function createWorkerDispatcher(db) {
   return {
     async enqueue(commandType, payload = {}, actor = 'system:api') {
@@ -22,6 +32,14 @@ function createWorkerDispatcher(db) {
         [type, JSON.stringify(payload || {}), String(actor).slice(0, 80)]
       );
       return { command_id:Number(result.insertId), command_type:type, status:'queued' };
+    },
+
+    async get(id) {
+      const commandId=Number(id);
+      if(!Number.isSafeInteger(commandId)||commandId<1){const error=new Error('Worker 命令 ID 不正确');error.status=400;throw error;}
+      const [rows]=await db.query(`SELECT id,command_type,status,result,failure_code,last_error,requested_at,started_at,finished_at FROM product_ingestion_worker_commands WHERE id=?`,[commandId]);
+      if(!rows[0]){const error=new Error('Worker 命令不存在');error.status=404;throw error;}
+      return commandRow(rows[0]);
     },
 
     async claim(workerId, leaseSeconds = 300) {

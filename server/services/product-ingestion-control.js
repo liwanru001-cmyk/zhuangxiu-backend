@@ -494,6 +494,12 @@ function createControl(db) {
       await db.query(`UPDATE product_ingestion_candidates SET normalized_payload=?,generated_fields=?,review_status='pending',review_note=NULL,reviewed_by=NULL,reviewed_at=NULL,manual_revision=manual_revision+1 WHERE id=?`,[JSON.stringify(payload),JSON.stringify(generated),candidateId]);
       return {id:candidateId,configuration_id:configurationId,image_urls:imageUrls,image_url:imageUrls[0]||''};
     },
+    async candidateTechnicalEvidence(id){
+      const candidateId=integer(id,1,Number.MAX_SAFE_INTEGER,'候选 ID');
+      const [rows]=await db.query(`SELECT id,raw_snapshot_url,extracted_snapshot_url,COALESCE(raw_html_bytes,OCTET_LENGTH(raw_html),0) raw_html_bytes,extracted_payload_bytes,raw_http_status,raw_content_type,content_fingerprint FROM product_ingestion_candidates WHERE id=?`,[candidateId]);
+      if(!rows[0])fail('候选产品不存在',404);
+      return {...rows[0],id:candidateId,raw_html_bytes:Number(rows[0].raw_html_bytes||0),extracted_payload_bytes:Number(rows[0].extracted_payload_bytes||0)};
+    },
     async reviewCandidate(id, body, actor) {
       const candidateId = integer(id, 1, Number.MAX_SAFE_INTEGER, '候选 ID');
       const action = String(body.action || '');

@@ -507,7 +507,7 @@ async function updateDashboardCase(req, res) {
     await connection.query(
       `UPDATE merchant_cases
        SET title = ?, cover_image = ?, images = ?, description = ?, content_delta = ?,
-           area_range = ?, budget_range = ?, link_title = ?, link_url = ?, city = ?, status = ?, sort_order = ?
+           area_range = ?, budget_range = ?, link_title = ?, link_url = ?, city = ?, status = IF(admin_hidden, 'hidden', ?), sort_order = ?
        WHERE id = ? AND merchant_id = ?`,
       [
         item.title,
@@ -570,10 +570,11 @@ async function setDashboardCaseStatus(req, res, status) {
   const caseId = Number(req.params.id);
   const existing = await getCaseForMerchant(caseId, req.user.id);
   if (!existing) return error(res, '案例不存在', 404);
-  await db.query(
-    'UPDATE merchant_cases SET status = ? WHERE id = ? AND merchant_id = ?',
+  const [result] = await db.query(
+    'UPDATE merchant_cases SET status = ? WHERE id = ? AND merchant_id = ? AND admin_hidden = 0',
     [status, caseId, req.user.id]
   );
+  if (!result.affectedRows) return error(res, '案例已由管理员下架', 403);
   return success(res, await getCaseForMerchant(caseId, req.user.id), status === 'active' ? '案例已发布' : '案例已下架');
 }
 
