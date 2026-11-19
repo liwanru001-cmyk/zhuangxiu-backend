@@ -1029,7 +1029,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
             last_client_type, last_device_brand, last_device_model,
             last_os_name, last_os_version, last_app_version, last_build_number,
             last_client_at, created_at, updated_at
-     FROM users WHERE ${where} ORDER BY created_at DESC LIMIT ? OFFSET ?`,
+     FROM users WHERE ${where} ORDER BY last_client_at DESC, id DESC LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
   const [countRows] = await db.query(`SELECT COUNT(*) AS total FROM users WHERE ${where}`, params);
