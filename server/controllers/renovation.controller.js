@@ -2172,10 +2172,10 @@ async function createProjectSpace(req, res) {
     return error(res, '项目不存在或无权限', 404);
   }
   if (!(await canEditPreparation(projectId, req.user.id))) {
-    await createProjectSpaceChangeRequest(projectId, req.user.id, 'create_space', {
+    const requestId = await createProjectSpaceChangeRequest(projectId, req.user.id, 'create_space', {
       name,
     });
-    return success(res, null, '修改申请已提交，等待业主确认');
+    return success(res, { pending_confirmation: true, request_id: requestId }, '修改申请已提交，等待业主确认');
   }
   try {
     return success(res, await applyCreateProjectSpace(projectId, req.user.id, name));
@@ -2524,12 +2524,13 @@ async function applyDeleteProjectSpaceImage(image, spaceId, imageId, connection 
 }
 
 async function createProjectSpaceChangeRequest(projectId, requesterId, actionType, payload) {
-  await db.query(
+  const [result] = await db.query(
     `INSERT INTO project_space_change_requests
        (project_id, requester_id, action_type, payload, status)
      VALUES (?, ?, ?, ?, 0)`,
     [projectId, requesterId, actionType, JSON.stringify(payload)]
   );
+  return result.insertId;
 }
 
 async function getProjectSpaceChangeRequests(req, res) {
