@@ -39,6 +39,8 @@ const { success, error } = require('./utils/response');
 const INSPECTION_KB_ENABLED = process.env.FEATURE_INSPECTION_KB === 'true';
 const storageService = require('./services/storage.service');
 const { checkRuntimeSchema } = require('./services/runtime-schema.service');
+const { adminPath: backendAlertsPath, createBackendAlerts } = require('./services/backend-alerts');
+const backendAlerts = createBackendAlerts(path.join(__dirname, 'logs', 'backend-alerts'));
 const {
   releasePlatformAllowed,
   releaseExtensionAllowed,
@@ -62,6 +64,7 @@ const releaseUpload = multer({
 app.set('trust proxy', 1);
 
 // 全局中间件
+if (!isSmokeMode()) app.use(backendAlerts.middleware);
 app.use(helmet({
   contentSecurityPolicy: {
     directives: {
@@ -1157,6 +1160,17 @@ app.post('/api/admin/phone-locations/sync', adminAuth, require('./utils/async-ha
   if (!service.isConfigured()) return error(res, '手机号归属地服务尚未配置', 503);
   const data = await service.syncUserPhones(db, req.body?.user_ids);
   return success(res, data);
+}));
+
+app.get(backendAlertsPath + '/page', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'services/backend-alerts/page.html'));
+});
+app.get(backendAlertsPath + '/client.js', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'services/backend-alerts/client.js'));
+});
+app.get(backendAlertsPath, adminAuth, require('./utils/async-handler')(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  return success(res, await backendAlerts.list(req.query.days === '7' ? 7 : 1));
 }));
 
 app.use('/api/admin/project-directory', adminAuth, require('./routes/admin-project-directory.routes')(db));
@@ -4769,6 +4783,7 @@ app.get('/api/health', async (req, res) => {
 
 // 404
 app.use((req, res) => {
+  res.locals.unmatchedApi = true;
   res.status(404).json({ code: 404, message: '接口不存在' });
 });
 
