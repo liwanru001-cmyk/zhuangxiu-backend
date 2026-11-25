@@ -1162,12 +1162,6 @@ app.post('/api/admin/phone-locations/sync', adminAuth, require('./utils/async-ha
   return success(res, data);
 }));
 
-app.get(backendAlertsPath + '/page', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'services/backend-alerts/page.html'));
-});
-app.get(backendAlertsPath + '/client.js', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'services/backend-alerts/client.js'));
-});
 app.get(backendAlertsPath, adminAuth, require('./utils/async-handler')(async (req, res) => {
   res.set('Cache-Control', 'no-store');
   return success(res, await backendAlerts.list(req.query.days === '7' ? 7 : 1));
