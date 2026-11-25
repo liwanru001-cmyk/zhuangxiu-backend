@@ -340,6 +340,7 @@ router.get(
   ...protectedRoute,
   asyncHandler(controller.getAccessibleProjects)
 );
+router.get('/projects/:id/home-summary', ...protectedRoute, asyncHandler(require('../controllers/project-home.controller').home));
 router.get('/projects/:id', ...protectedRoute, asyncHandler(controller.getProjectDetail));
 router.get('/projects/:id/showcase', ...protectedRoute, asyncHandler(controller.getProjectShowcase));
 router.put('/projects/:id/showcase', ...protectedRoute, asyncHandler(controller.updateProjectShowcase));
