@@ -100,6 +100,14 @@ test('actual renovation routes enforce authentication, default-off, old-client i
     assert.equal((await fetch(base + '/independent-projects', { method: 'POST', headers: auth })).status, 409);
     const ownerAuth = { authorization: `Bearer ${jwt.sign({ userId: 8 }, process.env.JWT_SECRET)}` };
     assert.equal((await fetch(base + '/independent-projects', { method: 'POST', headers: { ...ownerAuth, ...modern.headers } })).status, 403);
+    const ownerCreate = base + '/owner-projects';
+    assert.equal((await fetch(ownerCreate, { method: 'POST' })).status, 401);
+    const ownerCreateOptions = { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{}' };
+    assert.equal((await fetch(ownerCreate, { ...ownerCreateOptions, headers: { ...ownerCreateOptions.headers, ...auth } })).status, 403);
+    const invalidOwnerProject = await fetch(ownerCreate, {
+      ...ownerCreateOptions, headers: { ...ownerCreateOptions.headers, ...ownerAuth },
+    });
+    assert.equal((await invalidOwnerProject.json()).message, '项目名称需为 1～10 个字符');
     const invitations = await fetch(base + '/owner-invitations', { headers: auth });
     assert.deepEqual((await invitations.json()).data, []);
     assert.equal((await fetch(base + '/projects/91', { headers: auth })).status, 409);

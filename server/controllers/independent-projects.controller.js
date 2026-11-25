@@ -71,6 +71,63 @@ async function create(req, res) {
   } finally { connection.release(); }
 }
 
+async function createOwner(req, res) {
+  if (req.user.role !== 'owner') return error(res, '仅业主可以创建自己的工地', 403);
+  const name = String(req.body.project_name || '').trim();
+  const projectCity = String(req.body.project_city || '').trim();
+  const projectAddress = String(req.body.project_address || '').trim();
+  const rawArea = req.body.house_area;
+  const area = rawArea == null || rawArea === '' ? 0 : Number(rawArea);
+  if (!name || name.length > 10) return error(res, '项目名称需为 1～10 个字符');
+  if (projectCity.length > 80) return error(res, '城市信息不能超过 80 个字符');
+  if (projectAddress.length > 255) return error(res, '地址不能超过 255 个字符');
+  if (!Number.isFinite(area) || area < 0 || area > 999999) return error(res, '房屋面积不正确');
+
+  const connection = await db.getConnection();
+  try {
+    await connection.beginTransaction();
+    let result;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+      const code = String.fromCharCode(65 + crypto.randomInt(26), 65 + crypto.randomInt(26))
+        + String(crypto.randomInt(100000000)).padStart(8, '0');
+      try {
+        [result] = await connection.query(
+          `INSERT INTO renovation_projects
+           (user_id, created_by, creation_source, preparation_stage, project_city, project_address,
+            project_code, project_name, house_area, start_date, total_days, current_stage, status, renovation_method)
+           VALUES (?, ?, 'owner', 'preparation', ?, ?, ?, ?, ?, NULL, 0, 1, 1, 'self')`,
+          [
+            req.user.id,
+            req.user.id,
+            projectCity || null,
+            projectAddress || null,
+            code,
+            name,
+            area,
+          ]
+        );
+        break;
+      } catch (insertError) {
+        if (insertError.code !== 'ER_DUP_ENTRY' || attempt === 11) throw insertError;
+      }
+    }
+    await connection.query(
+      `INSERT INTO project_members (project_id, user_id, role, status, permissions)
+       VALUES (?, ?, 'owner', 1, ?)`,
+      [
+        result.insertId,
+        req.user.id,
+        JSON.stringify({ manage_members: true, manage_tasks: true, view_project: true }),
+      ]
+    );
+    await connection.commit();
+    return success(res, { id: result.insertId }, '工地已创建');
+  } catch (createError) {
+    await connection.rollback();
+    throw createError;
+  } finally { connection.release(); }
+}
+
 async function inviteOwner(req, res) {
   const projectId = Number(req.params.id);
   const phone = String(req.body.phone || '').trim();
@@ -179,4 +236,4 @@ async function respondInvitation(req, res) {
   } finally { connection.release(); }
 }
 
-module.exports = { create, inviteOwner, listInvitations, respondInvitation };
+module.exports = { create, createOwner, inviteOwner, listInvitations, respondInvitation };

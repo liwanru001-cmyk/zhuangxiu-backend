@@ -329,6 +329,7 @@ router.get('/stages', asyncHandler(controller.getStages));
 // Independent project creation does not require an existing project context.
 router.get('/features', ...protectedRoute, rollout.features);
 router.post('/independent-projects', ...protectedRoute, rollout.featureGate, asyncHandler(independentProjects.create));
+router.post('/owner-projects', ...protectedRoute, asyncHandler(independentProjects.createOwner));
 router.get('/owner-invitations', ...protectedRoute, (req, res, next) => rollout.supportsIndependentProjects(req) ? next() : res.json({ code: 200, message: 'success', data: [] }), asyncHandler(independentProjects.listInvitations));
 router.put('/owner-invitations/:invitationId', ...protectedRoute, rollout.featureGate, asyncHandler(independentProjects.respondInvitation));
 

@@ -81,6 +81,64 @@ test('creation rejects non-designers and empty names before writing', async () =
   assert.deepEqual(f.calls, []);
 });
 
+test('owner quick creation starts in preparation without schedule tasks', async () => {
+  const calls = [];
+  const connection = {
+    async beginTransaction() { calls.push('begin'); },
+    async commit() { calls.push('commit'); },
+    async rollback() { calls.push('rollback'); },
+    release() { calls.push('release'); },
+    async query(sql, params = []) {
+      calls.push({ sql, params });
+      if (sql.includes('INSERT INTO renovation_projects')) {
+        assert.match(sql, /'owner', 'preparation'/);
+        assert.match(sql, /NULL, 0, 1, 1, 'self'/);
+        assert.deepEqual(params.slice(0, 2), [8, 8]);
+        assert.equal(params.at(-1), 89);
+        return [{ insertId: 92 }];
+      }
+      if (sql.includes('INSERT INTO project_members')) {
+        assert.match(sql, /'owner'/);
+        assert.deepEqual(params.slice(0, 2), [92, 8]);
+        return [{ affectedRows: 1 }];
+      }
+      throw new Error(`Unexpected SQL: ${sql}`);
+    },
+  };
+  const db = { async getConnection() { return connection; } };
+  const controller = load('../controllers/independent-projects.controller', db);
+  const res = response();
+  await controller.createOwner({
+    user: { id: 8, role: 'owner' },
+    body: {
+      project_name: '海景花园',
+      project_city: '杭州',
+      project_address: '西湖区',
+      house_area: 89,
+    },
+  }, res);
+  assert.equal(res.body.data.id, 92);
+  assert.ok(calls.includes('commit'));
+  assert.ok(!calls.some(call => call.sql?.includes('renovation_tasks')));
+});
+
+test('owner quick creation rejects non-owners and invalid optional area', async () => {
+  const db = { async getConnection() { throw new Error('must not write'); } };
+  const controller = load('../controllers/independent-projects.controller', db);
+  const denied = response();
+  await controller.createOwner({
+    user: { id: 7, role: 'designer' },
+    body: { project_name: '项目' },
+  }, denied);
+  assert.equal(denied.statusCode, 403);
+  const invalid = response();
+  await controller.createOwner({
+    user: { id: 8, role: 'owner' },
+    body: { project_name: '项目', house_area: -1 },
+  }, invalid);
+  assert.notEqual(invalid.body.code, 0);
+});
+
 test('failed member creation rolls back the project transaction', async () => {
   const f = fixture(); const original = f.connection.query;
   f.connection.query = async (sql, params) => {
