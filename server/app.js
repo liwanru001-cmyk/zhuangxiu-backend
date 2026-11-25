@@ -1170,6 +1170,16 @@ app.get(backendAlertsPath, adminAuth, require('./utils/async-handler')(async (re
 app.use('/api/admin/project-directory', adminAuth, require('./routes/admin-project-directory.routes')(db));
 app.use('/api/admin/merchant-storefronts', adminAuth, require('./routes/admin-merchant-storefronts.routes')(db));
 
+app.get('/api/admin/workbuddy-usage', adminAuth, require('./utils/async-handler')(async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  try {
+    return success(res, await require('./services/workbuddy-usage').summarize(db, req.query));
+  } catch (err) {
+    if (err.status === 400) return error(res, err.message, 400);
+    throw err;
+  }
+}));
+
 // Business-record-based feature adoption; protected by the same admin authentication.
 app.get('/api/admin/feature-usage', adminAuth, require('./utils/async-handler')(async (req, res) => {
   try {
