@@ -16,12 +16,12 @@ async function summarize(db, query = {}) {
   if (!windows.has(days)) throw Object.assign(new Error('时间范围仅支持今天、近 7 天或近 30 天'), { status: 400 });
   const includeTests = query.includeTests === '1';
   const [[row]] = await db.query(
-    `SELECT COUNT(DISTINCT usage.user_id) AS users,
-            COALESCE(SUM(usage.call_count), 0) AS calls,
-            COALESCE(SUM(usage.failure_count), 0) AS failures
-       FROM workbuddy_tool_usage_daily usage
-       JOIN users u ON u.id = usage.user_id
-      WHERE usage.usage_date BETWEEN DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR) - INTERVAL ? DAY
+    `SELECT COUNT(DISTINCT daily.user_id) AS users,
+            COALESCE(SUM(daily.call_count), 0) AS calls,
+            COALESCE(SUM(daily.failure_count), 0) AS failures
+       FROM workbuddy_tool_usage_daily daily
+       JOIN users u ON u.id = daily.user_id
+      WHERE daily.usage_date BETWEEN DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR) - INTERVAL ? DAY
                                  AND DATE(UTC_TIMESTAMP() + INTERVAL 8 HOUR)
         AND (? = 1 OR COALESCE(u.is_test_account, 0) = 0)`,
     [Number(days) - 1, Number(includeTests)]

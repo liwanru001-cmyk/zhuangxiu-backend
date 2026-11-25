@@ -19,7 +19,7 @@ test('tool records increment calls atomically and increment failures only on fai
 test('summary defaults to today and excludes tests, with inclusive Beijing lookback windows', async () => {
   const params = [];
   const db = { async query(sql, values) {
-    assert.match(sql, /COUNT\(DISTINCT usage.user_id\)/);
+    assert.match(sql, /COUNT\(DISTINCT daily\.user_id\)/);
     assert.match(sql, /COALESCE\(u.is_test_account, 0\) = 0/);
     params.push(values);
     return [[{ users: '2', calls: '9', failures: '1' }]];
